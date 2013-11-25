@@ -1,134 +1,128 @@
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE ScopedTypeVariables,GADTs #-}
 {-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE ConstraintKinds, RankNTypes, DataKinds #-}
-{-# LANGUAGE FunctionalDependencies, IncoherentInstances, MultiParamTypeClasses,UndecidableInstances,FlexibleInstances,ViewPatterns,ScopedTypeVariables,OverlappingInstances #-} 
+{-# LANGUAGE MultiParamTypeClasses, FlexibleInstances, FlexibleContexts #-}
+{-# LANGUAGE TypeFamilies, ViewPatterns, DataKinds, ConstraintKinds, UndecidableInstances,FunctionalDependencies,RankNTypes #-}
 
-module OpenRecVar(Label,To(..), TList(..),GetType,Remove,Conc, 
-                  OpenVar,inj,decomp, 
-                  OpenRec, empty, (.->), (+++), (!), (.-), rename, (:>)(..), (.|)
-                  ) 
-where
+module OpenRecVar(Label(..),LeadsTo(..), List(..),LabelLt,Get, Inject,Remove,OpenRec, empty, (.|), (.+),(!), (.-)) where
 
 import Data.Typeable
 import Data.Map(Map,unionWith)
 import Data.Sequence(Seq,viewl,ViewL(..),(><),(<|))
 import qualified Data.Map as M
 import qualified Data.Sequence as S
-import Data.Foldable
 import Unsafe.Coerce
+import HetList 
 import Data.List
-import GHC.Exts
-
-class Empty a
-instance Empty a
-
-class (Typeable l, Show l) => Label l
-
-infixr 6 :-> 
-data To l t = l :-> t
-infixr 5 :::
-data TList a = a ::: TList a | N
-
-class GetType (l :: *) (m :: TList (To * *)) (t :: *) | l m -> t
-instance GetType l (l :-> t ::: r) t
-instance GetType l x t => GetType l (l' :-> t' ::: x) t
-instance 
-
-
-class Remove (l :: *) (m :: TList (To * *)) (m' :: TList (To * *)) | l m -> m'
-instance Remove l (l :-> t ::: r) r
-instance Remove l x y => Remove l (l' :-> t' ::: x) (l' :-> t' ::: y)
-
-class Conc (l :: TList (To * *)) (r :: TList (To * *)) (z :: TList (To * *)) | l r -> z
-instance Conc N r r
-instance Conc l r z => Conc (x :-> t ::: l) r (x :-> t ::: z)
-
-
-data OpenVar (m :: TList (To * *))  where
-  OV :: Label l => l -> t -> OpenVar m -- Constructor not exported
-
-inj :: (Label l, GetType l m t) => l -> t -> OpenVar m
-inj = OV
-
-data Constrained (c :: * -> Constraint) where
-  Constrained :: c a => a -> Constrained c
-
-
-
-decomp :: forall l t c m m'. (Label l, GetType l m t, Remove l m m') => 
-              l -> OpenVar m -> Either (OpenVar m') t
-decomp _ (OV l t) = case (cast l :: Maybe l) of
-   Just _ -> Right $ unsafeCoerce t
-   Nothing -> Left $ OV l t
-
-
-
-data HideType where
-  HideType :: Label l => l -> a -> HideType
-
-
-data OpenRec (m :: TList (To * *)) = 
-  OR (Map TypeRep (Seq HideType)) -- Constructor not exported
-
-
-empty :: OpenRec N 
-empty = OR M.empty
-
-infixr 6 .->
-(.->) :: Label l => l -> t -> OpenRec (l :-> t ::: N)
-l .-> t = OR (M.singleton (typeOf l) (S.singleton (HideType l t)))
-
-infixr 5 +++
-(+++) :: Conc l r z => OpenRec l -> OpenRec r -> OpenRec z
-(OR l) +++ (OR r) = OR $ unionWith (><) l r
-
-infixl 9 !
-(!) :: (Label l, GetType l m t) => OpenRec  m -> l ->  t
-(OR m) ! l = 
-    case viewl $ m M.! typeOf l of
-      HideType _ a :< _ -> unsafeCoerce a
-
-infixl 6 .-
-(.-) :: (Label l, Remove l m m') => OpenRec m -> l -> OpenRec  m'
-(OR m) .- l' = OR $ 
-    case viewl (seqTail (m M.! l)) of
-       EmptyL   -> M.delete l m
-       h :< t   -> M.insert l (h <| t) m        
-  where seqTail (viewl -> _ :< t) = t
-        l = typeOf l'
-
-data l :> t = l := t
 
 infixr 5 :=
-
-infixr 4 .|
-(.|) :: (Label l, GetType l m t) => l :> t -> OpenRec m -> OpenRec m
-(l := t) .| (OR m) = OR (M.adjust up (typeOf l) m) where
-   up (viewl -> _ :< x) = HideType l t <| x
+data LeadsTo a b = a := b deriving Show
 
 
 
-rename l l' m = l' .-> m ! l +++ m .- l
+class (Typeable a, Show a) => Label a where
+  getLabel :: a -- singelton type
 
 
+type family LabelLt (a :: *) (b :: *) :: Bool
 
+type family Ifte (c :: Bool) (t :: List (LeadsTo * *)) (f :: List (LeadsTo * *)) where
+  Ifte True  t f = t
+  Ifte False t f = f
+
+type family Inject (l :: *) (t :: *) (r :: List (LeadsTo * *)) :: List (LeadsTo * *) where
+  Inject l t Nil = (l := t ::: Nil)
+  Inject l t (l' := t' ::: x) = Ifte (LabelLt l l')
+                                (l := t   ::: l' := t' ::: x)
+                                (l' := t' ::: Inject l t x)
+
+type family Overwrite (l :: *) (t :: *) (r :: List (LeadsTo * *)) :: List (LeadsTo * *) where
+  Overwrite l t Nil              = (l := t ::: Nil)
+  Overwrite l t (l := t' ::: x)  = l := t ::: x
+  Overwrite l t (l' := t' ::: x) = Ifte (LabelLt l l')
+                                   (l := t   ::: l' := t' ::: x)
+                                   (l' := t' ::: Overwrite l t x)
+
+type family Get (t :: *) (r :: List (LeadsTo * *)) :: * where
+  Get t (t := v ::: r) = v
+  Get t (t' := v' ::: r) = Get t r
+
+type family Remove (t :: *) (r :: List (LeadsTo * *)) :: List (LeadsTo * *) where
+  Remove t (t := v ::: r) = r
+  Remove t (t' := v' ::: r) = t' := v' ::: Remove t r
 
 {-
+data OpenVar (m :: List (LeadsTo * *))  where
+  OV :: (Typeable l) => l -> t -> OpenVar m -- Constructor not exported
 
--- this is better when closed type families are in GHC release
+inj :: (Typeable l, (Get l m)~t) => l -> t -> OpenVar m
+inj = OV
 
-type TMap a b = TList (a :-> b)
-
-type family GetType (l :: *) (m :: TList (To * *)) :: (t :: *) where
-  GetType l (l :-> t ::: r) = t
-  GetType l (l' :-> t' ::: x) t = GetType l x 
-
-type family Remove (l :: Label)  (m :: TMap * *) :: TMap * * where
-  Remove l  (l :-> t ::: r) = r
-  Remove l  (l' :-> t' ::: r) = l' :-> t' ::: Remove l r
-
-type family  Conc (l :: TList (To * *)) (r :: TList (To * *)) :: TList (To * *) where
-   Conc N r = r
-   Conc (x :-> t ::: l) r = x :-> t ::: Conc l r
+prj :: forall l m t m'. (Typeable l, (Get l m)~t) => l -> OpenVar m -> Maybe t
+prj _ (OV l t) = case (cast l :: Maybe l) of
+   Just _ -> Just $ unsafeCoerce t
+   Nothing -> Nothing
 -}
+
+data HideType where
+  HideType :: a -> HideType
+
+data OpenRec (m :: List (LeadsTo * *)) where
+  OR :: Map TypeRep (Seq HideType) -> OpenRec m
+
+empty :: OpenRec Nil
+empty = OR M.empty
+
+infixr 4 .+
+infix  9  !
+infix  9 .-
+
+infixr 4 .|
+
+(.+) :: Typeable a => LeadsTo a b -> OpenRec m -> OpenRec (Inject a b m)
+((typeOf -> a) := b) .+ (OR m) = OR $ M.insert a v m
+  where v = HideType b <| M.findWithDefault S.empty a m
+
+(.|) :: Typeable a => LeadsTo a b -> OpenRec m -> OpenRec (Overwrite a b m)
+((typeOf -> a) := b) .| (OR m) = OR $ M.insert a v m
+  where l = M.findWithDefault S.empty a m
+        v = case viewl l of
+             EmptyL -> HideType b <| l
+             _ :< t -> HideType b <| t
+             
+(!) :: Typeable a => OpenRec m -> a -> Get a m
+(OR m) ! (typeOf -> a) = x'
+   where x S.:< t =  S.viewl $ m M.! a 
+         x' = case x of
+               HideType p -> unsafeCoerce p
+
+(.-) :: Typeable a => OpenRec m -> a -> OpenRec (Remove a m)
+(OR m) .- (typeOf -> a) = OR m'
+   where x S.:< t =  S.viewl $ m M.! a 
+         m' = case S.viewl t of
+               EmptyL -> M.delete a m
+               _      -> M.insert a t m
+
+class ToHetList m x | m -> x, x -> m where
+  toHetList :: OpenRec m -> HetList x
+  fromHetList :: HetList x -> OpenRec m
+ 
+instance ToHetList Nil Nil where
+  toHetList _ = HetNil
+  fromHetList _ = empty
+
+instance (Label l, ToHetList m x,Inject l t m ~ (l := t ::: m)) => 
+          ToHetList (l := t ::: m) (LeadsTo l t ::: x) where
+  toHetList m = l := m ! l :> toHetList (m .- l)
+    where l = (getLabel :: l)
+  fromHetList (l := a :> t)  = l := a .+ fromHetList t
+
+
+instance (ToHetList m x, Forall Show x) => Show (OpenRec m) where
+  show m = "{ " ++ meat ++ " }"
+    where meat = intercalate ", " $ show' $ hl
+          toSt = erase ::  (forall a. Show a => a -> b) -> HetList x -> [b]
+          show' = toSt show :: HetList x -> [String]
+          hl = toHetList m :: HetList x
+
+
