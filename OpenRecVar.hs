@@ -8,7 +8,7 @@
 -- Stability   :  expirimental
 -- 
 -- This module implements extensible records and variants as 
--- described in paper "Extensible Records with Scoped Labels",
+-- described in paper `Extensible Records with Scoped Labels`,
 -- Daan Leijen, Proc. 2005 Symp. Trends in Functional Programming
 -- available at <http://research.microsoft.com/pubs/65409/scopedlabels.pdf>
 --
@@ -161,7 +161,7 @@ infixr 4 .|
 (OR m) ! (show -> a) = x'
    where x S.:< t =  S.viewl $ m M.! a 
          x' = case x of
-               HideType p -> unsafeCoerce p
+               HideType p -> unsafeCoerce p -- notice that this is safe because of the external type
 
 -- | Record restriction
 (.-) :: KnownSymbol a =>  OpenRec m -> Label a -> OpenRec (Remove a m)
@@ -250,7 +250,7 @@ embed (show -> l) (OV s i t)
 decomp :: KnownSymbol a => Label a -> OpenVar m -> (Either (Get a m) (OpenVar (Remove a m)))
 decomp (show -> a) (OV l i t) 
   | l == a    = if i == 0 
-                then Left  $ unsafeCoerce t 
+                then Left  $ unsafeCoerce t -- notice that this is safe because of the external type
                 else Right $ OV l (i - 1) t
   | otherwise      = Right $ OV l i t
                             
