@@ -2,7 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables,GADTs #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE MultiParamTypeClasses, FlexibleInstances, FlexibleContexts #-}
-{-# LANGUAGE TypeFamilies, ViewPatterns, DataKinds, ConstraintKinds, UndecidableInstances,FunctionalDependencies,RankNTypes #-}
+{-# LANGUAGE TypeFamilies, ViewPatterns, DataKinds, ConstraintKinds, UndecidableInstances,FunctionalDependencies,RankNTypes,MagicHash #-}
 
 module OpenRecVar(Label(..),LeadsTo(..), List(..),LabelLt,Get, Inject,Remove,OpenRec, empty, (.|), (.+),(!), (.-)) where
 
@@ -14,17 +14,24 @@ import qualified Data.Sequence as S
 import Unsafe.Coerce
 import HetList 
 import Data.List
+import GHC.TypeLits
+import Data.Typeable.Internal
 
 infixr 5 :=
 data LeadsTo a b = a := b deriving Show
 
+data Label (s :: Symbol) = Label
+
+instance Show (Label s) where
+  show Label = symbolVal :: s
+
+instance Typeable (Label s) where
+  typeRep# _ = mkTyCon3 "OpenRecVar" "OpenRecVar" ("Label:" ++ (symbolVal :: s))
 
 
-class (Typeable a, Show a) => Label a where
-  getLabel :: a -- singelton type
 
-
-type family LabelLt (a :: *) (b :: *) :: Bool
+type family LabelLt (a :: *) (b :: *) :: Bool where
+  LabelLt (Label s) (Label t) = s <=.? t
 
 type family Ifte (c :: Bool) (t :: List (LeadsTo * *)) (f :: List (LeadsTo * *)) where
   Ifte True  t f = t
@@ -90,13 +97,13 @@ infixr 4 .|
              EmptyL -> HideType b <| l
              _ :< t -> HideType b <| t
              
-(!) :: Typeable a => OpenRec m -> a -> Get a m
+(!) :: OpenRec m -> Label a -> Get a m
 (OR m) ! (typeOf -> a) = x'
    where x S.:< t =  S.viewl $ m M.! a 
          x' = case x of
                HideType p -> unsafeCoerce p
 
-(.-) :: Typeable a => OpenRec m -> a -> OpenRec (Remove a m)
+(.-) ::  OpenRec m -> Label a -> OpenRec (Remove a m)
 (OR m) .- (typeOf -> a) = OR m'
    where x S.:< t =  S.viewl $ m M.! a 
          m' = case S.viewl t of
@@ -111,10 +118,10 @@ instance ToHetList Nil Nil where
   toHetList _ = HetNil
   fromHetList _ = empty
 
-instance (Label l, ToHetList m x,Inject l t m ~ (l := t ::: m)) => 
+instance (ToHetList m x,Inject l t m ~ (l := t ::: m)) => 
           ToHetList (l := t ::: m) (LeadsTo l t ::: x) where
   toHetList m = l := m ! l :> toHetList (m .- l)
-    where l = (getLabel :: l)
+    where l = (Label :: l)
   fromHetList (l := a :> t)  = l := a .+ fromHetList t
 
 

@@ -7,7 +7,9 @@ module Examples where
 import Prelude hiding ((.))
 
 
+
 import Data.Typeable
+
 import OpenRecVar
 
 infix 9 .
@@ -16,7 +18,11 @@ infix 9 .
 
 origin :: OpenRec (X := Double ::: Y := Double ::: Nil)
 origin =  X := (10 :: Double) .| Y := (0 :: Double) .| empty
--- Same type! (inferrred!)
+-- want to write : origin = { x = 0 , y = 0 }
+
+-- want to write : origin3 = {  z = 0 | origin }
+origin3 = Z := 0 .| origin
+
 origin2 :: OpenRec (X := Double ::: Y := Double ::: Nil)
 origin2 = Y := (0 :: Double) .| X := (0 :: Double) .| empty
 
