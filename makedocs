@@ -1,0 +1,6 @@
+for file in $@
+do HsColour -html -anchor $file >docs/src/`dirname $file`/`basename $file .hs`.html
+done
+haddock --html --title="openrecvar" --odir=docs   $@ \
+    --source-module="src/%{MODULE/.//}.html" \
+    --source-entity="src/%{MODULE/.//}.html#%{NAME}"
