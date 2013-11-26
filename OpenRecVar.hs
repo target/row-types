@@ -247,12 +247,12 @@ embed (show -> l) (OV s i t)
   | otherwise = OV s i t
 
 -- | Variant decomposition
-decomp :: KnownSymbol a => Label a -> OpenVar m -> (Either (Get a m) (OpenVar (Remove a m)))
+decomp :: KnownSymbol a => Label a -> OpenVar m -> (Either (OpenVar (Remove a m)) (Get a m))
 decomp (show -> a) (OV l i t) 
   | l == a    = if i == 0 
-                then Left  $ unsafeCoerce t -- notice that this is safe because of the external type
-                else Right $ OV l (i - 1) t
-  | otherwise      = Right $ OV l i t
+                then Right  $ unsafeCoerce t -- notice that this is safe because of the external type
+                else Left  $ OV l (i - 1) t
+  | otherwise      = Left  $ OV l i t
                             
 
 
