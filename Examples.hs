@@ -5,84 +5,47 @@
 {-# LANGUAGE DeriveDataTypeable,TypeFamilies, ViewPatterns, DataKinds, ConstraintKinds #-}
 module Examples where
 import Prelude hiding ((.))
-
-
-
-import Data.Typeable
-
 import OpenRecVar
 
+-- Examples from the paper "Extensible records with scoped labels" by Daan Leijen
+
+-- this is just for readability...
 infix 9 .
-(.) ::  Typeable a => OpenRec m -> a -> Get a m
+(.) ::  KnownSymbol a => OpenRec m -> Label a -> Get a m
 (.) = (!)
 
-origin :: OpenRec (X := Double ::: Y := Double ::: Nil)
-origin =  X := (10 :: Double) .| Y := (0 :: Double) .| empty
--- want to write : origin = { x = 0 , y = 0 }
+x = Label :: Label "x"
+y = Label :: Label "y"
 
--- want to write : origin3 = {  z = 0 | origin }
-origin3 = Z := 0 .| origin
+origin = x := 0 .| y := 0 .| empty
 
-origin2 :: OpenRec (X := Double ::: Y := Double ::: Nil)
-origin2 = Y := (0 :: Double) .| X := (0 :: Double) .| empty
+-- diferent order, same result!
+origin2 = y := 0 .| x := 0 .| empty
 
+z = Label :: Label "z"
 
-vec = X := (3 :: Double) .| Y := (4 :: Double) .| X := "Bla" .| empty
+origin3 = z := 0 .| origin
 
-vec2 = X := (3 :: Double) .+ Y := (4 :: Double) .| X := "Bla" .| empty
+name = Label :: Label "name"
 
--- Inferred Type
-distance
-  :: (Floating t, OpenRecVar.Get X m ~ t, OpenRecVar.Get Y m ~ t) =>
-     OpenRec m -> OpenRecVar.Get Y m
-distance r = sqrt $ r.X*r.X + r.Y*r.Y
+named s r = name := s .| r
 
-move r d = X := r.X + d.X .| Y := r.Y + d.Y .| r
+distance p = sqrt $ p.x * p.x + p.y * p.y
 
+test1 = distance (named "2d" origin) + distance origin3
 
+move p dx dy = update x (p.x + dx) $
+               update y (p.y + dy) p
 
-data X = X deriving (Typeable, Show)
-instance Label X where getLabel = X
+--typerr1 = (x := 1 .| empty) . y
+--typerr2 = distance (x := 1 .| empty)
 
-data Y = Y deriving (Typeable, Show)
-instance Label Y where getLabel = Y
+freeext = x := 1 .| origin
 
-data Z = Z deriving (Typeable, Show)
-instance Label Z where getLabel = Z
-
-data P = P deriving (Typeable, Show)
-instance Label P where getLabel = P
-
-data Q = Q deriving (Typeable, Show)
-instance Label Q where getLabel = Q
+selfst = (x := 2 .| x := True .| empty) . x
+selsnd = ((x := 2 .| x := True .| empty) .- x) . x
 
 
-type instance LabelLt X X = True
-type instance LabelLt X Y = True
-type instance LabelLt X Z = True
-type instance LabelLt X P = True
-type instance LabelLt X Q = True
 
-type instance LabelLt Y X = False
-type instance LabelLt Y Y = True
-type instance LabelLt Y Z = True
-type instance LabelLt Y P = True
-type instance LabelLt Y Q = True
 
-type instance LabelLt Z X = False
-type instance LabelLt Z Y = False
-type instance LabelLt Z Z = True
-type instance LabelLt Z P = True
-type instance LabelLt Z Q = True
 
-type instance LabelLt P X = False
-type instance LabelLt P Y = False
-type instance LabelLt P Z = False
-type instance LabelLt P P = True
-type instance LabelLt Q Q = True
-
-type instance LabelLt Q X = False
-type instance LabelLt Q Y = False
-type instance LabelLt Q Z = False
-type instance LabelLt Q P = False
-type instance LabelLt Q Q = True
