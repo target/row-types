@@ -2,7 +2,7 @@
 {-# LANGUAGE TypeOperators,KindSignatures,TypeFamilies, DataKinds, AllowAmbiguousTypes #-}
 module Examples where
 import Prelude hiding ((.))
-import OpenRecVar
+import Records
 
 -- Examples from the paper "Extensible records with scoped labels" by Daan Leijen
 
@@ -22,7 +22,7 @@ name = Label :: Label "name"
 
 -- inferred type (cannot be written down because OpenRecVar.R is not exported):  origin :: Rec ('OpenRecVar.R '["x" ':= Integer, "y" ':= Integer])
 -- nice type:
-origin :: Rec ("x" := Integer :| "y" := Integer :| Empty)
+origin :: Rec ("x" :-> Double :| "y" :-> Double :| Empty)
 origin = x := 0 .| y := 0 .| empty
 -- { x=0.0, y=0.0 }
 
@@ -38,13 +38,14 @@ origin3 = z := 0 .| origin
 -- { x=0.0, y=0.0, z=0 }
 
 -- type is inferred!
-named ::  a -> Rec r -> Rec ("name" := a :| r)
+named ::  a -> Rec r -> Rec ("name" :-> a :| r)
 named s r = name := s .| r
-{-
+
 -- inferred type:
 -- distance
---  :: (Floating t, Get "y" m ~ t, Get "x" m ~ t) =>
---     OpenRec m -> Get "x" m
+--  :: (Floating t, (r :! "y") ~ t, (r :! "x") ~ t) =>
+--     Rec r -> r :! "x"
+-- which is the same as:
 
 distance p = sqrt $ p.x * p.x + p.y * p.y
 
@@ -52,11 +53,12 @@ test1 = distance (named "2d" origin) + distance origin3
 -- 0.0
 
 -- inferred type:
--- move :: (Num t1, Num t, Get "y" m ~ t1, Get "x" m ~ t) =>
---     OpenRec m -> Get "x" m -> Get "y" m -> OpenRec m
+-- move   :: (Num t1, Num t, r :! "y" ~ t1, r :! "x" ~ t) =>
+--            Rec r -> r :! "x" -> r :! "y" -> Rec r
 
-move p dx dy = update x (p.x + dx) $
-               update y (p.y + dy) p
+
+move p dx dy = x :<- p.x + dx .|
+               y :<- p.y + dy .| p
 
 test2 = move (named "foo" origin3) 10 10
 -- { name="foo", x=10.0, y=10.0, z=0 }
@@ -67,12 +69,19 @@ test2 = move (named "foo" origin3) 10 10
 --typerr2 = distance (x := 1 .| empty)
 
 freeext = x := 1 .| origin
+{-
+freeexterr = x :!= 1 .| origin
+Error:
+    Couldn't match type ‛'Records.LabelNotUnique "x"’
+                  with ‛'Records.LabelUnique "x"’
+    In the first argument of ‛(.|)’, namely ‛x :!= 1’
+-}
 
 selfst = (x := 2 .| x := True .| empty) . x
 -- 2
 selsnd = ((x := 2 .| x := True .| empty) .- x) . x
 -- True
--}
+
 {-
 -- variant tests
 testadam =  case inj x (1 :: Double) of
