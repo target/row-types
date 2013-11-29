@@ -35,6 +35,7 @@
 --
 -- Type level operators start with @:@, value level operators start with @.@.
 -- 
+-- Now uses Hashmaps because of speed <http://blog.johantibell.com/2012/03/announcing-unordered-containers-02.html>
 -----------------------------------------------------------------------------
 
 
@@ -51,7 +52,7 @@ module Records
              (.++),(.+),
              IsRow(..),
              Forall(..),
-
+             CRZip(..),
              -- * Rows 
              Row, Empty , (:|), (:!), (:-),(:\), (:\\), 
              -- *  Labels and label type pairs
@@ -63,15 +64,14 @@ module Records
      ) 
 where
 
-import Data.Map(Map,unionWith)
+import Data.HashMap.Lazy(HashMap)
 import Data.Sequence(Seq,viewl,ViewL(..),(><),(<|))
-import qualified Data.Map as M
+import qualified Data.HashMap.Lazy as M
 import qualified Data.Sequence as S
 import Unsafe.Coerce
 import Data.List
 import GHC.TypeLits
 import GHC.Exts -- needed for constraints kinds
-import Debug.Trace
 
 {--------------------------------------------------------------------
   Labels and Label value pairs
@@ -188,7 +188,7 @@ data HideType where
 
 -- | A record with row r.
 data Rec (r :: Row *) where
-  OR :: Map String (Seq HideType) -> Rec r
+  OR :: HashMap String (Seq HideType) -> Rec r
 
 -- | The empty record
 empty :: Rec Empty
@@ -212,8 +212,8 @@ data RecordOp in' out where
 -- | Apply an operation to a record.
 infixr 4 .|
 (.|) :: RecordOp r r' -> Rec r -> Rec r'
-((show -> l) := a) .| (OR m)  = OR $ M.insert l v m where v = HideType a <| M.findWithDefault S.empty l m
-((show -> l) :!= a) .| (OR m) = OR $ M.insert l v m where v = HideType a <| M.findWithDefault S.empty l m
+((show -> l) := a) .| (OR m)  = OR $ M.insert l v m where v = HideType a <| M.lookupDefault S.empty l m
+((show -> l) :!= a) .| (OR m) = OR $ M.insert l v m where v = HideType a <| M.lookupDefault S.empty l m
 ((show -> l) :<- a) .| (OR m) = OR $ M.adjust f l m where f = S.update 0 (HideType a)  
 
 
@@ -244,7 +244,7 @@ infix  8 .-
 
 unsafeInjectFront :: KnownSymbol l => Label l -> a -> Rec (R r) -> Rec (R (l :-> a ': r))
 unsafeInjectFront (show -> a) b (OR m) = OR $ M.insert a v m
-  where v = HideType b <| M.findWithDefault S.empty a m
+  where v = HideType b <| M.lookupDefault S.empty a m
 
 
 class IsRow (r :: Row *) where
@@ -279,6 +279,7 @@ class IsRow r => Forall (r :: Row *) (c :: * -> Constraint) where
  --   when using 'getLabels'. 
  eraseZip :: (forall a. c a => a -> a -> b) -> Rec r -> Rec r -> [b]
 
+
 instance Forall (R '[]) c where
   rinit _ = empty
   erase _ _ = []
@@ -306,18 +307,18 @@ instance (Forall r Show) => Show (Rec r) where
           binds = zipWith (\x y -> x ++ "=" ++ y) ls vs
           ls = getLabels r
           vs = toStv show r
-          -- i don't know exactly why this explicit typing is needed...
+          -- higher order polymorphism... need type
           toStv = erase ::  (forall a. Show a => a -> String) -> Rec r -> [String]
 
 instance (Forall r Eq) => Eq (Rec r) where
   r == r' = and $ eqt (==) r r'
-      where -- i don't know exactly why this explicit typing is needed...
+      where -- higher order polymorphism... need type
             eqt = eraseZip ::  (forall a. Eq a => a -> a -> Bool) -> Rec r -> Rec r -> [Bool]
 
 
 instance (Eq (Rec r), Forall r Ord) => Ord (Rec r) where
   compare m m' = cmp $ eqt compare m m'
-      where -- i don't know exactly why this explicit typing is needed...
+      where -- higher order polymorphism... need type
             eqt = eraseZip ::  (forall a. Ord a => a -> a -> Ordering) -> Rec r -> Rec r -> [Ordering]
             cmp l | [] <- l' = EQ
                   | a : _ <- l' = a
@@ -330,6 +331,7 @@ instance (Forall r Bounded) => Bounded (Rec r) where
   maxBound = hinitv maxBound
        where hinitv = rinit :: (forall a. Bounded a => a) -> Rec r
 
+-- | Constrained record existential zipping
                             
 class CRZip (c :: * -> * -> Constraint) (f :: * -> * -> *) (l :: Row *) (r :: Row *) (z :: Row *) | c f l r -> z where
   crZip :: (forall x y. c x y => x -> y -> f x y) -> Rec l -> Rec r -> Rec z
