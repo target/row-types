@@ -32,6 +32,8 @@
 -- 
 -- In this way we can implement standard type classes such as Show, Eq, Ord and Bounded
 -- for open records, given that all the elements of the open record satify the constraint.
+--
+-- Type level operators start with @:@, value level operators start with @.@.
 -- 
 -----------------------------------------------------------------------------
 
@@ -39,13 +41,6 @@
 module Records
 
  (
-
-             -- *  Labels and label type pairs
-             KnownSymbol(..),
-             Label(..),
-             LT(..),
-             -- * Rows
-             Row, Empty , (:|), (:!), (:-),(:\),
              -- * Records
              Rec,   
              empty,
@@ -53,7 +48,18 @@ module Records
               (.|),
              (.!),
              (.-),
+             (.++),(.+),
+             IsRow(..),
              Forall(..),
+
+             -- * Rows 
+             Row, Empty , (:|), (:!), (:-),(:\), (:\\), 
+             -- *  Labels and label type pairs
+             KnownSymbol(..),
+             Label(..),
+             LT(..)
+            
+           
      ) 
 where
 
@@ -114,7 +120,7 @@ type family (l :: Row *) :+  (r :: Row *)  :: Row * where
 class (r :: Row *) :\ (l :: Symbol)
 instance (Lacks l r ~ LabelUnique l) => (R r) :\ l
 
--- | Are the two rows disjoint? (i.e. their set of labels is disjoint)
+-- | Are the two rows disjoint? (i.e. their sets of labels are disjoint)
 class (l :: Row *) :\\ (r :: Row *)
 instance (Disjoint l r ~ IsDisjoint) => (R l) :\\ (R r)
 
@@ -180,7 +186,7 @@ type family Disjoint (l :: [LT *]) (r :: [LT *]) where
 data HideType where
   HideType :: a -> HideType
 
--- | Openrecord type
+-- | A record with row r.
 data Rec (r :: Row *) where
   OR :: Map String (Seq HideType) -> Rec r
 
@@ -191,13 +197,17 @@ empty = OR M.empty
 infix 5 :=
 infix 5 :!=
 infix 5 :<-
+-- | Record operations for use with '.|' 
+-- 
+--  [@:=@] Record extension.
+--
+--  [@:!=@] Record extension, without shadowing. 
+--
+--  [@:<-@] Record update.
 data RecordOp in' out where
-   -- |  Record extension
-  (:=)  :: KnownSymbol l           => Label l -> a      -> RecordOp r (l :-> a :| r)
-  -- | Record extension, without shadowing
-  (:!=) :: (KnownSymbol l, r :\ l) => Label l -> a      -> RecordOp r (l :-> a :| r)
-  -- | Record update
-  (:<-) :: KnownSymbol l           => Label l -> r :! l -> RecordOp r r 
+  (:=)  :: KnownSymbol l           => Label l -> a      -> RecordOp r (l :-> a :| r)  
+  (:!=) :: (KnownSymbol l, r :\ l) => Label l -> a      -> RecordOp r (l :-> a :| r)  
+  (:<-) :: KnownSymbol l           => Label l -> r :! l -> RecordOp r r  
 
 -- | Apply an operation to a record.
 infixr 4 .|
@@ -237,19 +247,36 @@ unsafeInjectFront (show -> a) b (OR m) = OR $ M.insert a v m
   where v = HideType b <| M.findWithDefault S.empty a m
 
 
-class GetLabels (r :: Row *) where
+class IsRow (r :: Row *) where
+
   getLabels :: Rec r -> [String]
 
-instance GetLabels (R '[]) where
+instance IsRow (R '[]) where
   getLabels _ = []
 
-instance (KnownSymbol l, GetLabels (R t)) =>  GetLabels (R (l :-> a ': t)) where
+instance (KnownSymbol l, IsRow (R t)) =>  IsRow (R (l :-> a ': t)) where
   getLabels r = show l : getLabels (r .- l) where
      l = Label :: Label l
 
-class Forall (r :: Row *) (c :: * -> Constraint) where
+
+-- | If the constaint @c@ holds for all elements in the row @r@,
+--  then the methods in this class are available.
+class IsRow r => Forall (r :: Row *) (c :: * -> Constraint) where
+ -- | Given a default value @a@, where@a@ can be instantiated to each type in the row,
+ -- create a new record in which all elements carry this default value.
  rinit     :: (forall a. c a => a) -> Rec r
+ -- | Given a function @(a -> b)@ where @a@ can be instantiated to each type in the row,
+ --   apply the function to each element in the record and collect the result in a list.
+ -- 
+ --    The order of the resulting list is guaranteed to be the same as the order 
+ --    when using 'getLabels'. 
  erase    :: (forall a. c a => a -> b) -> Rec r -> [b]
+ -- | Given a function @(a -> a -> b)@ where @a@ can be instantiated to each type of the row,
+ -- apply the function to each pair of values that can be obtained by indexing the two records
+ -- with the same label and collect the result in a list.
+ --
+ --  The order is guaranteed to be the same as the order 
+ --   when using 'getLabels'. 
  eraseZip :: (forall a. c a => a -> a -> b) -> Rec r -> Rec r -> [b]
 
 instance Forall (R '[]) c where
@@ -273,7 +300,7 @@ instance (KnownSymbol l, Forall (R t) c, c a) => Forall (R (l :-> a ': t)) c whe
   
 -- some standard type classes
 
-instance (GetLabels r, Forall r Show) => Show (Rec r) where
+instance (Forall r Show) => Show (Rec r) where
   show r = "{ " ++ meat ++ " }"
     where meat = intercalate ", " binds
           binds = zipWith (\x y -> x ++ "=" ++ y) ls vs
@@ -304,6 +331,17 @@ instance (Forall r Bounded) => Bounded (Rec r) where
        where hinitv = rinit :: (forall a. Bounded a => a) -> Rec r
 
                             
+class CRZip (c :: * -> * -> Constraint) (f :: * -> * -> *) (l :: Row *) (r :: Row *) (z :: Row *) | c f l r -> z where
+  crZip :: (forall x y. c x y => x -> y -> f x y) -> Rec l -> Rec r -> Rec z
+
+instance CRZip c f (R '[]) (R '[]) (R '[]) where
+  crZip _ _ _ = empty
+
+instance (KnownSymbol l, c x y, CRZip c f (R tl) (R tr) (R tz)) => CRZip c f (R (l :-> x ': tl)) (R (l :-> y ': tr)) (R (l :-> f x y ': tz)) where
+  crZip f x y = unsafeInjectFront l (f (x .! l) (y .! l)) rest
+    where l = Label :: Label l
+          rest = crZipnxt f (x .- l) (y .- l)
+          crZipnxt = crZip :: (forall x y. c x y => x -> y -> f x y) -> Rec (R tl) -> Rec (R tr) -> Rec (R tz)
 
 
 
