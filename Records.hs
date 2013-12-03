@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeOperators, NoMonomorphismRestriction, ScopedTypeVariables,GADTs, KindSignatures, MultiParamTypeClasses, FlexibleInstances, FlexibleContexts, TypeFamilies, ViewPatterns, DataKinds, ConstraintKinds, UndecidableInstances,FunctionalDependencies,Rank2Types,AllowAmbiguousTypes, InstanceSigs #-}
+{-# LANGUAGE TypeOperators, NoMonomorphismRestriction, ScopedTypeVariables,GADTs, KindSignatures, MultiParamTypeClasses, FlexibleInstances, FlexibleContexts, TypeFamilies, ViewPatterns, DataKinds, ConstraintKinds, UndecidableInstances,FunctionalDependencies,Rank2Types, InstanceSigs #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  OpenRecVar
@@ -50,9 +50,8 @@ module Records
              (.!),
              (.-),
              (.++),(.+),
-             IsRow(..),
-             Forall(..),
-             CRZip(..),
+             Homogenous(..),
+             
              -- * Rows 
              Row, Empty , (:|), (:!), (:-),(:\), (:\\), 
              -- *  Labels and label type pairs
@@ -247,104 +246,43 @@ unsafeInjectFront (show -> a) b (OR m) = OR $ M.insert a v m
   where v = HideType b <| M.lookupDefault S.empty a m
 
 
-class IsRow (r :: Row *) where
+class Homogenous a (r :: Row *) where
+  erase :: Rec r -> [(String,a)]
 
-  getLabels :: Rec r -> [String]
+instance Homogenous a (R '[]) where
+  erase _ =  []
 
-instance IsRow (R '[]) where
-  getLabels _ = []
-
-instance (KnownSymbol l, IsRow (R t)) =>  IsRow (R (l :-> a ': t)) where
-  getLabels r = show l : getLabels (r .- l) where
-     l = Label :: Label l
-
-
--- | If the constaint @c@ holds for all elements in the row @r@,
---  then the methods in this class are available.
-class IsRow r => Forall (r :: Row *) (c :: * -> Constraint) where
- -- | Given a default value @a@, where@a@ can be instantiated to each type in the row,
- -- create a new record in which all elements carry this default value.
- rinit     :: (forall a. c a => a) -> Rec r
- -- | Given a function @(a -> b)@ where @a@ can be instantiated to each type in the row,
- --   apply the function to each element in the record and collect the result in a list.
- -- 
- --    The order of the resulting list is guaranteed to be the same as the order 
- --    when using 'getLabels'. 
- erase    :: (forall a. c a => a -> b) -> Rec r -> [b]
- -- | Given a function @(a -> a -> b)@ where @a@ can be instantiated to each type of the row,
- -- apply the function to each pair of values that can be obtained by indexing the two records
- -- with the same label and collect the result in a list.
- --
- --  The order is guaranteed to be the same as the order 
- --   when using 'getLabels'. 
- eraseZip :: (forall a. c a => a -> a -> b) -> Rec r -> Rec r -> [b]
-
-
-instance Forall (R '[]) c where
-  rinit _ = empty
-  erase _ _ = []
-  eraseZip _ _ _ = []
-
-instance (KnownSymbol l, Forall (R t) c, c a) => Forall (R (l :-> a ': t)) c where
-  rinit f = unsafeInjectFront l a (initnxt f) where
+instance (KnownSymbol l, Homogenous a (R t)) => Homogenous a (R (l :-> a ': t)) where
+  erase m = (show l, m .! l) : erase (m .- l) where
     l = Label :: Label l
-    a = (f :: a)
-    initnxt = rinit :: (forall a. c a => a) -> Rec (R t)
-  erase ::  forall b. (forall a. c a => a -> b) -> Rec (R (l :-> a ': t)) -> [b]
-  erase f r = f (r .! l) : erasenxt f (r .- l) where
-    l = Label :: Label l
-    erasenxt = erase :: (forall a. c a => a ->  b) -> Rec (R t) -> [b]
-  eraseZip ::  forall b. (forall a. c a => a -> a ->  b) -> Rec (R ((l :-> a) ': t)) ->  Rec (R ((l :-> a) ': t)) -> [b]
-  eraseZip f x y = f (x .! l) (y .! l) : erasenxt f (x .- l) (y .- l) where
-    l = Label :: Label l
-    erasenxt = eraseZip :: (forall a. c a => a -> a -> b) -> Rec (R t) -> Rec (R t) -> [b]
-  
--- some standard type classes
 
-instance (Forall r Show) => Show (Rec r) where
-  show r = "{ " ++ meat ++ " }"
-    where meat = intercalate ", " binds
-          binds = zipWith (\x y -> x ++ "=" ++ y) ls vs
-          ls = getLabels r
-          vs = toStv show r
-          -- higher order polymorphism... need type
-          toStv = erase ::  (forall a. Show a => a -> String) -> Rec r -> [String]
+{-
+class Fun (s :: Symbol) (b :: *) where
+  type FunRes s b :: *
+  apply :: Label s -> b -> FunRes s b
 
-instance (Forall r Eq) => Eq (Rec r) where
-  r == r' = and $ eqt (==) r r'
-      where -- higher order polymorphism... need type
-            eqt = eraseZip ::  (forall a. Eq a => a -> a -> Bool) -> Rec r -> Rec r -> [Bool]
+class ApplyAll (s :: Symbol) (r :: [LT *]) where
+   type ApplyRes s r :: [LT *]
+   applyAll :: Label s -> Rec (R r) -> Rec (R (ApplyRes s r))
+
+instance ApplyAll s '[] where
+  type ApplyRes s '[]= '[]
+  applyAll _ _ = empty
 
 
-instance (Eq (Rec r), Forall r Ord) => Ord (Rec r) where
-  compare m m' = cmp $ eqt compare m m'
-      where -- higher order polymorphism... need type
-            eqt = eraseZip ::  (forall a. Ord a => a -> a -> Ordering) -> Rec r -> Rec r -> [Ordering]
-            cmp l | [] <- l' = EQ
-                  | a : _ <- l' = a
-                  where l' = dropWhile (== EQ) l
-
-
-instance (Forall r Bounded) => Bounded (Rec r) where
-  minBound = hinitv minBound
-       where hinitv = rinit :: (forall a. Bounded a => a) -> Rec r
-  maxBound = hinitv maxBound
-       where hinitv = rinit :: (forall a. Bounded a => a) -> Rec r
-
--- | Constrained record existential zipping
-                            
-class CRZip (c :: * -> * -> Constraint) (f :: * -> * -> *) (l :: Row *) (r :: Row *) (z :: Row *) | c f l r -> z where
-  crZip :: (forall x y. c x y => x -> y -> f x y) -> Rec l -> Rec r -> Rec z
-
-instance CRZip c f (R '[]) (R '[]) (R '[]) where
-  crZip _ _ _ = empty
-
-instance (KnownSymbol l, c x y, CRZip c f (R tl) (R tr) (R tz)) => CRZip c f (R (l :-> x ': tl)) (R (l :-> y ': tr)) (R (l :-> f x y ': tz)) where
-  crZip f x y = unsafeInjectFront l (f (x .! l) (y .! l)) rest
+instance (KnownSymbol s, KnownSymbol l, Fun s b, ApplyAll s t) => ApplyAll s (l :-> b ': t) where
+  type ApplyRes s (l :-> b ': t) = l :-> FunRes s b ': ApplyRes s t
+  applyAll s m = unsafeInjectFront l (apply s (m .! l)) (applyAll s (m .- l))
     where l = Label :: Label l
-          rest = crZipnxt f (x .- l) (y .- l)
-          crZipnxt = crZip :: (forall x y. c x y => x -> y -> f x y) -> Rec (R tl) -> Rec (R tr) -> Rec (R tz)
 
+instance Show a => Fun "Show" a where
+   type FunRes "Show" a = String
+   apply _ a = show a
 
+instance ApplyAll "Show" r => Show (Rec (R r)) where
+   show r = "Rec { " ++ intercalate ", " strings ++ " }"
+     where strings = map showElem $ erase $ applyAll lShow r
+           showElem (x,y) = x ++ ":=" ++ y
+           lShow = Label :: Label "Show"
 
-
+-}
