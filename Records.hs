@@ -256,7 +256,7 @@ instance (KnownSymbol l, Homogenous a (R t)) => Homogenous a (R (l :-> a ': t)) 
   erase m = (show l, m .! l) : erase (m .- l) where
     l = Label :: Label l
 
-{-
+
 class Fun (s :: Symbol) (b :: *) where
   type FunRes s b :: *
   apply :: Label s -> b -> FunRes s b
@@ -285,4 +285,4 @@ instance ApplyAll "Show" r => Show (Rec (R r)) where
            showElem (x,y) = x ++ ":=" ++ y
            lShow = Label :: Label "Show"
 
--}
+
