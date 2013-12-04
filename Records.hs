@@ -56,7 +56,7 @@ module Records
              -- ** Disjoint union
               (.+) , (:+),
              -- * Row constraints
-             (:\), (:\\), Forall(..), CWit,
+             (:\), Disjoint, Forall(..), CWit,
              -- * Syntactic sugar
              RecOp(..), RowOp(..), (.|), (:|)
 
@@ -93,7 +93,8 @@ instance KnownSymbol s => Show (Label s) where
 
 type r :\ l = (LacksP l r ~ LabelUnique l)
 -- | Are the two rows disjoint? (i.e. their sets of labels are disjoint)
-type r :\\ l = (DisjointR l r ~ IsDisjoint)
+type Disjoint l r = (DisjointR l r ~ IsDisjoint)
+
 
 
 
@@ -428,14 +429,14 @@ type family IfteD (c :: Bool) (t :: DisjointErr) (f :: DisjointErr)   where
   IfteD False t f = f
 
 type family DisjointR (l :: Row *) (r :: Row *) where
-  DisjointR (R l) (R r) = Disjoint l r
+  DisjointR (R l) (R r) = DisjointZ l r
 
-type family Disjoint (l :: [LT *]) (r :: [LT *]) where
-    Disjoint '[] r = IsDisjoint
-    Disjoint l '[] = IsDisjoint
-    Disjoint (l :-> al ': tl) (l :-> ar ': tr) = Duplicate l
-    Disjoint (hl :-> al ': tl) (hr :-> ar ': tr) = 
+type family DisjointZ (l :: [LT *]) (r :: [LT *]) where
+    DisjointZ '[] r = IsDisjoint
+    DisjointZ l '[] = IsDisjoint
+    DisjointZ (l :-> al ': tl) (l :-> ar ': tr) = Duplicate l
+    DisjointZ (hl :-> al ': tl) (hr :-> ar ': tr) = 
       IfteD (hl <=.? hr)
-      (Disjoint tl (hr :-> ar ': tr))
-      (Disjoint (hl :-> al ': tl) tr)
+      (DisjointZ tl (hr :-> ar ': tr))
+      (DisjointZ (hl :-> al ': tl) tr)
 
