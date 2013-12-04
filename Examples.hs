@@ -4,8 +4,6 @@ module Examples where
 import Prelude hiding ((.))
 import Records
 
--- Examples from the paper "Extensible records with scoped labels" by Daan Leijen
-
 -- notice Extensible records implement Show Eq and Ord and such, given that all element have 
 -- the corresponding type class
 
@@ -23,7 +21,7 @@ name = Label :: Label "name"
 
 -- inferred type (cannot be written down because OpenRecVar.R is not exported):  origin :: Rec ('OpenRecVar.R '["x" ':= Integer, "y" ':= Integer])
 -- nice type:
-origin :: Rec ("x" :-> Double :| "y" :-> Double :| Empty)
+origin :: Rec ("x" ::= Double :| "y" ::= Double :| Empty)
 origin = x := 0 .| y := 0 .| empty
 -- { x=0.0, y=0.0 }
 
@@ -39,7 +37,7 @@ origin3 = z := 0 .| origin
 -- { x=0.0, y=0.0, z=0 }
 
 -- type is inferred!
-named ::  a -> Rec r -> Rec ("name" :-> a :| r)
+named ::  a -> Rec r -> Rec ("name" ::= a :| r)
 named s r = name := s .| r
 
 -- inferred type:
@@ -83,7 +81,7 @@ selfst = (x := 2 .| x := True .| empty) . x
 selsnd = ((x := 2 .| x := True .| empty) .- x) . x
 -- True
 
+syntaxEx :: Rec ("p" ::<-| "z" :| RUp :| "z" ::= Bool :| "x" ::= Double :| "y" ::= Char :| Empty)
 syntaxEx = p :<-| z .| y :<- 'b' .| z :!= False .| x := 2 .| y := 'a' .| empty
 
-syntaxBla = p := False .| x := 2 .| y := 'a' .| empty
 
