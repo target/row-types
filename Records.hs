@@ -7,17 +7,10 @@
 -- Maintainer  :  atzeus@gmail.org
 -- Stability   :  expirimental
 -- 
--- This module implements extensible records  as 
--- described in paper `Extensible Records with Scoped Labels`,
--- Daan Leijen, Proc. 2005 Symp. Trends in Functional Programming
--- available at <http://research.microsoft.com/pubs/65409/scopedlabels.pdf>
+-- This module implements extensible records using closed type famillies.
 --
 -- See Examples.hs for examples.
 -- 
--- The main difference with the paper is that this module does not extend
--- the type system, but instead uses closed type families, GADTs and
--- type level symbols to implement the system. 
---
 -- For this a small extension to GHC is needed which implements the 
 -- built-in closed type family 
 --  @type family (m :: Symbol) <=.? (n :: Symbol) :: Bool@
@@ -50,15 +43,16 @@ module Records
              (.!),
              (.-),
              (.++),(.+),
-             Homogenous(..),
-             
              -- * Rows 
              Row, Empty , (:|), (:!), (:-),(:\), (:\\), 
+             -- * Constrained record operations
+             Forall(..),
+             CWit(..),
              -- *  Labels and label type pairs
              KnownSymbol(..),
              Label(..),
              LT(..)
-            
+
            
      ) 
 where
@@ -245,120 +239,61 @@ unsafeInjectFront :: KnownSymbol l => Label l -> a -> Rec (R r) -> Rec (R (l :->
 unsafeInjectFront (show -> a) b (OR m) = OR $ M.insert a v m
   where v = HideType b <| M.lookupDefault S.empty a m
 
+{--------------------------------------------------------------------
+  Constrained record operations
+--------------------------------------------------------------------}
 
-class Homogenous a (r :: Row *) where
-  erase :: Rec r -> [(String,a)]
+-- | A witness of a constraint. For use like this @rinit (CWit :: CWit Bounded) minBound@
+data CWit (c :: * -> Constraint) = CWit
 
-instance Homogenous a (R '[]) where
-  erase _ =  []
+-- | If the constaint @c@ holds for all elements in the row @r@,
+--  then the methods in this class are available.
+class Forall (r :: Row *) (c :: * -> Constraint) where
+  -- | Given a default value @a@, where@a@ can be instantiated to each type in the row,
+  -- create a new record in which all elements carry this default value.
+  rinit     :: CWit c -> (forall a. c a => a) -> Rec r
+  -- | Given a function @(a -> b)@ where @a@ can be instantiated to each type in the row,
+  --   apply the function to each element in the record and collect the result in a list.
 
-instance (KnownSymbol l, Homogenous a (R t)) => Homogenous a (R (l :-> a ': t)) where
-  erase m = (show l, m .! l) : erase (m .- l) where
-    l = Label :: Label l
+  erase    :: CWit c -> (forall a. c a => a -> b) -> Rec r -> [(String,b)]
+  -- | Given a function @(a -> a -> b)@ where @a@ can be instantiated to each type of the row,
+  -- apply the function to each pair of values that can be obtained by indexing the two records
+  -- with the same label and collect the result in a list.
 
-{-
-class Fun (s :: Symbol) (b :: *) where
-  type FunRes s b :: *
-  apply :: Label s -> b -> FunRes s b
+  eraseZip :: CWit c -> (forall a. c a => a -> a -> b) -> Rec r -> Rec r -> [(String,b)]
 
-class ApplyAll (s :: Symbol) (r :: [LT *]) where
-   type ApplyRes s r :: [LT *]
-   applyAll :: Label s -> Rec (R r) -> Rec (R (ApplyRes s r))
+instance Forall (R '[]) c where
+  rinit _ _ = empty
+  erase _ _ _ = []
+  eraseZip _ _ _ _ = []
 
-instance ApplyAll s '[] where
-  type ApplyRes s '[]= '[]
-  applyAll _ _ = empty
-
-
-<<<<<<< HEAD
 instance (KnownSymbol l, Forall (R t) c, c a) => Forall (R (l :-> a ': t)) c where
-  rinit f = unsafeInjectFront l a (initnxt f) where
+  rinit c f = unsafeInjectFront l f (rinit c f) where l = Label :: Label l
+
+  erase c f r = (show l,f (r .! l)) : erase c f (r .- l) where l = Label :: Label l
+
+  eraseZip c f x y = (show l, f (x .! l) (y .! l)) : eraseZip c f (x .- l) (y .- l) where
     l = Label :: Label l
-    a = (f :: a)
-    initnxt = rinit :: (forall a. c a => a) -> Rec (R t)
-  erase ::  forall b. (forall a. c a => a -> b) -> Rec (R (l :-> a ': t)) -> [b]
-  erase f r = f (r .! l) : erasenxt f (r .- l) where
-    l = Label :: Label l
-    erasenxt = erase :: (forall a. c a => a ->  b) -> Rec (R t) -> [b]
-  eraseZip ::  forall b. (forall a. c a => a -> a ->  b) -> Rec (R ((l :-> a) ': t)) ->  Rec (R ((l :-> a) ': t)) -> [b]
-  eraseZip f x y = f (x .! l) (y .! l) : erasenxt f (x .- l) (y .- l) where
-    l = Label :: Label l
-    erasenxt = eraseZip :: (forall a. c a => a -> a -> b) -> Rec (R t) -> Rec (R t) -> [b]
   
 -- some standard type classes
 
 instance (Forall r Show) => Show (Rec r) where
   show r = "{ " ++ meat ++ " }"
     where meat = intercalate ", " binds
-          binds = zipWith (\x y -> x ++ "=" ++ y) ls vs
-          ls = getLabels r
-          vs = toStv show r
-          -- higher order polymorphism... need type
-          toStv = erase ::  (forall a. Show a => a -> String) -> Rec r -> [String]
+          binds = map (\(x,y) -> x ++ "=" ++ y) vs
+          vs = erase (CWit :: CWit Show) show r
 
 instance (Forall r Eq) => Eq (Rec r) where
-  r == r' = and $ eqt (==) r r'
-      where -- higher order polymorphism... need type
-            eqt = eraseZip ::  (forall a. Eq a => a -> a -> Bool) -> Rec r -> Rec r -> [Bool]
-
+  r == r' = and $ map snd $ eraseZip (CWit :: CWit Eq) (==) r r'
 
 instance (Eq (Rec r), Forall r Ord) => Ord (Rec r) where
-  compare m m' = cmp $ eqt compare m m'
-      where -- higher order polymorphism... need type
-            eqt = eraseZip ::  (forall a. Ord a => a -> a -> Ordering) -> Rec r -> Rec r -> [Ordering]
-            cmp l | [] <- l' = EQ
+  compare m m' = cmp $ map snd $ eraseZip (CWit :: CWit Ord) compare m m'
+      where cmp l | [] <- l' = EQ
                   | a : _ <- l' = a
                   where l' = dropWhile (== EQ) l
 
 
 instance (Forall r Bounded) => Bounded (Rec r) where
-  minBound = hinitv minBound
-       where hinitv = rinit :: (forall a. Bounded a => a) -> Rec r
-  maxBound = hinitv maxBound
-       where hinitv = rinit :: (forall a. Bounded a => a) -> Rec r
+  minBound = rinit (CWit :: CWit Bounded) minBound
+  maxBound = rinit (CWit :: CWit Bounded) maxBound
 
--- | Constrained record existential zipping
-
-class Apply p a b where 
-  type Res p a b 
-  ap :: Proxy p -> a -> b -> Res p a b
-
-                            
-class CRZip p (l :: Row *) (r :: Row *) (z :: Row *) | p l r -> z where
-  crZip :: Rec l -> Rec r -> Rec z
-
-instance CRZip p (R '[]) (R '[]) (R '[]) where
-  crZip _ _ = empty
-
-instance (KnownSymbol l, Apply p x y, z~Res p x y, CRZip p (R tl) (R tr) (R tz)) => CRZip p (R (l :-> x ': tl)) (R (l :-> y ': tr)) (R (l :-> z ': tz)) where
-  crZip x y = unsafeInjectFront l i (cy (x .- l) (y .- l)) 
-    where
-          cy ::  Rec (R tl) -> Rec (R tr) -> Rec (R tz)
-          cy = crZip
-          i = (ap :: x -> y -> z) (x .! l) (y .! l) :: z
-          l = Label :: Label l
-
-data MBind m
-instance Monad m => Apply (MBind m) (m a) (a -> m b) where type Res (MBind m) (m a) (a -> m b) = m b
-
-monadBindZip :: forall m l r z .(Monad m ,CRZip (MBind m) l r z) => Rec l -> Rec r -> Rec z
-monadBindZip = cr ((>>=) :: forall x y. forall a b. (x~m a, y~(a -> m b), Apply (MBind m) x y) => x -> y -> Res (MBind m) x y) 
-  where cr = crZip ::  (forall x y. forall a b.  (x~m a, y~(a -> m b), Apply (MBind m) x y) => x -> y -> Res (MBind m) x y) -> Rec l -> Rec r -> Rec z
-     
-
-instance (KnownSymbol s, KnownSymbol l, Fun s b, ApplyAll s t) => ApplyAll s (l :-> b ': t) where
-  type ApplyRes s (l :-> b ': t) = l :-> FunRes s b ': ApplyRes s t
-  applyAll s m = unsafeInjectFront l (apply s (m .! l)) (applyAll s (m .- l))
-    where l = Label :: Label l
-
-instance Show a => Fun "Show" a where
-   type FunRes "Show" a = String
-   apply _ a = show a
-
-instance ApplyAll "Show" r => Show (Rec (R r)) where
-   show r = "Rec { " ++ intercalate ", " strings ++ " }"
-     where strings = map showElem $ erase $ applyAll lShow r
-           showElem (x,y) = x ++ ":=" ++ y
-           lShow = Label :: Label "Show"
-
--}
