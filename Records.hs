@@ -50,9 +50,8 @@ module Records
              (.!),
              (.-),
              (.++),(.+),
-             IsRow(..),
-             Forall(..),
-             CRZip(..),
+             Homogenous(..),
+             
              -- * Rows 
              Row, Empty , (:|), (:!), (:-),(:\), (:\\), 
              -- *  Labels and label type pairs
@@ -247,44 +246,31 @@ unsafeInjectFront (show -> a) b (OR m) = OR $ M.insert a v m
   where v = HideType b <| M.lookupDefault S.empty a m
 
 
-class IsRow (r :: Row *) where
+class Homogenous a (r :: Row *) where
+  erase :: Rec r -> [(String,a)]
 
-  getLabels :: Rec r -> [String]
+instance Homogenous a (R '[]) where
+  erase _ =  []
 
-instance IsRow (R '[]) where
-  getLabels _ = []
+instance (KnownSymbol l, Homogenous a (R t)) => Homogenous a (R (l :-> a ': t)) where
+  erase m = (show l, m .! l) : erase (m .- l) where
+    l = Label :: Label l
 
-instance (KnownSymbol l, IsRow (R t)) =>  IsRow (R (l :-> a ': t)) where
-  getLabels r = show l : getLabels (r .- l) where
-     l = Label :: Label l
+{-
+class Fun (s :: Symbol) (b :: *) where
+  type FunRes s b :: *
+  apply :: Label s -> b -> FunRes s b
 
+class ApplyAll (s :: Symbol) (r :: [LT *]) where
+   type ApplyRes s r :: [LT *]
+   applyAll :: Label s -> Rec (R r) -> Rec (R (ApplyRes s r))
 
--- | If the constaint @c@ holds for all elements in the row @r@,
---  then the methods in this class are available.
-class IsRow r => Forall (r :: Row *) (c :: * -> Constraint) where
- -- | Given a default value @a@, where@a@ can be instantiated to each type in the row,
- -- create a new record in which all elements carry this default value.
- rinit     :: (forall a. c a => a) -> Rec r
- -- | Given a function @(a -> b)@ where @a@ can be instantiated to each type in the row,
- --   apply the function to each element in the record and collect the result in a list.
- -- 
- --    The order of the resulting list is guaranteed to be the same as the order 
- --    when using 'getLabels'. 
- erase    :: (forall a. c a => a -> b) -> Rec r -> [b]
- -- | Given a function @(a -> a -> b)@ where @a@ can be instantiated to each type of the row,
- -- apply the function to each pair of values that can be obtained by indexing the two records
- -- with the same label and collect the result in a list.
- --
- --  The order is guaranteed to be the same as the order 
- --   when using 'getLabels'. 
- eraseZip :: (forall a. c a => a -> a -> b) -> Rec r -> Rec r -> [b]
+instance ApplyAll s '[] where
+  type ApplyRes s '[]= '[]
+  applyAll _ _ = empty
 
 
-instance Forall (R '[]) c where
-  rinit _ = empty
-  erase _ _ = []
-  eraseZip _ _ _ = []
-
+<<<<<<< HEAD
 instance (KnownSymbol l, Forall (R t) c, c a) => Forall (R (l :-> a ': t)) c where
   rinit f = unsafeInjectFront l a (initnxt f) where
     l = Label :: Label l
@@ -354,12 +340,25 @@ instance (KnownSymbol l, Apply p x y, z~Res p x y, CRZip p (R tl) (R tr) (R tz))
 
 data MBind m
 instance Monad m => Apply (MBind m) (m a) (a -> m b) where type Res (MBind m) (m a) (a -> m b) = m b
-{-
+
 monadBindZip :: forall m l r z .(Monad m ,CRZip (MBind m) l r z) => Rec l -> Rec r -> Rec z
 monadBindZip = cr ((>>=) :: forall x y. forall a b. (x~m a, y~(a -> m b), Apply (MBind m) x y) => x -> y -> Res (MBind m) x y) 
   where cr = crZip ::  (forall x y. forall a b.  (x~m a, y~(a -> m b), Apply (MBind m) x y) => x -> y -> Res (MBind m) x y) -> Rec l -> Rec r -> Rec z
-  -}       
+     
 
+instance (KnownSymbol s, KnownSymbol l, Fun s b, ApplyAll s t) => ApplyAll s (l :-> b ': t) where
+  type ApplyRes s (l :-> b ': t) = l :-> FunRes s b ': ApplyRes s t
+  applyAll s m = unsafeInjectFront l (apply s (m .! l)) (applyAll s (m .- l))
+    where l = Label :: Label l
 
+instance Show a => Fun "Show" a where
+   type FunRes "Show" a = String
+   apply _ a = show a
 
+instance ApplyAll "Show" r => Show (Rec (R r)) where
+   show r = "Rec { " ++ intercalate ", " strings ++ " }"
+     where strings = map showElem $ erase $ applyAll lShow r
+           showElem (x,y) = x ++ ":=" ++ y
+           lShow = Label :: Label "Show"
 
+-}
