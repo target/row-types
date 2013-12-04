@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeOperators, NoMonomorphismRestriction, ScopedTypeVariables,GADTs, KindSignatures, MultiParamTypeClasses, FlexibleInstances, FlexibleContexts, TypeFamilies, ViewPatterns, DataKinds, ConstraintKinds, UndecidableInstances,FunctionalDependencies,Rank2Types,AllowAmbiguousTypes, InstanceSigs #-}
+{-# LANGUAGE TypeOperators, NoMonomorphismRestriction, ScopedTypeVariables,GADTs, KindSignatures, MultiParamTypeClasses, FlexibleInstances, FlexibleContexts, TypeFamilies, ViewPatterns, DataKinds, ConstraintKinds, UndecidableInstances,FunctionalDependencies,RankNTypes,AllowAmbiguousTypes, InstanceSigs, PolyKinds #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  OpenRecVar
@@ -332,18 +332,33 @@ instance (Forall r Bounded) => Bounded (Rec r) where
        where hinitv = rinit :: (forall a. Bounded a => a) -> Rec r
 
 -- | Constrained record existential zipping
+
+class Apply p a b where 
+  type Res p a b 
+  ap :: Proxy p -> a -> b -> Res p a b
+
                             
-class CRZip (c :: * -> * -> Constraint) (f :: * -> * -> *) (l :: Row *) (r :: Row *) (z :: Row *) | c f l r -> z where
-  crZip :: (forall x y. c x y => x -> y -> f x y) -> Rec l -> Rec r -> Rec z
+class CRZip p (l :: Row *) (r :: Row *) (z :: Row *) | p l r -> z where
+  crZip :: Rec l -> Rec r -> Rec z
 
-instance CRZip c f (R '[]) (R '[]) (R '[]) where
-  crZip _ _ _ = empty
+instance CRZip p (R '[]) (R '[]) (R '[]) where
+  crZip _ _ = empty
 
-instance (KnownSymbol l, c x y, CRZip c f (R tl) (R tr) (R tz)) => CRZip c f (R (l :-> x ': tl)) (R (l :-> y ': tr)) (R (l :-> f x y ': tz)) where
-  crZip f x y = unsafeInjectFront l (f (x .! l) (y .! l)) rest
-    where l = Label :: Label l
-          rest = crZipnxt f (x .- l) (y .- l)
-          crZipnxt = crZip :: (forall x y. c x y => x -> y -> f x y) -> Rec (R tl) -> Rec (R tr) -> Rec (R tz)
+instance (KnownSymbol l, Apply p x y, z~Res p x y, CRZip p (R tl) (R tr) (R tz)) => CRZip p (R (l :-> x ': tl)) (R (l :-> y ': tr)) (R (l :-> z ': tz)) where
+  crZip x y = unsafeInjectFront l i (cy (x .- l) (y .- l)) 
+    where
+          cy ::  Rec (R tl) -> Rec (R tr) -> Rec (R tz)
+          cy = crZip
+          i = (ap :: x -> y -> z) (x .! l) (y .! l) :: z
+          l = Label :: Label l
+
+data MBind m
+instance Monad m => Apply (MBind m) (m a) (a -> m b) where type Res (MBind m) (m a) (a -> m b) = m b
+{-
+monadBindZip :: forall m l r z .(Monad m ,CRZip (MBind m) l r z) => Rec l -> Rec r -> Rec z
+monadBindZip = cr ((>>=) :: forall x y. forall a b. (x~m a, y~(a -> m b), Apply (MBind m) x y) => x -> y -> Res (MBind m) x y) 
+  where cr = crZip ::  (forall x y. forall a b.  (x~m a, y~(a -> m b), Apply (MBind m) x y) => x -> y -> Res (MBind m) x y) -> Rec l -> Rec r -> Rec z
+  -}       
 
 
 
