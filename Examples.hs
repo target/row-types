@@ -82,12 +82,4 @@ selfst = (x := 2 .| x := True .| empty) . x
 selsnd = ((x := 2 .| x := True .| empty) .- x) . x
 -- True
 
-{-
--- variant tests
-testadam =  case inj x (1 :: Double) of
-    v | Right a <- decomp x v -> a :: Double
-    -- _ -> 5 -- aside: any guarantees about this being unreachable?
--}
-
-
 
