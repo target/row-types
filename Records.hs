@@ -26,7 +26,6 @@
 -- In this way we can implement standard type classes such as Show, Eq, Ord and Bounded
 -- for open records, given that all the elements of the open record satify the constraint.
 --
--- Type level operators start with @:@, value level operators start with @.@.
 -- 
 -- Now uses Hashmaps because of speed <http://blog.johantibell.com/2012/03/announcing-unordered-containers-02.html>
 -----------------------------------------------------------------------------
@@ -38,20 +37,27 @@ module Records
              -- * Records
              Rec,   
              empty,
-             RecordOp(..),
-              (.|),
-             (.!),
-             (.-),
-             (.++),(.+),
-             -- * Rows 
-             Row, Empty , (:|), (:!), (:-),(:\), (:\\), 
-             -- * Constrained record operations
-             Forall(..),
-             CWit(..),
-             -- *  Labels and label type pairs
              KnownSymbol(..),
              Label(..),
-             LT(..)
+             -- ** Basic record operations
+             extend, extendUnique, update, rename, renameUnique,
+             (.!),
+             (.-),
+             
+             (.++),(.+),
+             -- ** Syntactic sugar for record operations
+             RecordOp(..),
+              (.|),
+             -- * Rows 
+
+             Row, Empty ,
+             LT(..),
+             -- ** Row operations
+              (:|), (:!), (:-), (:++),Rename,
+             -- ** Row constraints
+             (:\), (:\\), Forall(..), CWit,
+
+
 
            
      ) 
@@ -81,13 +87,21 @@ infixr 6 :->
 data LT b = Symbol :-> b
 
 {--------------------------------------------------------------------
-  Row operations
+  Rows
 --------------------------------------------------------------------}
+-- | The kind of rows. This type is only used as a datakind. A row is a typelevel entity telling us 
+--   which symbols are associated with which types.
 
 newtype Row a = R [LT a] -- constructor not exported
 
+-- | The empty row. 
 type family Empty :: Row * where
   Empty = R '[]
+
+
+{--------------------------------------------------------------------
+  Row operations
+--------------------------------------------------------------------}
 
 infixr 5 :|
 -- | Extend the row with a label-type pair
@@ -103,11 +117,17 @@ type family (r :: Row *) :! (t :: Symbol) :: * where
 type family (r :: Row *) :- (s :: Symbol)  :: Row * where
   (R r) :- l = R (Remove l r)
 
+-- | Merge two rows. 
 type family (l :: Row *) :++  (r :: Row *)  :: Row * where
   (R l) :++ (R r) = R (Merge l r)
 
-type family (l :: Row *) :+  (r :: Row *)  :: Row * where
-  (R l) :+ (R r) = R (Merge l r)
+-- | Rename a label in a row.
+type family Rename (l :: Symbol) (l' :: Symbol) (r :: Row *) :: Row * where
+  Rename l l' r = (l' :-> (r :! l)) :| (r :- l)
+
+{--------------------------------------------------------------------
+  Row constraints
+--------------------------------------------------------------------}
 
 -- | Does the row lack (i.e. it has not) the specified label?
 class (r :: Row *) :\ (l :: Symbol)
@@ -122,6 +142,8 @@ instance (Disjoint l r ~ IsDisjoint) => (R l) :\\ (R r)
 
 -- gives nicer error message than Bool
 data Unique = LabelUnique Symbol | LabelNotUnique Symbol
+
+
 
 type family Inject (l :: LT *) (r :: [LT *]) where
   Inject (l :-> t) '[] = (l :-> t ': '[])
@@ -145,6 +167,7 @@ type family Remove (l :: Symbol) (r :: [LT *]) where
 type family Lacks (l :: Symbol) (r :: [LT *]) where
   Lacks l '[] = LabelUnique l
   Lacks l (l :-> t ': x) = LabelNotUnique l
+  Lacks l (p ': x) = Lacks l x
 
 type family Merge (l :: [LT *]) (r :: [LT *]) where
   Merge '[] r = r
@@ -187,28 +210,35 @@ data Rec (r :: Row *) where
 empty :: Rec Empty
 empty = OR M.empty
 
-infix 5 :=
-infix 5 :!=
-infix 5 :<-
--- | Record operations for use with '.|' 
--- 
---  [@:=@] Record extension.
---
---  [@:!=@] Record extension, without shadowing. 
---
---  [@:<-@] Record update.
-data RecordOp in' out where
-  (:=)  :: KnownSymbol l           => Label l -> a      -> RecordOp r (l :-> a :| r)  
-  (:!=) :: (KnownSymbol l, r :\ l) => Label l -> a      -> RecordOp r (l :-> a :| r)  
-  (:<-) :: KnownSymbol l           => Label l -> r :! l -> RecordOp r r  
+{--------------------------------------------------------------------
+  Basic record operations
+--------------------------------------------------------------------}
 
--- | Apply an operation to a record.
-infixr 4 .|
-(.|) :: RecordOp r r' -> Rec r -> Rec r'
-((show -> l) := a) .| (OR m)  = OR $ M.insert l v m where v = HideType a <| M.lookupDefault S.empty l m
-((show -> l) :!= a) .| (OR m) = OR $ M.insert l v m where v = HideType a <| M.lookupDefault S.empty l m
-((show -> l) :<- a) .| (OR m) = OR $ M.adjust f l m where f = S.update 0 (HideType a)  
 
+-- | Record extension. The row may already contain label, 
+--   in which case the origin value can be obtained after restriction ('.-') with
+--   the label.
+extend :: KnownSymbol l => Label l -> a -> Rec r -> Rec (l :-> a :| r)  
+extend (show -> l) a (OR m) = OR $ M.insert l v m 
+   where v = HideType a <| M.lookupDefault S.empty l m
+
+-- | Record extension without shadowing. The row may not already contain label l.
+extendUnique :: (KnownSymbol l,r :\ l) => Label l -> a -> Rec r -> Rec (l :-> a :| r)  
+extendUnique = extend
+
+-- | Update the value associated with the label.
+update :: KnownSymbol l => Label l -> r :! l -> Rec r -> Rec r
+update (show -> l) a (OR m) = OR $ M.adjust f l m where f = S.update 0 (HideType a)  
+
+-- | Rename a label. The row may already contain the new label , 
+--   in which case the origin value can be obtained after restriction ('.-') with
+--   the new label.
+rename :: (KnownSymbol l, KnownSymbol l') => Label l -> Label l' -> Rec r -> Rec (Rename l l' r)
+rename l l' r = extend l' (r .! l) (r .- l)
+
+-- | Rename a label. The row may not already contain the new label.
+renameUnique :: (KnownSymbol l, KnownSymbol l', r :\ l') => Label l -> Label l' -> Rec r -> Rec (Rename l l' r)
+renameUnique = rename
 
 infix  8 .-
 -- | Record selection
@@ -231,13 +261,59 @@ infix  8 .-
 (OR l) .++ (OR r) = OR $ M.unionWith (><) l r
 
 -- | Record disjoint union (commutative)
-(.+) :: (l :\\ r) => Rec l -> Rec r -> Rec (l :+ r)
+(.+) :: (l :\\ r) => Rec l -> Rec r -> Rec (l :++ r)
 (OR l) .+ (OR r) = OR $ M.unionWith (error "Impossible") l r
 
+{--------------------------------------------------------------------
+  Syntactic sugar for record operations
+--------------------------------------------------------------------}
 
-unsafeInjectFront :: KnownSymbol l => Label l -> a -> Rec (R r) -> Rec (R (l :-> a ': r))
-unsafeInjectFront (show -> a) b (OR m) = OR $ M.insert a v m
-  where v = HideType b <| M.lookupDefault S.empty a m
+infix 5 :=
+infix 5 :!=
+infix 5 :<-
+
+-- | Here we provide a datatype for denoting record operations. Use '.|' to
+--   actually apply the operations.
+-- 
+--   This allows us to chain operations with nicer syntax.
+--   For example we can write:
+--
+-- > p :<-| z .| y :<- 'b' .| z :!= False .| x := 2 .| y := 'a' .| empty
+-- 
+-- Which results in:
+-- 
+-- > { p=False, x=2, y='b' }
+-- 
+-- Without this sugar, we would have written it like this:
+--
+-- >  rename z p $ update y 'b' $ extendUnique z False $ extend x 2 $ extend y 'a' empty
+--
+-- 
+--  [@:=@] Record extension. Sugar for 'extend'.
+--
+--  [@:!=@] Record extension, without shadowing. Sugar for 'extendUnique'.
+--
+--  [@:<-@] Record update. Sugar for 'update'.
+--
+--  [@:<-|@] Record label renaming. Sugar for 'rename'.
+--
+--  [@:<-!@] Record label renaming. Sugar for 'renameUnique'.
+data RecordOp in' out where
+  (:=)   :: KnownSymbol l           => Label l -> a      -> RecordOp r (l :-> a :| r)  
+  (:!=)  :: (KnownSymbol l, r :\ l) => Label l -> a      -> RecordOp r (l :-> a :| r)  
+  (:<-)  :: KnownSymbol l           => Label l -> r :! l -> RecordOp r r  
+  (:<-|) :: (KnownSymbol l, KnownSymbol l') => Label l' -> Label l -> RecordOp r (Rename l l' r)
+  (:<-!) :: (KnownSymbol l, KnownSymbol l', r :\ l') => Label l' -> Label l -> RecordOp r (Rename l l' r)
+
+-- | Apply an operation to a record.
+infixr 4 .|
+(.|) :: RecordOp r r' -> Rec r -> Rec r'
+(l := a)    .| m  = extend l a m
+(l :!= a)   .| m  = extendUnique l a m
+(l :<- a)   .| m  = update l a m
+(l' :<-| l) .| m  = rename l l' m
+(l' :<-! l) .| m  = renameUnique l l' m
+
 
 {--------------------------------------------------------------------
   Constrained record operations
@@ -296,4 +372,8 @@ instance (Eq (Rec r), Forall r Ord) => Ord (Rec r) where
 instance (Forall r Bounded) => Bounded (Rec r) where
   minBound = rinit (CWit :: CWit Bounded) minBound
   maxBound = rinit (CWit :: CWit Bounded) maxBound
+
+unsafeInjectFront :: KnownSymbol l => Label l -> a -> Rec (R r) -> Rec (R (l :-> a ': r))
+unsafeInjectFront (show -> a) b (OR m) = OR $ M.insert a v m
+  where v = HideType b <| M.lookupDefault S.empty a m
 

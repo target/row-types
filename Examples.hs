@@ -18,6 +18,7 @@ infix 9 .
 x = Label :: Label "x"
 y = Label :: Label "y"
 z = Label :: Label "z"
+p = Label :: Label "p"
 name = Label :: Label "name"
 
 -- inferred type (cannot be written down because OpenRecVar.R is not exported):  origin :: Rec ('OpenRecVar.R '["x" ':= Integer, "y" ':= Integer])
@@ -82,4 +83,7 @@ selfst = (x := 2 .| x := True .| empty) . x
 selsnd = ((x := 2 .| x := True .| empty) .- x) . x
 -- True
 
+syntaxEx = p :<-| z .| y :<- 'b' .| z :!= False .| x := 2 .| y := 'a' .| empty
+
+syntaxBla = p := False .| x := 2 .| y := 'a' .| empty
 
