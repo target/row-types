@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeOperators, NoMonomorphismRestriction, ScopedTypeVariables,GADTs, KindSignatures, MultiParamTypeClasses, FlexibleInstances, FlexibleContexts, TypeFamilies, ViewPatterns, DataKinds, ConstraintKinds, UndecidableInstances,FunctionalDependencies,Rank2Types, InstanceSigs #-}
+{-# LANGUAGE TypeOperators, NoMonomorphismRestriction, ScopedTypeVariables,GADTs, KindSignatures, MultiParamTypeClasses, FlexibleInstances, FlexibleContexts, TypeFamilies, ViewPatterns, DataKinds, ConstraintKinds, UndecidableInstances,FunctionalDependencies,RankNTypes,AllowAmbiguousTypes, InstanceSigs, PolyKinds #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  OpenRecVar
@@ -7,17 +7,10 @@
 -- Maintainer  :  atzeus@gmail.org
 -- Stability   :  expirimental
 -- 
--- This module implements extensible records  as 
--- described in paper `Extensible Records with Scoped Labels`,
--- Daan Leijen, Proc. 2005 Symp. Trends in Functional Programming
--- available at <http://research.microsoft.com/pubs/65409/scopedlabels.pdf>
+-- This module implements extensible records using closed type famillies.
 --
 -- See Examples.hs for examples.
 -- 
--- The main difference with the paper is that this module does not extend
--- the type system, but instead uses closed type families, GADTs and
--- type level symbols to implement the system. 
---
 -- For this a small extension to GHC is needed which implements the 
 -- built-in closed type family 
 --  @type family (m :: Symbol) <=.? (n :: Symbol) :: Bool@
@@ -33,7 +26,6 @@
 -- In this way we can implement standard type classes such as Show, Eq, Ord and Bounded
 -- for open records, given that all the elements of the open record satify the constraint.
 --
--- Type level operators start with @:@, value level operators start with @.@.
 -- 
 -- Now uses Hashmaps because of speed <http://blog.johantibell.com/2012/03/announcing-unordered-containers-02.html>
 -----------------------------------------------------------------------------
@@ -42,23 +34,35 @@
 module Records
 
  (
-             -- * Records
-             Rec,   
-             empty,
-             RecordOp(..),
-              (.|),
-             (.!),
-             (.-),
-             (.++),(.+),
-             Homogenous(..),
-             
-             -- * Rows 
-             Row, Empty , (:|), (:!), (:-),(:\), (:\\), 
-             -- *  Labels and label type pairs
-             KnownSymbol(..),
+             -- * Types and constraints
              Label(..),
-             LT(..)
-            
+             KnownSymbol(..),
+             Rec,   Row,
+             -- * Construction
+             empty,Empty ,
+             -- ** Extension
+             extend, extendUnique, Extend,
+             -- ** Renaming
+             rename, renameUnique, Rename,
+             -- ** Restriction
+             (.-), (:-), 
+             -- ** Update
+             update,
+             -- * Query
+             (.!), (:!),
+             -- * Combine
+             -- ** Union
+              (.++), (:++),
+             -- ** Disjoint union
+              (.+) , (:+),
+             -- * Row constraints
+             (:\), Disjoint, Labels(..), Forall(..), CWit, FWit, 
+             -- * Row only operations
+             -- * Syntactic sugar
+             RecOp(..), RowOp(..), (.|), (:|)
+
+
+
            
      ) 
 where
@@ -72,9 +76,6 @@ import Data.List
 import GHC.TypeLits
 import GHC.Exts -- needed for constraints kinds
 
-{--------------------------------------------------------------------
-  Labels and Label value pairs
---------------------------------------------------------------------}
 
 -- | A label 
 data Label (s :: Symbol) = Label
@@ -82,65 +83,407 @@ data Label (s :: Symbol) = Label
 instance KnownSymbol s => Show (Label s) where
   show = symbolVal
 
-infixr 6 :->
--- | A label-type pair (data kind) 
-data LT b = Symbol :-> b
+
+
 
 {--------------------------------------------------------------------
-  Row operations
+  Row constraints
 --------------------------------------------------------------------}
 
-newtype Row a = R [LT a] -- constructor not exported
-
-type family Empty :: Row * where
-  Empty = R '[]
-
-infixr 5 :|
--- | Extend the row with a label-type pair
-type family (l :: LT *) :|  (r :: Row *) :: Row * where
-  l :| (R x) = R (Inject l x)
-
-infixl 6 :!
--- | Get the type associated with a label
-type family (r :: Row *) :! (t :: Symbol) :: * where
-  (R r) :! l = Get l r
-
--- | Remove a label from a row
-type family (r :: Row *) :- (s :: Symbol)  :: Row * where
-  (R r) :- l = R (Remove l r)
-
-type family (l :: Row *) :++  (r :: Row *)  :: Row * where
-  (R l) :++ (R r) = R (Merge l r)
-
-type family (l :: Row *) :+  (r :: Row *)  :: Row * where
-  (R l) :+ (R r) = R (Merge l r)
-
 -- | Does the row lack (i.e. it has not) the specified label?
-class (r :: Row *) :\ (l :: Symbol)
-instance (Lacks l r ~ LabelUnique l) => (R r) :\ l
 
+type r :\ l = (LacksP l r ~ LabelUnique l)
 -- | Are the two rows disjoint? (i.e. their sets of labels are disjoint)
-class (l :: Row *) :\\ (r :: Row *)
-instance (Disjoint l r ~ IsDisjoint) => (R l) :\\ (R r)
+type Disjoint l r = (DisjointR l r ~ IsDisjoint)
+
+
+
 
 -- private things for row operations
 
 
+
+{--------------------------------------------------------------------
+  Open records
+--------------------------------------------------------------------}
+
+data HideType where
+  HideType :: a -> HideType
+
+-- | A record with row r.
+data Rec (r :: Row *) where
+  OR :: HashMap String (Seq HideType) -> Rec r
+
+-- | The kind of rows. This type is only used as a datakind. A row is a typelevel entity telling us 
+--   which symbols are associated with which types.
+newtype Row a = R [LT a] -- constructor not exported
+
+-- | The empty record
+empty :: Rec Empty
+empty = OR M.empty
+
+-- | Type level variant of 'empty'
+type family Empty :: Row * where
+  Empty = R '[]
+
+{--------------------------------------------------------------------
+  Basic record operations
+--------------------------------------------------------------------}
+
+
+-- | Record extension. The row may already contain label, 
+--   in which case the origin value can be obtained after restriction ('.-') with
+--   the label.
+extend :: KnownSymbol l => Label l -> a -> Rec r -> Rec (Extend l a r)  
+extend (show -> l) a (OR m) = OR $ M.insert l v m 
+   where v = HideType a <| M.lookupDefault S.empty l m
+
+-- | Record extension without shadowing. The row may not already contain label l.
+extendUnique :: (KnownSymbol l,r :\ l) => Label l -> a -> Rec r -> Rec (Extend l a r)   
+extendUnique = extend
+
+-- | Type level operations of 'extend' and 'extendUnique'
+type family Extend (l :: Symbol) (a :: *) (r :: Row *) :: Row * where
+  Extend l a (R x) = R (Inject (l :-> a) x)
+
+-- | Update the value associated with the label.
+update :: KnownSymbol l => Label l -> r :! l -> Rec r -> Rec r
+update (show -> l) a (OR m) = OR $ M.adjust f l m where f = S.update 0 (HideType a)  
+
+-- | Rename a label. The row may already contain the new label , 
+--   in which case the origin value can be obtained after restriction ('.-') with
+--   the new label.
+rename :: (KnownSymbol l, KnownSymbol l') => Label l -> Label l' -> Rec r -> Rec (Rename l l' r)
+rename l l' r = extend l' (r .! l) (r .- l)
+
+-- | Rename a label. The row may not already contain the new label.
+renameUnique :: (KnownSymbol l, KnownSymbol l', r :\ l') => Label l -> Label l' -> Rec r -> Rec (Rename l l' r)
+renameUnique = rename
+
+-- | Type level operation of  'rename' and 'renameUnique'
+type family Rename (l :: Symbol) (l' :: Symbol) (r :: Row *) :: Row * where
+  Rename l l' r = Extend  l' (r :! l) (r :- l)
+
+infix  8 .-
+-- | Record selection
+(.!) :: KnownSymbol l => Rec r -> Label l -> r :! l
+(OR m) .! (show -> a) = x'
+   where x S.:< t =  S.viewl $ m M.! a 
+         -- notice that this is safe because of the external type
+         x' = case x of HideType p -> unsafeCoerce p 
+
+
+
+infixl 6 :!
+-- | Type level operation of '.!'
+type family (r :: Row *) :! (t :: Symbol) :: * where
+  (R r) :! l = Get l r
+
+-- | Record restriction. Delete the label l from the record.
+(.-) :: KnownSymbol l =>  Rec r -> Label l -> Rec (r :- l)
+(OR m) .- (show -> a) = OR m'
+   where x S.:< t =  S.viewl $ m M.! a 
+         m' = case S.viewl t of
+               EmptyL -> M.delete a m
+               _      -> M.insert a t m
+
+-- | Type level operation of '.-'
+type family (r :: Row *) :- (s :: Symbol)  :: Row * where
+  (R r) :- l = R (Remove l r)
+
+
+
+-- | Record union (not commutative)
+(.++) :: Rec l -> Rec r -> Rec (l :++ r)
+(OR l) .++ (OR r) = OR $ M.unionWith (><) l r
+
+-- | Type level operation of '.++'
+type family (l :: Row *) :++  (r :: Row *)  :: Row * where
+  (R l) :++ (R r) = R (Merge l r)
+
+-- | Record disjoint union (commutative)
+(.+) :: Disjoint l r => Rec l -> Rec r -> Rec (l :+ r)
+(OR l) .+ (OR r) = OR $ M.unionWith (error "Impossible") l r
+
+-- | Type level operation of '.+'
+type family (l :: Row *) :+  (r :: Row *)  :: Row * where
+  (R l) :+ (R r) = R (Merge l r)
+
+{--------------------------------------------------------------------
+  Syntactic sugar for record operations
+--------------------------------------------------------------------}
+-- | A constraint not constraining anything
+class NoConstr a 
+instance NoConstr a
+
+-- | Alias for ':\'. It is a class rather than an alias, so that
+--   it can be partially appliced.
+class (r :\ l) => Lacks (l :: Symbol) (r :: Row *)
+instance (r :\ l) => Lacks l r
+
+
+-- | Alias for @(r :! l) ~ a@. It is a class rather than an alias, so that
+--   it can be partially appliced.
+class ((r :! l) ~ a ) => HasType l a r 
+instance ((r :! l) ~ a ) => HasType l a r
+
+
+infix 5 :=
+infix 5 :!=
+infix 5 :<-
+
+-- | Here we provide a datatype for denoting record operations. Use '.|' to
+--   actually apply the operations.
+-- 
+--   This allows us to chain operations with nicer syntax.
+--   For example we can write:
+--
+-- > p :<-| z .| y :<- 'b' .| z :!= False .| x := 2 .| y := 'a' .| empty
+-- 
+-- Which results in:
+-- 
+-- > { p=False, x=2, y='b' }
+-- 
+-- Without this sugar, we would have written it like this:
+--
+-- >  rename z p $ update y 'b' $ extendUnique z False $ extend x 2 $ extend y 'a' empty
+--
+-- 
+--  [@:<-@] Record update. Sugar for 'update'.
+--
+--  [@:=@] Record extension. Sugar for 'extend'.
+--
+--  [@:!=@] Record extension, without shadowing. Sugar for 'extendUnique'.
+--
+--  [@:<-|@] Record label renaming. Sugar for 'rename'.
+--
+--  [@:<-!@] Record label renaming. Sugar for 'renameUnique'.
+data RecOp (c :: Row * -> Constraint) (rowOp :: RowOp *) where
+  (:<-)  :: KnownSymbol l           => Label l -> a      -> RecOp (HasType l a) RUp
+  (:=)   :: KnownSymbol l           => Label l -> a      -> RecOp NoConstr (l ::= a)  
+  (:!=)  :: KnownSymbol l => Label l -> a      -> RecOp (Lacks l) (l ::= a)  
+  (:<-|) :: (KnownSymbol l, KnownSymbol l') => Label l' -> Label l -> RecOp NoConstr (l' ::<-| l)
+  (:<-!) :: (KnownSymbol l, KnownSymbol l', r :\ l') => Label l' -> Label l -> RecOp (Lacks l') (l' ::<-| l)
+
+
+
+-- | Type level datakind corresponding to 'RecOp'.
+--   Here we provide a datatype for denoting row operations. Use ':|' to
+--   actually apply the type level operation.
+-- 
+--   This allows us to chain type level operations with nicer syntax.
+--   For example we can write:
+--
+-- > "p" ::<-| "z" :| RUp :| "z" ::= Bool :| "x" ::= Double :| "y" ::= Char :| Empty
+-- 
+-- As the type of the expression:
+--
+-- > p :<-| z .| y :<- 'b' .| z :!= False .| x := 2 .| y := 'a' .| empty
+-- 
+-- Without this sugar, we would have written it like this:
+--
+-- >  Rename "p" "z" (Extend "z" Bool (Extend x Double (Extend "x" Int Empty)))
+--
+-- Of course, we can also just write:
+--
+-- > "p" ::= Bool :| "x" ::= Double :| "y" ::= Int :|  Empty
+--
+-- instead, doing the computation ourselves, or even let the type infer.
+--
+--  [@RUp@] Type level equivalent of ':<-'. Is the identity Row Operation.
+--
+--  [@::=@] Type level equivalent of ':='. Row extension. Sugar for 'Extend'.
+--
+--  [@::<-|@] Type level equivalent of ':<-|'. Row label renaming. Sugar for 'Rename'.
+
+
+infix 5 ::=
+infix 5 ::<-|
+data RowOp (a :: *) where
+  RUp      :: RowOp a
+  (::=)    :: Symbol -> a -> RowOp a
+  (::<-|)   :: Symbol -> Symbol -> RowOp a
+
+-- | Apply an operation to a record.
+infixr 4 .|
+(.|) :: c r => RecOp c ro -> Rec r -> Rec (ro :| r)
+(l :<- a)   .| m  = update l a m
+(l := a)    .| m  = extend l a m
+(l :!= a)   .| m  = extendUnique l a m
+(l' :<-| l) .| m  = rename l l' m
+(l' :<-! l) .| m  = renameUnique l l' m
+
+-- | Apply a (typelevel) operation to a row. Type level operation of '.|'
+infixr 4 :|
+type family (x :: RowOp *) :| (r :: Row *)  :: Row * where
+  RUp          :| r = r
+  (l ::= a)    :| r = Extend l a r
+  (l' ::<-| l) :| r = Rename l l' r
+
+{--------------------------------------------------------------------
+  Constrained record operations
+--------------------------------------------------------------------}
+
+
+
+class Labels (r :: Row *) where
+  labels :: Rec r -> [String]
+
+instance Labels (R '[]) where
+  labels _ = []
+
+instance (KnownSymbol l, ARow (R t)) => Labels (R (l :-> v ': t)) where
+  labels r = show l : labels (r .- l) where l = Label :: Label l
+
+-- | A witness of a constraint. For use like this @rinit (CWit :: CWit Bounded) minBound@
+data CWit (c :: * -> Constraint) = CWit
+
+
+-- | If the constaint @c@ holds for all elements in the row @r@,
+--  then the methods in this class are available.
+class Forall (r :: Row *) (c :: * -> Constraint) where
+  -- | Given a default value @a@, where@a@ can be instantiated to each type in the row,
+  -- create a new record in which all elements carry this default value.
+  rinit     :: CWit c -> (forall a. c a => a) -> Rec r
+  -- | Given a function @(a -> b)@ where @a@ can be instantiated to each type in the row,
+  --   apply the function to each element in the record and collect the result in a list.
+
+  erase    :: CWit c -> (forall a. c a => a -> b) -> Rec r -> [b]
+  -- | Given a function @(a -> a -> b)@ where @a@ can be instantiated to each type of the row,
+  -- apply the function to each pair of values that can be obtained by indexing the two records
+  -- with the same label and collect the result in a list.
+  eraseZip :: CWit c -> (forall a. c a => a -> a -> b) -> Rec r -> Rec r -> [b]
+
+data FWit (f :: * -> *) = FWit
+
+class RowMap (f :: * -> *) (r :: Row *) where
+ type Map f r :: Row *
+ rmap :: FWit f -> (forall a.  a -> f a) -> Rec r -> Rec (Map f r)
+
+instance RowMapx f r => RowMap f (R r) where
+  type Map f (R r) = R (RM f r)
+  rmap = rmap'
+
+class RowMapx (f :: * -> *) (r :: [LT *]) where
+  type RM f r :: [LT *]
+  rmap' :: FWit f -> (forall a.  a -> f a) -> Rec (R r) -> Rec (R (RM f r))
+
+instance RowMapx f '[] where
+  type RM f '[] = '[]
+  rmap' _ _ _ = empty
+
+instance (KnownSymbol l,  RowMapx f t) => RowMapx f (l :-> v ': t) where
+  type RM f (l :-> v ': t) = l :-> f v ': RM f t
+  rmap' w f r = unsafeInjectFront l (f (r .! l)) (rmap' w f (r .- l))
+    where l = Label :: Label l
+
+class RowMapC (c :: * -> Constraint) (f :: * -> *) (r :: Row *) where
+  type MapC c f r :: Row *
+  rmapc :: CWit c -> FWit f -> (forall a. c a => a -> f a) -> Rec r -> Rec (MapC c f r)
+
+instance RMapc c f r => RowMapC c f (R r) where
+  type MapC c f (R r) = R (RMapp c f r)
+  rmapc = rmapc'
+
+class RMapc (c :: * -> Constraint) (f :: * -> *) (r :: [LT *]) where
+  type RMapp c f r :: [LT *]
+  rmapc' :: CWit c -> FWit f -> (forall a. c a => a -> f a) -> Rec (R r) -> Rec (R (RMapp c f r))
+
+instance RMapc c f '[] where
+  type RMapp c f '[] = '[]
+  rmapc' _ _ _ _ = empty
+
+instance (KnownSymbol l, c v, RMapc c f t) => RMapc c f (l :-> v ': t) where
+  type RMapp c f (l :-> v ': t) = l :-> f v ': RMapp c f t
+  rmapc' c w f r = unsafeInjectFront l (f (r .! l)) (rmapc' c w f (r .- l))
+    where l = Label :: Label l
+
+instance Forall (R '[]) c where
+  rinit _ _ = empty
+  erase _ _ _ = []
+  eraseZip _ _ _ _ = []
+
+instance (KnownSymbol l, Forall (R t) c, c a) => Forall (R (l :-> a ': t)) c where
+  rinit c f = unsafeInjectFront l f (rinit c f) where l = Label :: Label l
+
+  erase c f r = f (r .! l) : erase c f (r .- l) where l = Label :: Label l
+
+  eraseZip c f x y = (f (x .! l) (y .! l)) : eraseZip c f (x .- l) (y .- l) where
+    l = Label :: Label l
+
+class RowZip (r1 :: Row *) (r2 :: Row *) where
+  type RZip r1 r2 :: Row *
+  rzip :: Rec r1 -> Rec r2 -> Rec (RZip r1 r2)
+  
+instance RZipt r1 r2 => RowZip (R r1) (R r2) where
+  type RZip (R r1) (R r2) = R (RZipp r1 r2)
+  rzip = rzip'
+
+class RZipt (r1 :: [LT *]) (r2 :: [LT *]) where
+  type RZipp r1 r2 :: [LT *]
+  rzip' :: Rec (R r1) -> Rec (R r2) -> Rec (R (RZipp r1 r2))
+
+instance RZipt '[] '[] where
+  type RZipp '[] '[] = '[]
+  rzip' _ _ = empty
+
+instance (KnownSymbol l, RZipt t1 t2) => 
+   RZipt (l :-> v1 ': t1) (l :-> v2 ': t2) where
+
+   type RZipp (l :-> v1 ': t1) (l :-> v2 ': t2) = l :-> (v1,v2) ': RZipp t1 t2
+   rzip' r1 r2 = unsafeInjectFront l (r1 .! l, r2 .! l) (rzip' (r1 .- l) (r2 .- l))
+       where l = Label :: Label l
+
+-- some standard type classes
+
+instance (Labels r, Forall r Show) => Show (Rec r) where
+  show r = "{ " ++ meat ++ " }"
+    where meat = intercalate ", " binds
+          binds = zipWith (\x y -> x ++ "=" ++ y) ls vs
+          ls = labels r
+          vs = erase (CWit :: CWit Show) show r
+
+instance (Forall r Eq) => Eq (Rec r) where
+  r == r' = and $ eraseZip (CWit :: CWit Eq) (==) r r'
+
+instance (Eq (Rec r), Forall r Ord) => Ord (Rec r) where
+  compare m m' = cmp $ eraseZip (CWit :: CWit Ord) compare m m'
+      where cmp l | [] <- l' = EQ
+                  | a : _ <- l' = a
+                  where l' = dropWhile (== EQ) l
+
+
+instance (Forall r Bounded) => Bounded (Rec r) where
+  minBound = rinit (CWit :: CWit Bounded) minBound
+  maxBound = rinit (CWit :: CWit Bounded) maxBound
+
+unsafeInjectFront :: KnownSymbol l => Label l -> a -> Rec (R r) -> Rec (R (l :-> a ': r))
+unsafeInjectFront (show -> a) b (OR m) = OR $ M.insert a v m
+  where v = HideType b <| M.lookupDefault S.empty a m
+
+
+data LT a = Symbol :-> a
+
 -- gives nicer error message than Bool
 data Unique = LabelUnique Symbol | LabelNotUnique Symbol
+
+
 
 type family Inject (l :: LT *) (r :: [LT *]) where
   Inject (l :-> t) '[] = (l :-> t ': '[])
   Inject (l :-> t) (l' :-> t' ': x) = 
       Ifte (l <=.? l')
       (l :-> t   ': l' :-> t' ': x)
-      (l' :-> t' ': (Inject (l :-> t)  x))
+      (l' :-> t' ': Inject (l :-> t)  x)
 
 type family Ifte (c :: Bool) (t :: [LT *]) (f :: [LT *])   where
   Ifte True  t f = t
   Ifte False t f = f
 
+data NoSuchField (s :: Symbol) 
+
 type family Get (l :: Symbol) (r :: [LT *]) where
+  Get l '[] = NoSuchField l
   Get l (l :-> t ': x) = t
   Get l (l' :-> t ': x) = Get l x
 
@@ -148,9 +491,13 @@ type family Remove (l :: Symbol) (r :: [LT *]) where
   Remove l (l :-> t ': x) = x
   Remove l (l' :-> t ': x) = l' :-> t ': Remove l x
 
-type family Lacks (l :: Symbol) (r :: [LT *]) where
-  Lacks l '[] = LabelUnique l
-  Lacks l (l :-> t ': x) = LabelNotUnique l
+type family LacksP (l :: Symbol) (r :: Row *) where
+  LacksP l (R r) = LacksR l r
+
+type family LacksR (l :: Symbol) (r :: [LT *]) where
+  LacksR l '[] = LabelUnique l
+  LacksR l (l :-> t ': x) = LabelNotUnique l
+  LacksR l (p ': x) = LacksR l x
 
 type family Merge (l :: [LT *]) (r :: [LT *]) where
   Merge '[] r = r
@@ -167,122 +514,16 @@ type family IfteD (c :: Bool) (t :: DisjointErr) (f :: DisjointErr)   where
   IfteD True  t f = t
   IfteD False t f = f
 
+type family DisjointR (l :: Row *) (r :: Row *) where
+  DisjointR (R l) (R r) = DisjointZ l r
 
-type family Disjoint (l :: [LT *]) (r :: [LT *]) where
-    Disjoint '[] r = IsDisjoint
-    Disjoint l '[] = IsDisjoint
-    Disjoint (l :-> al ': tl) (l :-> ar ': tr) = Duplicate l
-    Disjoint (hl :-> al ': tl) (hr :-> ar ': tr) = 
+type family DisjointZ (l :: [LT *]) (r :: [LT *]) where
+    DisjointZ '[] r = IsDisjoint
+    DisjointZ l '[] = IsDisjoint
+    DisjointZ (l :-> al ': tl) (l :-> ar ': tr) = Duplicate l
+    DisjointZ (hl :-> al ': tl) (hr :-> ar ': tr) = 
       IfteD (hl <=.? hr)
-      (Disjoint tl (hr :-> ar ': tr))
-      (Disjoint (hl :-> al ': tl) tr)
-
-
-{--------------------------------------------------------------------
-  Open records
---------------------------------------------------------------------}
-
-data HideType where
-  HideType :: a -> HideType
-
--- | A record with row r.
-data Rec (r :: Row *) where
-  OR :: HashMap String (Seq HideType) -> Rec r
-
--- | The empty record
-empty :: Rec Empty
-empty = OR M.empty
-
-infix 5 :=
-infix 5 :!=
-infix 5 :<-
--- | Record operations for use with '.|' 
--- 
---  [@:=@] Record extension.
---
---  [@:!=@] Record extension, without shadowing. 
---
---  [@:<-@] Record update.
-data RecordOp in' out where
-  (:=)  :: KnownSymbol l           => Label l -> a      -> RecordOp r (l :-> a :| r)  
-  (:!=) :: (KnownSymbol l, r :\ l) => Label l -> a      -> RecordOp r (l :-> a :| r)  
-  (:<-) :: KnownSymbol l           => Label l -> r :! l -> RecordOp r r  
-
--- | Apply an operation to a record.
-infixr 4 .|
-(.|) :: RecordOp r r' -> Rec r -> Rec r'
-((show -> l) := a) .| (OR m)  = OR $ M.insert l v m where v = HideType a <| M.lookupDefault S.empty l m
-((show -> l) :!= a) .| (OR m) = OR $ M.insert l v m where v = HideType a <| M.lookupDefault S.empty l m
-((show -> l) :<- a) .| (OR m) = OR $ M.adjust f l m where f = S.update 0 (HideType a)  
-
-
-infix  8 .-
--- | Record selection
-(.!) :: KnownSymbol l => Rec r -> Label l -> r :! l
-(OR m) .! (show -> a) = x'
-   where x S.:< t =  S.viewl $ m M.! a 
-         -- notice that this is safe because of the external type
-         x' = case x of HideType p -> unsafeCoerce p 
-
--- | Record restriction
-(.-) :: KnownSymbol l =>  Rec r -> Label l -> Rec (r :- l)
-(OR m) .- (show -> a) = OR m'
-   where x S.:< t =  S.viewl $ m M.! a 
-         m' = case S.viewl t of
-               EmptyL -> M.delete a m
-               _      -> M.insert a t m
-
--- | Record merge (not commutative)
-(.++) :: Rec l -> Rec r -> Rec (l :++ r)
-(OR l) .++ (OR r) = OR $ M.unionWith (><) l r
-
--- | Record disjoint union (commutative)
-(.+) :: (l :\\ r) => Rec l -> Rec r -> Rec (l :+ r)
-(OR l) .+ (OR r) = OR $ M.unionWith (error "Impossible") l r
-
-
-unsafeInjectFront :: KnownSymbol l => Label l -> a -> Rec (R r) -> Rec (R (l :-> a ': r))
-unsafeInjectFront (show -> a) b (OR m) = OR $ M.insert a v m
-  where v = HideType b <| M.lookupDefault S.empty a m
-
-
-class Homogenous a (r :: Row *) where
-  erase :: Rec r -> [(String,a)]
-
-instance Homogenous a (R '[]) where
-  erase _ =  []
-
-instance (KnownSymbol l, Homogenous a (R t)) => Homogenous a (R (l :-> a ': t)) where
-  erase m = (show l, m .! l) : erase (m .- l) where
-    l = Label :: Label l
-
-
-class Fun (s :: Symbol) (b :: *) where
-  type FunRes s b :: *
-  apply :: Label s -> b -> FunRes s b
-
-class ApplyAll (s :: Symbol) (r :: [LT *]) where
-   type ApplyRes s r :: [LT *]
-   applyAll :: Label s -> Rec (R r) -> Rec (R (ApplyRes s r))
-
-instance ApplyAll s '[] where
-  type ApplyRes s '[]= '[]
-  applyAll _ _ = empty
-
-
-instance (KnownSymbol s, KnownSymbol l, Fun s b, ApplyAll s t) => ApplyAll s (l :-> b ': t) where
-  type ApplyRes s (l :-> b ': t) = l :-> FunRes s b ': ApplyRes s t
-  applyAll s m = unsafeInjectFront l (apply s (m .! l)) (applyAll s (m .- l))
-    where l = Label :: Label l
-
-instance Show a => Fun "Show" a where
-   type FunRes "Show" a = String
-   apply _ a = show a
-
-instance ApplyAll "Show" r => Show (Rec (R r)) where
-   show r = "Rec { " ++ intercalate ", " strings ++ " }"
-     where strings = map showElem $ erase $ applyAll lShow r
-           showElem (x,y) = x ++ ":=" ++ y
-           lShow = Label :: Label "Show"
+      (DisjointZ tl (hr :-> ar ': tr))
+      (DisjointZ (hl :-> al ': tl) tr)
 
 

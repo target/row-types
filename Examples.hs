@@ -4,8 +4,6 @@ module Examples where
 import Prelude hiding ((.))
 import Records
 
--- Examples from the paper "Extensible records with scoped labels" by Daan Leijen
-
 -- notice Extensible records implement Show Eq and Ord and such, given that all element have 
 -- the corresponding type class
 
@@ -18,11 +16,12 @@ infix 9 .
 x = Label :: Label "x"
 y = Label :: Label "y"
 z = Label :: Label "z"
+p = Label :: Label "p"
 name = Label :: Label "name"
-
+norm = Label :: Label "norm"
 -- inferred type (cannot be written down because OpenRecVar.R is not exported):  origin :: Rec ('OpenRecVar.R '["x" ':= Integer, "y" ':= Integer])
 -- nice type:
-origin :: Rec ("x" :-> Double :| "y" :-> Double :| Empty)
+origin :: Rec ("x" ::= Double :| "y" ::= Double :| Empty)
 origin = x := 0 .| y := 0 .| empty
 -- { x=0.0, y=0.0 }
 
@@ -38,7 +37,7 @@ origin3 = z := 0 .| origin
 -- { x=0.0, y=0.0, z=0 }
 
 -- type is inferred!
-named ::  a -> Rec r -> Rec ("name" :-> a :| r)
+named ::  a -> Rec r -> Rec ("name" ::= a :| r)
 named s r = name := s .| r
 
 -- inferred type:
@@ -57,6 +56,11 @@ test1 = distance (named "2d" origin) + distance origin3
 --            Rec r -> r :! "x" -> r :! "y" -> Rec r
 
 
+
+
+
+f r = norm := sqrt ((r.!x * r.!x) + (r.!y * r.!y)) .| r
+
 move p dx dy = x :<- p.x + dx .|
                y :<- p.y + dy .| p
 
@@ -65,7 +69,7 @@ test2 = move (named "foo" origin3) 10 10
 
 
 -- some type errors
---typerr1 = (x := 1 .| empty) . y
+-- typerr1 = (x := 1 .| empty) .! y + 1
 --typerr2 = distance (x := 1 .| empty)
 
 freeext = x := 1 .| origin
@@ -76,18 +80,17 @@ Error:
                   with ‛'Records.LabelUnique "x"’
     In the first argument of ‛(.|)’, namely ‛x :!= 1’
 -}
-
+{-
+notdisjoint = let p = x := 2 .| empty
+                  q = x := 2 .| empty
+              in p .+ q
+-}
 selfst = (x := 2 .| x := True .| empty) . x
 -- 2
 selsnd = ((x := 2 .| x := True .| empty) .- x) . x
 -- True
 
-{-
--- variant tests
-testadam =  case inj x (1 :: Double) of
-    v | Right a <- decomp x v -> a :: Double
-    -- _ -> 5 -- aside: any guarantees about this being unreachable?
--}
-
+syntaxEx :: Rec ("p" ::<-| "z" :| RUp :| "z" ::= Bool :| "x" ::= Double :| "y" ::= Char :| Empty)
+syntaxEx = p :<-| z .| y :<- 'b' .| z :!= False .| x := 2 .| y := 'a' .| empty
 
 
