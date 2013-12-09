@@ -18,7 +18,7 @@ y = Label :: Label "y"
 z = Label :: Label "z"
 p = Label :: Label "p"
 name = Label :: Label "name"
-
+norm = Label :: Label "norm"
 -- inferred type (cannot be written down because OpenRecVar.R is not exported):  origin :: Rec ('OpenRecVar.R '["x" ':= Integer, "y" ':= Integer])
 -- nice type:
 origin :: Rec ("x" ::= Double :| "y" ::= Double :| Empty)
@@ -56,6 +56,11 @@ test1 = distance (named "2d" origin) + distance origin3
 --            Rec r -> r :! "x" -> r :! "y" -> Rec r
 
 
+
+
+
+f r = norm := sqrt ((r.!x * r.!x) + (r.!y * r.!y)) .| r
+
 move p dx dy = x :<- p.x + dx .|
                y :<- p.y + dy .| p
 
@@ -64,7 +69,7 @@ test2 = move (named "foo" origin3) 10 10
 
 
 -- some type errors
---typerr1 = (x := 1 .| empty) . y
+-- typerr1 = (x := 1 .| empty) .! y + 1
 --typerr2 = distance (x := 1 .| empty)
 
 freeext = x := 1 .| origin
@@ -75,7 +80,11 @@ Error:
                   with ‛'Records.LabelUnique "x"’
     In the first argument of ‛(.|)’, namely ‛x :!= 1’
 -}
-
+{-
+notdisjoint = let p = x := 2 .| empty
+                  q = x := 2 .| empty
+              in p .+ q
+-}
 selfst = (x := 2 .| x := True .| empty) . x
 -- 2
 selsnd = ((x := 2 .| x := True .| empty) .- x) . x

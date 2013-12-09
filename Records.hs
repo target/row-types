@@ -56,7 +56,8 @@ module Records
              -- ** Disjoint union
               (.+) , (:+),
              -- * Row constraints
-             (:\), Disjoint, Forall(..), CWit,
+             (:\), Disjoint, Labels(..), Forall(..), CWit, FWit, 
+             -- * Row only operations
              -- * Syntactic sugar
              RecOp(..), RowOp(..), (.|), (:|)
 
@@ -171,6 +172,8 @@ infix  8 .-
          -- notice that this is safe because of the external type
          x' = case x of HideType p -> unsafeCoerce p 
 
+
+
 infixl 6 :!
 -- | Type level operation of '.!'
 type family (r :: Row *) :! (t :: Symbol) :: * where
@@ -199,7 +202,7 @@ type family (l :: Row *) :++  (r :: Row *)  :: Row * where
   (R l) :++ (R r) = R (Merge l r)
 
 -- | Record disjoint union (commutative)
-(.+) :: (l :\\ r) => Rec l -> Rec r -> Rec (l :+ r)
+(.+) :: Disjoint l r => Rec l -> Rec r -> Rec (l :+ r)
 (OR l) .+ (OR r) = OR $ M.unionWith (error "Impossible") l r
 
 -- | Type level operation of '.+'
@@ -210,7 +213,7 @@ type family (l :: Row *) :+  (r :: Row *)  :: Row * where
   Syntactic sugar for record operations
 --------------------------------------------------------------------}
 -- | A constraint not constraining anything
-class NoConstr (a :: Row *)
+class NoConstr a 
 instance NoConstr a
 
 -- | Alias for ':\'. It is a class rather than an alias, so that
@@ -321,8 +324,20 @@ type family (x :: RowOp *) :| (r :: Row *)  :: Row * where
   Constrained record operations
 --------------------------------------------------------------------}
 
+
+
+class Labels (r :: Row *) where
+  labels :: Rec r -> [String]
+
+instance Labels (R '[]) where
+  labels _ = []
+
+instance (KnownSymbol l, ARow (R t)) => Labels (R (l :-> v ': t)) where
+  labels r = show l : labels (r .- l) where l = Label :: Label l
+
 -- | A witness of a constraint. For use like this @rinit (CWit :: CWit Bounded) minBound@
 data CWit (c :: * -> Constraint) = CWit
+
 
 -- | If the constaint @c@ holds for all elements in the row @r@,
 --  then the methods in this class are available.
@@ -333,12 +348,55 @@ class Forall (r :: Row *) (c :: * -> Constraint) where
   -- | Given a function @(a -> b)@ where @a@ can be instantiated to each type in the row,
   --   apply the function to each element in the record and collect the result in a list.
 
-  erase    :: CWit c -> (forall a. c a => a -> b) -> Rec r -> [(String,b)]
+  erase    :: CWit c -> (forall a. c a => a -> b) -> Rec r -> [b]
   -- | Given a function @(a -> a -> b)@ where @a@ can be instantiated to each type of the row,
   -- apply the function to each pair of values that can be obtained by indexing the two records
   -- with the same label and collect the result in a list.
+  eraseZip :: CWit c -> (forall a. c a => a -> a -> b) -> Rec r -> Rec r -> [b]
 
-  eraseZip :: CWit c -> (forall a. c a => a -> a -> b) -> Rec r -> Rec r -> [(String,b)]
+data FWit (f :: * -> *) = FWit
+
+class RowMap (f :: * -> *) (r :: Row *) where
+ type Map f r :: Row *
+ rmap :: FWit f -> (forall a.  a -> f a) -> Rec r -> Rec (Map f r)
+
+instance RowMapx f r => RowMap f (R r) where
+  type Map f (R r) = R (RM f r)
+  rmap = rmap'
+
+class RowMapx (f :: * -> *) (r :: [LT *]) where
+  type RM f r :: [LT *]
+  rmap' :: FWit f -> (forall a.  a -> f a) -> Rec (R r) -> Rec (R (RM f r))
+
+instance RowMapx f '[] where
+  type RM f '[] = '[]
+  rmap' _ _ _ = empty
+
+instance (KnownSymbol l,  RowMapx f t) => RowMapx f (l :-> v ': t) where
+  type RM f (l :-> v ': t) = l :-> f v ': RM f t
+  rmap' w f r = unsafeInjectFront l (f (r .! l)) (rmap' w f (r .- l))
+    where l = Label :: Label l
+
+class RowMapC (c :: * -> Constraint) (f :: * -> *) (r :: Row *) where
+  type MapC c f r :: Row *
+  rmapc :: CWit c -> FWit f -> (forall a. c a => a -> f a) -> Rec r -> Rec (MapC c f r)
+
+instance RMapc c f r => RowMapC c f (R r) where
+  type MapC c f (R r) = R (RMapp c f r)
+  rmapc = rmapc'
+
+class RMapc (c :: * -> Constraint) (f :: * -> *) (r :: [LT *]) where
+  type RMapp c f r :: [LT *]
+  rmapc' :: CWit c -> FWit f -> (forall a. c a => a -> f a) -> Rec (R r) -> Rec (R (RMapp c f r))
+
+instance RMapc c f '[] where
+  type RMapp c f '[] = '[]
+  rmapc' _ _ _ _ = empty
+
+instance (KnownSymbol l, c v, RMapc c f t) => RMapc c f (l :-> v ': t) where
+  type RMapp c f (l :-> v ': t) = l :-> f v ': RMapp c f t
+  rmapc' c w f r = unsafeInjectFront l (f (r .! l)) (rmapc' c w f (r .- l))
+    where l = Label :: Label l
 
 instance Forall (R '[]) c where
   rinit _ _ = empty
@@ -348,24 +406,48 @@ instance Forall (R '[]) c where
 instance (KnownSymbol l, Forall (R t) c, c a) => Forall (R (l :-> a ': t)) c where
   rinit c f = unsafeInjectFront l f (rinit c f) where l = Label :: Label l
 
-  erase c f r = (show l,f (r .! l)) : erase c f (r .- l) where l = Label :: Label l
+  erase c f r = f (r .! l) : erase c f (r .- l) where l = Label :: Label l
 
-  eraseZip c f x y = (show l, f (x .! l) (y .! l)) : eraseZip c f (x .- l) (y .- l) where
+  eraseZip c f x y = (f (x .! l) (y .! l)) : eraseZip c f (x .- l) (y .- l) where
     l = Label :: Label l
+
+class RowZip (r1 :: Row *) (r2 :: Row *) where
+  type RZip r1 r2 :: Row *
+  rzip :: Rec r1 -> Rec r2 -> Rec (RZip r1 r2)
   
+instance RZipt r1 r2 => RowZip (R r1) (R r2) where
+  type RZip (R r1) (R r2) = R (RZipp r1 r2)
+  rzip = rzip'
+
+class RZipt (r1 :: [LT *]) (r2 :: [LT *]) where
+  type RZipp r1 r2 :: [LT *]
+  rzip' :: Rec (R r1) -> Rec (R r2) -> Rec (R (RZipp r1 r2))
+
+instance RZipt '[] '[] where
+  type RZipp '[] '[] = '[]
+  rzip' _ _ = empty
+
+instance (KnownSymbol l, RZipt t1 t2) => 
+   RZipt (l :-> v1 ': t1) (l :-> v2 ': t2) where
+
+   type RZipp (l :-> v1 ': t1) (l :-> v2 ': t2) = l :-> (v1,v2) ': RZipp t1 t2
+   rzip' r1 r2 = unsafeInjectFront l (r1 .! l, r2 .! l) (rzip' (r1 .- l) (r2 .- l))
+       where l = Label :: Label l
+
 -- some standard type classes
 
-instance (Forall r Show) => Show (Rec r) where
+instance (Labels r, Forall r Show) => Show (Rec r) where
   show r = "{ " ++ meat ++ " }"
     where meat = intercalate ", " binds
-          binds = map (\(x,y) -> x ++ "=" ++ y) vs
+          binds = zipWith (\x y -> x ++ "=" ++ y) ls vs
+          ls = labels r
           vs = erase (CWit :: CWit Show) show r
 
 instance (Forall r Eq) => Eq (Rec r) where
-  r == r' = and $ map snd $ eraseZip (CWit :: CWit Eq) (==) r r'
+  r == r' = and $ eraseZip (CWit :: CWit Eq) (==) r r'
 
 instance (Eq (Rec r), Forall r Ord) => Ord (Rec r) where
-  compare m m' = cmp $ map snd $ eraseZip (CWit :: CWit Ord) compare m m'
+  compare m m' = cmp $ eraseZip (CWit :: CWit Ord) compare m m'
       where cmp l | [] <- l' = EQ
                   | a : _ <- l' = a
                   where l' = dropWhile (== EQ) l
@@ -386,6 +468,8 @@ data LT a = Symbol :-> a
 data Unique = LabelUnique Symbol | LabelNotUnique Symbol
 
 
+
+
 type family Inject (l :: LT *) (r :: [LT *]) where
   Inject (l :-> t) '[] = (l :-> t ': '[])
   Inject (l :-> t) (l' :-> t' ': x) = 
@@ -397,7 +481,10 @@ type family Ifte (c :: Bool) (t :: [LT *]) (f :: [LT *])   where
   Ifte True  t f = t
   Ifte False t f = f
 
+data NoSuchField (s :: Symbol) 
+
 type family Get (l :: Symbol) (r :: [LT *]) where
+  Get l '[] = NoSuchField l
   Get l (l :-> t ': x) = t
   Get l (l' :-> t ': x) = Get l x
 
