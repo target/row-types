@@ -11,21 +11,11 @@
 --
 -- See Examples.hs for examples.
 -- 
--- For this a small extension to GHC is needed which implements the 
--- built-in closed type family 
---  @type family (m :: Symbol) <=.? (n :: Symbol) :: Bool@
--- where Symbol is a type literal.
---
--- Patches to implement this extension to GHC (patchmain) and the base library (patchlib) are also found in the 
--- git repo that hosts this project <https://github.com/atzeus/openrec>
--- I've sent these patches to Iavor Diatchki (who is implementing the type literal stuff) to get these (small) changes into the main repo.
---
--- This small extension allows us to keep lists of (label,type) pairs sorted thereby ensuring
+-- Lists of (label,type) pairs are kept sorted thereby ensuring
 -- that { x = 0, y = 0 } and { y = 0, x = 0 } have the same type.
 -- 
 -- In this way we can implement standard type classes such as Show, Eq, Ord and Bounded
 -- for open records, given that all the elements of the open record satify the constraint.
---
 -- 
 -- Now uses Hashmaps because of speed <http://blog.johantibell.com/2012/03/announcing-unordered-containers-02.html>
 -----------------------------------------------------------------------------
@@ -75,6 +65,7 @@ import Unsafe.Coerce
 import Data.List
 import GHC.TypeLits
 import GHC.Exts -- needed for constraints kinds
+import Data.Type.Equality (type (==))
 
 
 -- | A label 
@@ -332,7 +323,7 @@ class Labels (r :: Row *) where
 instance Labels (R '[]) where
   labels _ = []
 
-instance (KnownSymbol l, ARow (R t)) => Labels (R (l :-> v ': t)) where
+instance (KnownSymbol l , Labels (R t)) => Labels (R (l :-> v ': t)) where
   labels r = show l : labels (r .- l) where l = Label :: Label l
 
 -- | A witness of a constraint. For use like this @rinit (CWit :: CWit Bounded) minBound@
@@ -527,3 +518,6 @@ type family DisjointZ (l :: [LT *]) (r :: [LT *]) where
       (DisjointZ (hl :-> al ': tl) tr)
 
 
+-- | there doesn't seem to be a (<=.?) :: Symbol -> Symbol -> Bool,
+-- so here it is in terms of other ghc-7.8 type functions
+type a <=.? b = (CmpSymbol a b == 'LT)

@@ -1,5 +1,5 @@
 
-{-# LANGUAGE TypeOperators,KindSignatures,TypeFamilies, DataKinds, AllowAmbiguousTypes #-}
+{-# LANGUAGE TypeOperators,KindSignatures,TypeFamilies, DataKinds #-}
 module Examples where
 import Prelude hiding ((.))
 import Records
@@ -21,7 +21,7 @@ name = Label :: Label "name"
 norm = Label :: Label "norm"
 -- inferred type (cannot be written down because OpenRecVar.R is not exported):  origin :: Rec ('OpenRecVar.R '["x" ':= Integer, "y" ':= Integer])
 -- nice type:
-origin :: Rec ("x" ::= Double :| "y" ::= Double :| Empty)
+-- origin :: Rec ("x" ::= Double :| "y" ::= Double :| Empty)
 origin = x := 0 .| y := 0 .| empty
 -- { x=0.0, y=0.0 }
 
@@ -92,5 +92,4 @@ selsnd = ((x := 2 .| x := True .| empty) .- x) . x
 
 syntaxEx :: Rec ("p" ::<-| "z" :| RUp :| "z" ::= Bool :| "x" ::= Double :| "y" ::= Char :| Empty)
 syntaxEx = p :<-| z .| y :<- 'b' .| z :!= False .| x := 2 .| y := 'a' .| empty
-
 
