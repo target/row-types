@@ -1,7 +1,7 @@
-{-# LANGUAGE TypeOperators, NoMonomorphismRestriction, ScopedTypeVariables,GADTs, KindSignatures, MultiParamTypeClasses, FlexibleInstances, FlexibleContexts, TypeFamilies, ViewPatterns, DataKinds, ConstraintKinds, UndecidableInstances,FunctionalDependencies,RankNTypes,AllowAmbiguousTypes, InstanceSigs, PolyKinds #-}
+{-# LANGUAGE TypeOperators, ScopedTypeVariables,GADTs, KindSignatures, MultiParamTypeClasses, FlexibleInstances, FlexibleContexts, TypeFamilies, ViewPatterns, DataKinds, ConstraintKinds, UndecidableInstances,FunctionalDependencies,RankNTypes,AllowAmbiguousTypes, InstanceSigs, PolyKinds #-}
 -----------------------------------------------------------------------------
 -- |
--- Module      :  OpenRecVar
+-- Module      :  Data.OpenRecords
 -- Copyright   :  (c) Atze van der Ploeg 2013
 -- License     :  BSD-style
 -- Maintainer  :  atzeus@gmail.org
@@ -17,11 +17,10 @@
 -- In this way we can implement standard type classes such as Show, Eq, Ord and Bounded
 -- for open records, given that all the elements of the open record satify the constraint.
 -- 
--- Now uses Hashmaps because of speed <http://blog.johantibell.com/2012/03/announcing-unordered-containers-02.html>
 -----------------------------------------------------------------------------
 
 
-module Records
+module Data.OpenRecords
 
  (
              -- * Types and constraints
@@ -122,7 +121,7 @@ type family Empty :: Row * where
 --------------------------------------------------------------------}
 
 
--- | Record extension. The row may already contain label, 
+-- | Record extension. The row may already contain the label, 
 --   in which case the origin value can be obtained after restriction ('.-') with
 --   the label.
 extend :: KnownSymbol l => Label l -> a -> Rec r -> Rec (Extend l a r)  
