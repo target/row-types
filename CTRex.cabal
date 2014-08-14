@@ -13,10 +13,32 @@ Data-files:          ChangeLog
 Category:            Data, Data Structures
 Tested-With:         GHC==7.8.2
 Library
-  Build-Depends: base >= 2 && <= 6, unordered-containers >= 0.2, hashable >= 1.2, mtl >= 1.0
+  Build-Depends: base >= 2 && < 6,
+                 containers,
+                 hashable >= 1.2,
+                 mtl >= 1.0,
+                 unordered-containers >= 0.2
   Exposed-modules: Data.OpenRecords
-  other-modules:   
-  Extensions:	 TypeOperators, ScopedTypeVariables,GADTs, KindSignatures, MultiParamTypeClasses, FlexibleInstances, FlexibleContexts, TypeFamilies, ViewPatterns, DataKinds, ConstraintKinds, UndecidableInstances,FunctionalDependencies,RankNTypes,AllowAmbiguousTypes, InstanceSigs, PolyKinds 
+  other-modules:
+  Extensions: AllowAmbiguousTypes,
+              ConstraintKinds,
+              DataKinds,
+              EmptyDataDecls,
+              FlexibleContexts,
+              FlexibleInstances,
+              FunctionalDependencies,
+              GADTs,
+              InstanceSigs,
+              KindSignatures,
+              MultiParamTypeClasses,
+              PatternGuards,
+              PolyKinds,
+              RankNTypes,
+              ScopedTypeVariables,
+              TypeFamilies,
+              TypeOperators,
+              ViewPatterns,
+              UndecidableInstances
 
 source-repository head
     type:     git
