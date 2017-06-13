@@ -56,12 +56,14 @@ module Data.OpenRecords
      ) 
 where
 
+import Data.Hashable
 import Data.HashMap.Lazy(HashMap)
 import Data.Sequence(Seq,viewl,ViewL(..),(><),(<|))
 import qualified Data.HashMap.Lazy as M
 import qualified Data.Sequence as S
 import Unsafe.Coerce
 import Data.List
+import Data.String (IsString (fromString))
 import GHC.TypeLits
 import GHC.Exts -- needed for constraints kinds
 import Data.Proxy
@@ -333,10 +335,16 @@ class Forall (r :: Row *) (c :: * -> Constraint) where
   -- | Given a default value @a@, where@a@ can be instantiated to each type in the row,
   -- create a new record in which all elements carry this default value.
   rinit     :: Proxy c -> (forall a. c a => a) -> Rec r
+  rinitA    :: Applicative p => Proxy c -> (forall a. c a => p a) -> p (Rec r)
+  rinitA proxy f = rinitAWithLabel proxy (pure f)
+  rinitAWithLabel :: Applicative p => Proxy c -> (forall l a. (KnownSymbol l, c a) => Label l -> p a) -> p (Rec r)
   -- | Given a function @(a -> b)@ where @a@ can be instantiated to each type in the row,
   --   apply the function to each element in the record and collect the result in a list.
-
   erase    :: Proxy c -> (forall a. c a => a -> b) -> Rec r -> [b]
+  erase proxy f = fmap (snd @String) . eraseWithLabels proxy f
+  eraseWithLabels :: IsString s => Proxy c -> (forall a. c a => a -> b) -> Rec r -> [(s, b)]
+  eraseToHashMap :: (IsString s, Eq s, Hashable s) =>
+                    Proxy c -> (forall a . c a => a -> b) -> Rec r -> HashMap s b
   -- | Given a function @(a -> a -> b)@ where @a@ can be instantiated to each type of the row,
   -- apply the function to each pair of values that can be obtained by indexing the two records
   -- with the same label and collect the result in a list.
@@ -386,16 +394,27 @@ instance (KnownSymbol l, c v, RMapc c f t) => RMapc c f (l :-> v ': t) where
 
 instance Forall (R '[]) c where
   rinit _ _ = empty
-  erase _ _ _ = []
+  rinitAWithLabel _ _ = pure empty
+  eraseWithLabels _ _ _ = []
+  eraseToHashMap _ _ _ = M.empty
   eraseZip _ _ _ _ = []
 
 instance (KnownSymbol l, Forall (R t) c, c a) => Forall (R (l :-> a ': t)) c where
   rinit c f = unsafeInjectFront l f (rinit c f) where l = Label :: Label l
 
-  erase c f r = f (r .! l) : erase c f (r .- l) where l = Label :: Label l
+  rinitAWithLabel c f = unsafeInjectFront l <$> f l <*> rinitAWithLabel c f where l = Label :: Label l
+
+  eraseWithLabels c f r =
+    (show' l, f (r .! l)) : eraseWithLabels c f (r .- l) where l = Label :: Label l
+
+  eraseToHashMap c f r =
+    M.insert (show' l) (f (r .! l)) $ eraseToHashMap c f (r .- l) where l = Label :: Label l
 
   eraseZip c f x y = (f (x .! l) (y .! l)) : eraseZip c f (x .- l) (y .- l) where
     l = Label :: Label l
+
+show' :: (IsString s, Show a) => a -> s
+show' = fromString . show
 
 class RowZip (r1 :: Row *) (r2 :: Row *) where
   type RZip r1 r2 :: Row *
@@ -423,11 +442,8 @@ instance (KnownSymbol l, RZipt t1 t2) =>
 -- some standard type classes
 
 instance (Labels r, Forall r Show) => Show (Rec r) where
-  show r = "{ " ++ meat ++ " }"
-    where meat = intercalate ", " binds
-          binds = zipWith (\x y -> x ++ "=" ++ y) ls vs
-          ls = labels r
-          vs = erase (Proxy @Show) show r
+  show r = "{ " ++ intercalate ", " binds ++ " }"
+    where binds = (\ (x, y) -> x ++ "=" ++ y) <$> eraseWithLabels (Proxy @Show) show r
 
 instance (Forall r Eq) => Eq (Rec r) where
   r == r' = and $ eraseZip (Proxy @Eq) (==) r r'
