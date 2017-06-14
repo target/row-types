@@ -39,6 +39,8 @@ module Data.OpenRecords
              update,
              -- * Query
              (.!), (:!),
+             -- * Focus
+             focus, Modify,
              -- * Combine
              -- ** Union
               (.++), (:++),
@@ -142,6 +144,17 @@ type family Extend (l :: Symbol) (a :: *) (r :: Row *) :: Row * where
 -- | Update the value associated with the label.
 update :: KnownSymbol l => Label l -> r :! l -> Rec r -> Rec r
 update (show -> l) a (OR m) = OR $ M.adjust f l m where f = S.update 0 (HideType a)  
+
+type family Modify (l :: Symbol) (a :: *) (r :: Row *) :: Row * where
+  Modify l a (R ρ) = R (ModifyR l a ρ)
+
+type family ModifyR (l :: Symbol) (a :: *) (ρ :: [LT *]) :: [LT *] where
+  ModifyR l a (l :-> a' ': ρ) = l :-> a ': ρ
+  ModifyR l a (l' :-> a' ': ρ) = l' :-> a' ': ModifyR l a ρ
+
+-- | Focus on the value associated with the label.
+focus :: (Functor f, KnownSymbol l) => Label l -> (r :! l -> f a) -> Rec r -> f (Rec (Modify l a r))
+focus (show -> l) f r@(OR m) = case S.viewl (m M.! l) of HideType x :< v -> OR . flip (M.insert l) m . (<| v) . HideType <$> f (unsafeCoerce x)
 
 -- | Rename a label. The row may already contain the new label , 
 --   in which case the origin value can be obtained after restriction ('.-') with
