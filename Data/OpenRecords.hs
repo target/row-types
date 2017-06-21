@@ -364,24 +364,30 @@ class Forall (r :: Row *) (c :: * -> Constraint) where
   eraseZip :: Proxy c -> (forall a. c a => a -> a -> b) -> Rec r -> Rec r -> [b]
 
 class RowMap (f :: * -> *) (r :: Row *) where
- type Map f r :: Row *
- rmap :: Proxy f -> (forall a.  a -> f a) -> Rec r -> Rec (Map f r)
+  type Map f r :: Row *
+  rmap :: Proxy f -> (forall a.  a -> f a) -> Rec r -> Rec (Map f r)
+  rsequence :: Applicative f => Proxy f -> Rec (Map f r) -> f (Rec r)
 
 instance RowMapx f r => RowMap f (R r) where
   type Map f (R r) = R (RM f r)
   rmap = rmap'
+  rsequence = rsequence'
 
 class RowMapx (f :: * -> *) (r :: [LT *]) where
   type RM f r :: [LT *]
   rmap' :: Proxy f -> (forall a.  a -> f a) -> Rec (R r) -> Rec (R (RM f r))
+  rsequence' :: Applicative f => Proxy f -> Rec (R (RM f r)) -> f (Rec (R r))
 
 instance RowMapx f '[] where
   type RM f '[] = '[]
   rmap' _ _ _ = empty
+  rsequence' _ _ = pure empty
 
 instance (KnownSymbol l,  RowMapx f t) => RowMapx f (l :-> v ': t) where
   type RM f (l :-> v ': t) = l :-> f v ': RM f t
   rmap' w f r = unsafeInjectFront l (f (r .! l)) (rmap' w f (r .- l))
+    where l = Label :: Label l
+  rsequence' w r = unsafeInjectFront l <$> r .! l <*> rsequence' w (r .- l)
     where l = Label :: Label l
 
 class RowMapC (c :: * -> Constraint) (f :: * -> *) (r :: Row *) where
