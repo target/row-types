@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeOperators, ScopedTypeVariables,GADTs, KindSignatures, MultiParamTypeClasses, FlexibleInstances, FlexibleContexts, TypeFamilies, ViewPatterns, DataKinds, ConstraintKinds, UndecidableInstances,FunctionalDependencies,RankNTypes,AllowAmbiguousTypes, InstanceSigs, PolyKinds #-}
+{-# LANGUAGE TypeOperators, ScopedTypeVariables,GADTs, KindSignatures, MultiParamTypeClasses, FlexibleInstances, FlexibleContexts, TypeFamilies, ViewPatterns, DataKinds, ConstraintKinds, UndecidableInstances,FunctionalDependencies,RankNTypes,AllowAmbiguousTypes, InstanceSigs, PolyKinds, TypeApplications #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Data.OpenRecords
@@ -45,7 +45,7 @@ module Data.OpenRecords
              -- ** Disjoint union
               (.+) , (:+),
              -- * Row constraints
-             (:\), Disjoint, Labels(..), Forall(..), CWit, FWit, 
+             (:\), Disjoint, Labels(..), Forall(..),
              -- * Row only operations
              -- * Syntactic sugar
              RecOp(..), RowOp(..), (.|), (:|)
@@ -64,6 +64,7 @@ import Unsafe.Coerce
 import Data.List
 import GHC.TypeLits
 import GHC.Exts -- needed for constraints kinds
+import Data.Proxy
 import Data.Type.Equality (type (==))
 
 
@@ -325,30 +326,25 @@ instance Labels (R '[]) where
 instance (KnownSymbol l , Labels (R t)) => Labels (R (l :-> v ': t)) where
   labels r = show l : labels (r .- l) where l = Label :: Label l
 
--- | A witness of a constraint. For use like this @rinit (CWit :: CWit Bounded) minBound@
-data CWit (c :: * -> Constraint) = CWit
-
 
 -- | If the constaint @c@ holds for all elements in the row @r@,
 --  then the methods in this class are available.
 class Forall (r :: Row *) (c :: * -> Constraint) where
   -- | Given a default value @a@, where@a@ can be instantiated to each type in the row,
   -- create a new record in which all elements carry this default value.
-  rinit     :: CWit c -> (forall a. c a => a) -> Rec r
+  rinit     :: Proxy c -> (forall a. c a => a) -> Rec r
   -- | Given a function @(a -> b)@ where @a@ can be instantiated to each type in the row,
   --   apply the function to each element in the record and collect the result in a list.
 
-  erase    :: CWit c -> (forall a. c a => a -> b) -> Rec r -> [b]
+  erase    :: Proxy c -> (forall a. c a => a -> b) -> Rec r -> [b]
   -- | Given a function @(a -> a -> b)@ where @a@ can be instantiated to each type of the row,
   -- apply the function to each pair of values that can be obtained by indexing the two records
   -- with the same label and collect the result in a list.
-  eraseZip :: CWit c -> (forall a. c a => a -> a -> b) -> Rec r -> Rec r -> [b]
-
-data FWit (f :: * -> *) = FWit
+  eraseZip :: Proxy c -> (forall a. c a => a -> a -> b) -> Rec r -> Rec r -> [b]
 
 class RowMap (f :: * -> *) (r :: Row *) where
  type Map f r :: Row *
- rmap :: FWit f -> (forall a.  a -> f a) -> Rec r -> Rec (Map f r)
+ rmap :: Proxy f -> (forall a.  a -> f a) -> Rec r -> Rec (Map f r)
 
 instance RowMapx f r => RowMap f (R r) where
   type Map f (R r) = R (RM f r)
@@ -356,7 +352,7 @@ instance RowMapx f r => RowMap f (R r) where
 
 class RowMapx (f :: * -> *) (r :: [LT *]) where
   type RM f r :: [LT *]
-  rmap' :: FWit f -> (forall a.  a -> f a) -> Rec (R r) -> Rec (R (RM f r))
+  rmap' :: Proxy f -> (forall a.  a -> f a) -> Rec (R r) -> Rec (R (RM f r))
 
 instance RowMapx f '[] where
   type RM f '[] = '[]
@@ -369,7 +365,7 @@ instance (KnownSymbol l,  RowMapx f t) => RowMapx f (l :-> v ': t) where
 
 class RowMapC (c :: * -> Constraint) (f :: * -> *) (r :: Row *) where
   type MapC c f r :: Row *
-  rmapc :: CWit c -> FWit f -> (forall a. c a => a -> f a) -> Rec r -> Rec (MapC c f r)
+  rmapc :: Proxy c -> Proxy f -> (forall a. c a => a -> f a) -> Rec r -> Rec (MapC c f r)
 
 instance RMapc c f r => RowMapC c f (R r) where
   type MapC c f (R r) = R (RMapp c f r)
@@ -377,7 +373,7 @@ instance RMapc c f r => RowMapC c f (R r) where
 
 class RMapc (c :: * -> Constraint) (f :: * -> *) (r :: [LT *]) where
   type RMapp c f r :: [LT *]
-  rmapc' :: CWit c -> FWit f -> (forall a. c a => a -> f a) -> Rec (R r) -> Rec (R (RMapp c f r))
+  rmapc' :: Proxy c -> Proxy f -> (forall a. c a => a -> f a) -> Rec (R r) -> Rec (R (RMapp c f r))
 
 instance RMapc c f '[] where
   type RMapp c f '[] = '[]
@@ -431,21 +427,21 @@ instance (Labels r, Forall r Show) => Show (Rec r) where
     where meat = intercalate ", " binds
           binds = zipWith (\x y -> x ++ "=" ++ y) ls vs
           ls = labels r
-          vs = erase (CWit :: CWit Show) show r
+          vs = erase (Proxy @Show) show r
 
 instance (Forall r Eq) => Eq (Rec r) where
-  r == r' = and $ eraseZip (CWit :: CWit Eq) (==) r r'
+  r == r' = and $ eraseZip (Proxy @Eq) (==) r r'
 
 instance (Eq (Rec r), Forall r Ord) => Ord (Rec r) where
-  compare m m' = cmp $ eraseZip (CWit :: CWit Ord) compare m m'
+  compare m m' = cmp $ eraseZip (Proxy @Ord) compare m m'
       where cmp l | [] <- l' = EQ
                   | a : _ <- l' = a
                   where l' = dropWhile (== EQ) l
 
 
 instance (Forall r Bounded) => Bounded (Rec r) where
-  minBound = rinit (CWit :: CWit Bounded) minBound
-  maxBound = rinit (CWit :: CWit Bounded) maxBound
+  minBound = rinit (Proxy @Bounded) minBound
+  maxBound = rinit (Proxy @Bounded) maxBound
 
 unsafeInjectFront :: KnownSymbol l => Label l -> a -> Rec (R r) -> Rec (R (l :-> a ': r))
 unsafeInjectFront (show -> a) b (OR m) = OR $ M.insert a v m
