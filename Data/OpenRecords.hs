@@ -35,6 +35,7 @@ module Data.OpenRecords
              rename, renameUnique, Rename,
              -- ** Restriction
              (.-), (:-), 
+             Restrict(..),
              -- ** Update
              update,
              -- * Query
@@ -214,6 +215,18 @@ type family (l :: Row *) :++  (r :: Row *)  :: Row * where
 -- | Type level operation of '.+'
 type family (l :: Row *) :+  (r :: Row *)  :: Row * where
   (R l) :+ (R r) = R (Merge l r)
+
+class Restrict (ls :: [Symbol]) where
+  type Restricted ls (r :: Row *) :: Row *
+  restrict :: Rec r -> Rec (Restricted ls r)
+
+instance Restrict '[] where
+  type Restricted '[] r = Empty
+  restrict _ = empty
+
+instance (KnownSymbol l, Restrict ls) => Restrict (l ': ls) where
+  type Restricted (l ': ls) r = Extend l (r :! l) (Restricted ls r)
+  restrict r = extend (Label @l) (r .! Label @l) (restrict @ls r)
 
 {--------------------------------------------------------------------
   Syntactic sugar for record operations
