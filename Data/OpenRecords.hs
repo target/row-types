@@ -70,6 +70,7 @@ import GHC.TypeLits
 import GHC.Exts -- needed for constraints kinds
 import Data.Proxy
 import Data.Type.Equality (type (==))
+import Unconstrained
 
 
 -- | A label 
@@ -218,10 +219,6 @@ type family (l :: Row *) :+  (r :: Row *)  :: Row * where
 {--------------------------------------------------------------------
   Syntactic sugar for record operations
 --------------------------------------------------------------------}
--- | A constraint not constraining anything
-class NoConstr a 
-instance NoConstr a
-
 -- | Alias for ':\'. It is a class rather than an alias, so that
 --   it can be partially appliced.
 class (r :\ l) => Lacks (l :: Symbol) (r :: Row *)
@@ -266,9 +263,9 @@ infix 5 :<-
 --  [@:<-!@] Record label renaming. Sugar for 'renameUnique'.
 data RecOp (c :: Row * -> Constraint) (rowOp :: RowOp *) where
   (:<-)  :: KnownSymbol l           => Label l -> a      -> RecOp (HasType l a) RUp
-  (:=)   :: KnownSymbol l           => Label l -> a      -> RecOp NoConstr (l ::= a)  
+  (:=)   :: KnownSymbol l           => Label l -> a      -> RecOp Unconstrained1 (l ::= a)  
   (:!=)  :: KnownSymbol l => Label l -> a      -> RecOp (Lacks l) (l ::= a)  
-  (:<-|) :: (KnownSymbol l, KnownSymbol l') => Label l' -> Label l -> RecOp NoConstr (l' ::<-| l)
+  (:<-|) :: (KnownSymbol l, KnownSymbol l') => Label l' -> Label l -> RecOp Unconstrained1 (l' ::<-| l)
   (:<-!) :: (KnownSymbol l, KnownSymbol l', r :\ l') => Label l' -> Label l -> RecOp (Lacks l') (l' ::<-| l)
 
 
