@@ -1,7 +1,7 @@
 Name:                CTRex
-Version:             0.6
-Synopsis:	     Open records using closed type families.
-Description:          Open records using closed type families.
+Version:             0.7
+Synopsis:	           Open records using closed type families.
+Description:         Open records using closed type families.
 License:             BSD3
 License-file:        LICENSE
 Author:              Atze van der Ploeg
