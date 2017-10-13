@@ -72,6 +72,7 @@ import qualified Data.HashMap.Lazy as M
 import qualified Data.Sequence as S
 import Unsafe.Coerce
 import Data.List
+import Data.Maybe (fromMaybe)
 import Data.String (IsString (fromString))
 import GHC.TypeLits
 import GHC.Exts -- needed for constraints kinds
@@ -102,36 +103,51 @@ type Disjoint l r = (DisjointR l r ~ IsDisjoint)
 
 
 
--- private things for row operations
 
+
+{--------------------------------------------------------------------
+  Polymorphic Variants
+--------------------------------------------------------------------}
 data Var (r :: Row *) where
   OneOf :: (String, HideType) -> Var r
 
+-- | A Variant with no options is uninhabited.
 impossible :: Var Empty -> a
 impossible _ = error "Impossible! Somehow, a variant of nothing was produced."
 
+-- | Create a variant.  The first type argument is the set of types that the Variant
+-- lives in.
 just :: forall r l a. (HasType l a r, KnownSymbol l) => Label l -> a -> Var r
 just (show -> l) a = OneOf (l, HideType a)
 
+-- | A version of 'just' that creates the variant of only one type.
 just' :: KnownSymbol l => Label l -> a -> Var (R '[l :-> a])
 just' = just
 
+-- | Make the variant arbitrarily more diverse
 diversify :: forall r' r. Subset r r' => Var r -> Var r'
 diversify (OneOf (l, x)) = OneOf (l, x)
 
+-- | If the variant exists at the given label, update it to the given value.
+-- Otherwise, do nothing.
 updateV :: KnownSymbol l => Label l -> r :! l -> Var r -> Var r
 updateV (show -> l') a (OneOf (l, x)) = OneOf (l, if l == l' then HideType a else x)
 
--- | Focus on the value associated with the label.
+-- | If the variant exists at the given label, focus on the value associated with it.
+-- Otherwise, do nothing.
 focusV :: (Applicative f, KnownSymbol l) => Label l -> (r :! l -> f a) -> Var r -> f (Var (Modify l a r))
 focusV (show -> l') f (OneOf (l, HideType x)) = if l == l' then (OneOf . (l,) . HideType) <$> f (unsafeCoerce x) else pure (OneOf (l, HideType x))
 
+-- | Rename the given label.
 renameV :: (KnownSymbol l, KnownSymbol l') => Label l -> Label l' -> Var r -> Var (Rename l l' r)
 renameV (show -> l1) (show -> l2) (OneOf (l, x)) = OneOf (if l == l1 then l2 else l, x)
 
+-- | Convert a variant into either the value at the given label or a variant without
+-- that label.  This is the basic variant destructor.
 trial :: KnownSymbol l => Var r -> Label l -> Either (r :! l) (Var (r :- l))
 trial (OneOf (l, HideType x)) (show -> l') = if l == l' then Left (unsafeCoerce x) else Right (OneOf (l, HideType x))
 
+-- | A version of 'trial' that ignores the leftover variant.
 trial' :: KnownSymbol l => Var r -> Label l -> Maybe (r :! l)
 trial' = (either Just (const Nothing) .) . trial
 
@@ -148,7 +164,7 @@ instance Forall r Show => Show (Var r) where
   show v = (\ (x, y) -> "{" ++ x ++ "=" ++ y ++ "}") $ eraseVWithLabel (Proxy @Show) show v
 
 instance Forall r Eq => Eq (Var r) where
-  r == r' = eraseVZip (Proxy @Eq) False (==) r r'
+  r == r' = fromMaybe False $ eraseVZip (Proxy @Eq) (==) r r'
 
 
 {--------------------------------------------------------------------
@@ -419,10 +435,16 @@ class Forall (r :: Row *) (c :: * -> Constraint) where
   -- with the same label and collect the result in a list.
   eraseZip :: Proxy c -> (forall a. c a => a -> a -> b) -> Rec r -> Rec r -> [b]
 
+  -- | Given a function @(a -> b)@ where @a@ can be instantiated to each type in the row,
+  --   apply the function to the element in the variant.
   eraseV    :: Proxy c -> (forall a. c a => a -> b) -> Var r -> b
   eraseV proxy f = (snd @String) . eraseVWithLabel proxy f
+  -- | A version of 'eraseV' that also provides the label.
   eraseVWithLabel :: IsString s => Proxy c -> (forall a. c a => a -> b) -> Var r -> (s, b)
-  eraseVZip :: Proxy c -> b -> (forall a. c a => a -> a -> b) -> Var r -> Var r -> b
+  -- | Given a function @(a -> a -> b)@ where @a@ can be instantiated to each type of the row,
+  -- apply the function to the two values within the two variants assuming that each are in
+  -- the same field.
+  eraseVZip :: Proxy c -> (forall a. c a => a -> a -> b) -> Var r -> Var r -> Maybe b
 
 labels :: forall r s . (Forall r Unconstrained1, IsString s) => Proxy r -> [s]
 labels _ = getConst $ rinitAWithLabel @r (Proxy @Unconstrained1) (Const . pure . show')
@@ -505,7 +527,7 @@ instance Forall (R '[]) c where
   eraseToHashMap _ _ _ = M.empty
   eraseZip _ _ _ _ = []
   eraseVWithLabel _ _ = impossible
-  eraseVZip _ _ _ _ = impossible
+  eraseVZip _ _ _ = impossible
 
 instance (KnownSymbol l, Forall (R t) c, c a) => Forall (R (l :-> a ': t)) c where
   rinit c f = unsafeInjectFront l f (rinit c f) where l = Label :: Label l
@@ -526,10 +548,10 @@ instance (KnownSymbol l, Forall (R t) c, c a) => Forall (R (l :-> a ': t)) c whe
     Right v' -> eraseVWithLabel c f v'
     where l = Label :: Label l
 
-  eraseVZip c def f x y = case (trial x l, trial y l) of
-    (Left a,  Left b)  -> f a b
-    (Right x, Right y) -> eraseVZip c def f x y
-    _ -> def
+  eraseVZip c f x y = case (trial x l, trial y l) of
+    (Left a,  Left b)  -> Just $ f a b
+    (Right x, Right y) -> eraseVZip c f x y
+    _ -> Nothing
     where l = Label :: Label l
 
 
