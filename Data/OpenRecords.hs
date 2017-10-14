@@ -57,8 +57,11 @@ module Data.OpenRecords
              -- * Labels
              labels
 
-             , Var, impossible, just, just', diversify, updateV
-             , focusV, renameV, trial, trial'
+             -- * Polymorphic Variants
+             , Var, impossible, just, just', extendV, diversify, updateV
+             , focusV, renameV, trial, trial', multiTrial
+
+             , Switch(..), Complement, Subset
 
 
      )
@@ -108,6 +111,8 @@ type Disjoint l r = (DisjointR l r ~ IsDisjoint)
 {--------------------------------------------------------------------
   Polymorphic Variants
 --------------------------------------------------------------------}
+
+-- | The variant type.
 data Var (r :: Row *) where
   OneOf :: (String, HideType) -> Var r
 
@@ -124,7 +129,11 @@ just (show -> l) a = OneOf (l, HideType a)
 just' :: KnownSymbol l => Label l -> a -> Var (R '[l :-> a])
 just' = just
 
--- | Make the variant arbitrarily more diverse
+-- | Extend the variant with a single type via value-level label and proxy.
+extendV :: forall l a r. KnownSymbol l => Label l -> Proxy a -> Var r -> Var (Extend l a r)
+extendV _ _ (OneOf (l, x)) = OneOf (l, x)
+
+-- | Make the variant arbitrarily more diverse.
 diversify :: forall r' r. Subset r r' => Var r -> Var r'
 diversify (OneOf (l, x)) = OneOf (l, x)
 
@@ -151,14 +160,29 @@ trial (OneOf (l, HideType x)) (show -> l') = if l == l' then Left (unsafeCoerce 
 trial' :: KnownSymbol l => Var r -> Label l -> Maybe (r :! l)
 trial' = (either Just (const Nothing) .) . trial
 
--- interpret :: forall r' r. Var r -> Either (Var r') (Var (Complement r r'))
--- interpret
---
--- switch :: Var r -> Rec r' ->
+-- | A trial over multiple types
+multiTrial :: forall y x. Forall y Unconstrained1 => Var x -> Either (Var y) (Var (Complement x y))
+multiTrial (OneOf (l, x)) = if l `elem` labels (Proxy @y) then Left (OneOf (l, x)) else Right (OneOf (l, x))
+
+
+class Switch (r :: Row *) (v :: Row *) x where
+  -- | Given a Record of functions matching a Variant of values, apply the correct
+  -- function to the value in the variant.
+  switch :: Rec r -> Var v -> x
+
+instance Switch r (R '[]) x where
+  switch _ = impossible
+
+instance (KnownSymbol l, HasType l (a -> b) r, Switch r (R v) b)
+      => Switch r (R (l :-> a ': v)) b where
+  switch r v = case trial v l of
+    Left x  -> (r .! l) x
+    Right v -> switch r v
+    where l = Label :: Label l
 
 class Subset r r'
 instance Subset (R '[]) r'
-instance (HasType l a (R r), Subset (R r') (R r)) => Subset (R (l :-> a ': r')) (R r)
+instance (HasType l a r', Subset (R r) r') => Subset (R (l :-> a ': r)) r'
 
 instance Forall r Show => Show (Var r) where
   show v = (\ (x, y) -> "{" ++ x ++ "=" ++ y ++ "}") $ eraseVWithLabel (Proxy @Show) show v
@@ -669,6 +693,18 @@ type family DisjointZ (l :: [LT *]) (r :: [LT *]) where
       IfteD (hl <=.? hr)
       (DisjointZ tl (hr :-> ar ': tr))
       (DisjointZ (hl :-> al ': tl) tr)
+
+type family Complement (l :: Row *) (r :: Row *) where
+  Complement (R l) (R r) = R (ComplementR l r)
+
+type family ComplementR (l :: [LT *]) (r :: [LT *]) where
+  ComplementR '[] r = '[]
+  ComplementR l '[] = l
+  ComplementR (l :-> al ': tl) (l :-> al ': tr) = ComplementR tl tr
+  ComplementR (hl :-> al ': tl) (hr :-> ar ': tr) =
+    Ifte (hl <=.? hr)
+    (hl :-> al ': ComplementR tl (hr :-> ar ': tr))
+    (ComplementR (hl :-> al ': tl) tr)
 
 
 -- | there doesn't seem to be a (<=.?) :: Symbol -> Symbol -> Bool,
