@@ -19,7 +19,10 @@ Library
                  mtl >= 1.0,
                  unconstrained >= 0.1.0.1,
                  unordered-containers >= 0.2
-  Exposed-modules: Data.OpenRecords
+  Exposed-modules: Data.OpenRecords,
+                   Data.OpenRecords.Records,
+                   Data.OpenRecords.Variants,
+                   Data.OpenRecords.Internal.Row
   other-modules:
   Extensions: AllowAmbiguousTypes,
               ConstraintKinds,
@@ -27,7 +30,6 @@ Library
               EmptyDataDecls,
               FlexibleContexts,
               FlexibleInstances,
-              FunctionalDependencies,
               GADTs,
               InstanceSigs,
               KindSignatures,
@@ -36,8 +38,10 @@ Library
               PolyKinds,
               RankNTypes,
               ScopedTypeVariables,
+              TypeApplications,
               TypeFamilies,
               TypeOperators,
+              TupleSections,
               ViewPatterns,
               UndecidableInstances
 
