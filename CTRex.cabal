@@ -20,9 +20,11 @@ Library
                  unconstrained >= 0.1.0.1,
                  unordered-containers >= 0.2
   Exposed-modules: Data.OpenRecords,
+                   Data.OpenRecords.Internal.Row,
                    Data.OpenRecords.Records,
                    Data.OpenRecords.Variants,
-                   Data.OpenRecords.Internal.Row
+                   Data.OpenRecords.Switch
+  ghc-options: -W
   other-modules:
   Extensions: AllowAmbiguousTypes,
               ConstraintKinds,

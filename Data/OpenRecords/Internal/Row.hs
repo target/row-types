@@ -9,18 +9,14 @@
 
 module Data.OpenRecords.Internal.Row
   (
-  -- * Rec and Var
-    Rec(..), Var(..)
   -- * Common operations on types over rows
-  , Extendable(..)
+    Extendable(..)
   , Updatable(..)
   , Focusable(..)
   , Renamable(..)
-  -- * SHOULDN'T BE HERE
-  , empty, (.!), (.-), impossible, trial
   -- * Rows
   , Label(..)
-  , KnownSymbol(..)
+  , KnownSymbol
   , LT(..)
   , Row(..)
   , Empty
@@ -32,160 +28,24 @@ module Data.OpenRecords.Internal.Row
   , RowOp(..), (:|)
   -- * Row Classes
   , Labels, labels
+  , ValOf, RowPair(..)
   , Forall(..)
-  , RowMap(..), RowMapC(..), RowMapCF(..)
-  , RowZip(..)
+  , Erasable(..)
+  -- * Helper functions
+  , show'
   )
 where
 
 import Data.Functor.Const
-import Data.Hashable
-import Data.HashMap.Lazy(HashMap)
-import Data.Sequence(Seq,viewl,ViewL(..),(><),(<|))
-import qualified Data.HashMap.Lazy as M
-import qualified Data.Sequence as S
-import Unsafe.Coerce
-import Data.List
-import Data.Maybe (fromMaybe)
+import Data.Proxy
 import Data.String (IsString (fromString))
+import Data.Type.Equality (type (==))
+
 import GHC.TypeLits
 import GHC.Exts -- needed for constraints kinds
-import Data.Proxy
-import Data.Type.Equality (type (==))
-import Unconstrained
 
 
 
-{--------------------------------------------------------------------
-  Record and Variant definitions
---------------------------------------------------------------------}
--- Ideally, this file would only include Row stuff, but because 'Forall' and
--- 'Switch' (and any others?) are not
--- generic enough,relying on both 'Rec' and 'Var', they must be defined here
--- so they can be shared.  Thus, 'Rec' and 'Var' must be here as well.
-
--- | A record with row r.
-data Rec (r :: Row *) where
-  OR :: HashMap String (Seq HideType) -> Rec r
-
-instance (Forall r Show) => Show (Rec r) where
-  show r = "{ " ++ intercalate ", " binds ++ " }"
-    where binds = (\ (x, y) -> x ++ "=" ++ y) <$> eraseWithLabels (Proxy @Show) show r
-
-instance (Forall r Eq) => Eq (Rec r) where
-  r == r' = and $ eraseZip (Proxy @Eq) (==) r r'
-
-instance (Eq (Rec r), Forall r Ord) => Ord (Rec r) where
-  compare m m' = cmp $ eraseZip (Proxy @Ord) compare m m'
-      where cmp l | [] <- l' = EQ
-                  | a : _ <- l' = a
-                  where l' = dropWhile (== EQ) l
-
-instance (Forall r Bounded) => Bounded (Rec r) where
-  minBound = rinit (Proxy @Bounded) minBound
-  maxBound = rinit (Proxy @Bounded) maxBound
-
-
--- | The variant type.
-data Var (r :: Row *) where
-  OneOf :: (String, HideType) -> Var r
-
-instance Forall r Show => Show (Var r) where
-  show v = (\ (x, y) -> "{" ++ x ++ "=" ++ y ++ "}") $ eraseVWithLabel (Proxy @Show) show v
-
-instance Forall r Eq => Eq (Var r) where
-  r == r' = fromMaybe False $ eraseVZip (Proxy @Eq) (==) r r'
-
-
---
-{--------------------------------------------------------------------
-  Common operations on types over rows
---------------------------------------------------------------------}
-class Extendable (t :: Row * -> *) where
-  type Inp t a
-  -- Extend the Row by adding the given input for the given label.
-  extend  :: forall l a r. KnownSymbol l => Label l -> Inp t a -> t r -> t (Extend l a r)
-  extendUnique :: forall l a r. (KnownSymbol l,r :\ l) => Label l -> Inp t a -> t r -> t (Extend l a r)
-  extendUnique = extend @t @l @a
-
-instance Extendable Rec where
-  type Inp Rec a = a
-  extend (show -> l) a (OR m) = OR $ M.insert l v m
-     where v = HideType a <| M.lookupDefault S.empty l m
-
-instance Extendable Var where
-  type Inp Var a = Proxy a
-  extend _ _ (OneOf (l, x)) = OneOf (l, x)
-
-
-class Updatable (t :: Row * -> *) where
-  -- Update the value in the Row at the given label by providing a new one.
-  update :: KnownSymbol l => Label l -> r :! l -> t r -> t r
-
-instance Updatable Rec where
-  update (show -> l) a (OR m) = OR $ M.adjust f l m where f = S.update 0 (HideType a)
-
-instance Updatable Var where
-  update (show -> l') a (OneOf (l, x)) = OneOf (l, if l == l' then HideType a else x)
-
-
-class Focusable (t :: Row * -> *) where
-  -- Apply the given function to the value in the Row at the given label.
-  focus :: (Applicative f, KnownSymbol l) => Label l -> (r :! l -> f a) -> t r -> f (t (Modify l a r))
-
-instance Focusable Rec where
-  focus (show -> l) f r@(OR m) = case S.viewl (m M.! l) of HideType x :< v -> OR . flip (M.insert l) m . (<| v) . HideType <$> f (unsafeCoerce x)
-
-instance Focusable Var where
-  focus (show -> l') f (OneOf (l, HideType x)) = if l == l' then (OneOf . (l,) . HideType) <$> f (unsafeCoerce x) else pure (OneOf (l, HideType x))
-
-
-class Renamable (t :: Row * -> *) where
-  -- Rename the given label in the Row to the new given label.
-  rename :: (KnownSymbol l, KnownSymbol l') => Label l -> Label l' -> t r -> t (Rename l l' r)
-  renameUnique :: (KnownSymbol l, KnownSymbol l', r :\ l') => Label l -> Label l' -> t r -> t (Rename l l' r)
-  renameUnique = rename
-
-instance Renamable Rec where
-  rename l l' r = extend l' (r .! l) (r .- l)
-
-instance Renamable Var where
-  rename (show -> l1) (show -> l2) (OneOf (l, x)) = OneOf (if l == l1 then l2 else l, x)
-
-
-{--------------------------------------------------------------------
-  SHOULD BE REMOVED
---------------------------------------------------------------------}
--- | The empty record
-empty :: Rec Empty
-empty = OR M.empty
-
--- | Record selection
-(.!) :: KnownSymbol l => Rec r -> Label l -> r :! l
-OR m .! (show -> a) = x'
-   where x S.:< t =  S.viewl $ m M.! a
-         -- notice that this is safe because of the external type
-         x' = case x of HideType p -> unsafeCoerce p
-
-
-
-infix  8 .-
--- | Record restriction. Delete the label l from the record.
-(.-) :: KnownSymbol l =>  Rec r -> Label l -> Rec (r :- l)
-OR m .- (show -> a) = OR m'
-   where x S.:< t =  S.viewl $ m M.! a
-         m' = case S.viewl t of
-               EmptyL -> M.delete a m
-               _      -> M.insert a t m
-
--- | Convert a variant into either the value at the given label or a variant without
--- that label.  This is the basic variant destructor.
-trial :: KnownSymbol l => Var r -> Label l -> Either (r :! l) (Var (r :- l))
-trial (OneOf (l, HideType x)) (show -> l') = if l == l' then Left (unsafeCoerce x) else Right (OneOf (l, HideType x))
-
--- | A Variant with no options is uninhabited.
-impossible :: Var Empty -> a
-impossible _ = error "Impossible! Somehow, a variant of nothing was produced."
 
 {--------------------------------------------------------------------
   Rows
@@ -322,212 +182,85 @@ type family (x :: RowOp *) :| (r :: Row *)  :: Row * where
 
 
 {--------------------------------------------------------------------
+  Common operations on types over rows
+--------------------------------------------------------------------}
+class Extendable (t :: Row * -> *) where
+  type Inp t a
+  -- | Record extension. The row may already contain the label.
+  extend  :: forall l a r. KnownSymbol l => Label l -> Inp t a -> t r -> t (Extend l a r)
+  -- | Record extension without shadowing. The row may not already contain label l.
+  extendUnique :: forall l a r. (KnownSymbol l,r :\ l) => Label l -> Inp t a -> t r -> t (Extend l a r)
+  extendUnique = extend @t @l @a
+
+class Updatable (t :: Row * -> *) where
+  -- Update the value in the Row at the given label by providing a new one.
+  update :: KnownSymbol l => Label l -> r :! l -> t r -> t r
+
+class Focusable (t :: Row * -> *) where
+  -- Apply the given function to the value in the Row at the given label.
+  focus :: (Applicative f, KnownSymbol l) => Label l -> (r :! l -> f a) -> t r -> f (t (Modify l a r))
+
+class Renamable (t :: Row * -> *) where
+  -- Rename a label. The row may already contain the new label.
+  rename :: (KnownSymbol l, KnownSymbol l') => Label l -> Label l' -> t r -> t (Rename l l' r)
+  -- | Rename a label. The row may not already contain the new label.
+  renameUnique :: (KnownSymbol l, KnownSymbol l', r :\ l') => Label l -> Label l' -> t r -> t (Rename l l' r)
+  renameUnique = rename
+
+
+{--------------------------------------------------------------------
   Constrained record operations
 --------------------------------------------------------------------}
+
+type family ValOf (f :: Row * -> *) (τ :: *) :: *
+type instance ValOf (Const x) τ = x
+
+class Forall (r :: Row *) (c :: * -> Constraint) where
+  -- foldRow :: forall (f :: Row * -> *).
+  --            f Empty
+  --         -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => f ('R ρ) -> f ('R (ℓ :-> τ ': ρ)))
+  --         -> f r
+  foldRow :: forall (f :: Row * -> *) (g :: Row * -> *).
+             (f Empty -> g Empty)
+          -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => f ('R (ℓ :-> τ ': ρ)) -> (ValOf f τ, f ('R ρ)))
+          -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => ValOf f τ -> g ('R ρ) -> g ('R (ℓ :-> τ ': ρ)))
+          -> f r
+          -> g r
+
+instance Forall (R '[]) c where
+  foldRow empty _ _ = empty
+
+instance (KnownSymbol ℓ, c τ, Forall ('R ρ) c) => Forall ('R (ℓ :-> τ ': ρ)) c where
+  foldRow empty uncons cons r = cons t $ foldRow @('R ρ) @c empty uncons cons r'
+    where (t, r') = uncons r
+
 
 -- | The labels in a Row.
 type family Labels (r :: Row a) where
   Labels (R '[]) = '[]
   Labels (R (l :-> a ': xs)) = l ': Labels (R xs)
 
--- | Get a list of label names from a Row.
-labels :: forall r s . (Forall r Unconstrained1, IsString s) => Proxy r -> [s]
-labels _ = getConst $ rinitAWithLabel @r (Proxy @Unconstrained1) (Const . pure . show')
+-- | Return a list of the labels in a record type.
+labels :: forall ρ c s. (IsString s, Forall ρ c) => Proxy ρ -> [s]
+labels _ = getConst $ foldRow @ρ @c @(Const ()) @(Const [s]) (const $ Const []) doUncons doCons (Const ())
+  where doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Const () ('R (ℓ :-> τ ': ρ)) -> ((), Const () ('R ρ))
+        doUncons _ = ((), Const ())
+        doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
+               => () -> Const [s] ('R ρ) -> Const [s] ('R (ℓ :-> τ ': ρ))
+        doCons _ (Const c) = Const $ show' (Label @ℓ) : c
 
 
 
--- | If the constaint @c@ holds for all elements in the row @r@,
---  then the methods in this class are available.
---
--- TODO: Make this class generic.  It should have a small number (one?) of generic
--- operations (fold?, unfold?, map??) that are not specialized to e.g. Rec or Var.
--- Then, each of these functions would be standalone (but would require newtypes
--- due to Haskell's lack of type-level lambdas).
--- It may also use an associated type or open type family.  Not sure.
-class Forall (r :: Row *) (c :: * -> Constraint) where
-  -- | Given a default value @a@, where @a@ can be instantiated to each type in the row,
-  -- create a new record in which all elements carry this default value.
-  rinit     :: Proxy c -> (forall a. c a => a) -> Rec r
-  rinitA    :: Applicative p => Proxy c -> (forall a. c a => p a) -> p (Rec r)
-  rinitA proxy f = rinitAWithLabel proxy (pure f)
-  rinitAWithLabel :: Applicative p => Proxy c -> (forall l a. (KnownSymbol l, c a) => Label l -> p a) -> p (Rec r)
-  -- | Given a function @(a -> b)@ where @a@ can be instantiated to each type in the row,
-  --   apply the function to each element in the record and collect the result in a list.
-  erase    :: Proxy c -> (forall a. c a => a -> b) -> Rec r -> [b]
-  erase proxy f = fmap (snd @String) . eraseWithLabels proxy f
-  eraseWithLabels :: IsString s => Proxy c -> (forall a. c a => a -> b) -> Rec r -> [(s, b)]
-  eraseToHashMap :: (IsString s, Eq s, Hashable s) =>
-                    Proxy c -> (forall a . c a => a -> b) -> Rec r -> HashMap s b
-  -- | Given a function @(a -> a -> b)@ where @a@ can be instantiated to each type of the row,
-  -- apply the function to each pair of values that can be obtained by indexing the two records
-  -- with the same label and collect the result in a list.
-  eraseZip :: Proxy c -> (forall a. c a => a -> a -> b) -> Rec r -> Rec r -> [b]
+newtype RowPair (f :: Row * -> *) (ρ :: Row *) = RowPair { unRowPair :: (f ρ, f ρ) }
+type instance ValOf (RowPair f) τ = (ValOf f τ, ValOf f τ)
 
-  -- | Given a function @(a -> b)@ where @a@ can be instantiated to each type in the row,
-  --   apply the function to the element in the variant.
-  eraseV    :: Proxy c -> (forall a. c a => a -> b) -> Var r -> b
-  eraseV proxy f = (snd @String) . eraseVWithLabel proxy f
-  -- | A version of 'eraseV' that also provides the label.
-  eraseVWithLabel :: IsString s => Proxy c -> (forall a. c a => a -> b) -> Var r -> (s, b)
-  -- | Given a function @(a -> a -> b)@ where @a@ can be instantiated to each type of the row,
-  -- apply the function to the two values within the two variants assuming that each are in
-  -- the same field.
-  eraseVZip :: Proxy c -> (forall a. c a => a -> a -> b) -> Var r -> Var r -> Maybe b
+class Erasable (t :: Row * -> *) where
+  type Output t a
+  type OutputZip t a
+  erase :: Forall r c => Proxy c -> (forall a. c a => a -> b) -> t r -> Output t b
+  eraseWithLabels :: (Forall r c, IsString s) => Proxy c -> (forall a. c a => a -> b) -> t r -> Output t (s, b)
+  eraseZip :: Forall r c => Proxy c -> (forall a. c a => a -> a -> b) -> t r -> t r -> OutputZip t b
 
-instance Forall (R '[]) c where
-  rinit _ _ = empty
-  rinitAWithLabel _ _ = pure empty
-  eraseWithLabels _ _ _ = []
-  eraseToHashMap _ _ _ = M.empty
-  eraseZip _ _ _ _ = []
-  eraseVWithLabel _ _ = impossible
-  eraseVZip _ _ _ = impossible
-
-instance (KnownSymbol l, Forall (R t) c, c a) => Forall (R (l :-> a ': t)) c where
-  rinit c f = unsafeInjectFront l f (rinit c f) where l = Label :: Label l
-
-  rinitAWithLabel c f = unsafeInjectFront l <$> f l <*> rinitAWithLabel c f where l = Label :: Label l
-
-  eraseWithLabels c f r =
-    (show' l, f (r .! l)) : eraseWithLabels c f (r .- l) where l = Label :: Label l
-
-  eraseToHashMap c f r =
-    M.insert (show' l) (f (r .! l)) $ eraseToHashMap c f (r .- l) where l = Label :: Label l
-
-  eraseZip c f x y = f (x .! l) (y .! l) : eraseZip c f (x .- l) (y .- l) where
-    l = Label :: Label l
-
-  eraseVWithLabel c f v = case trial v l of
-    Left  x  -> (show' l, f x)
-    Right v' -> eraseVWithLabel c f v'
-    where l = Label :: Label l
-
-  eraseVZip c f x y = case (trial x l, trial y l) of
-    (Left a,  Left b)  -> Just $ f a b
-    (Right x, Right y) -> eraseVZip c f x y
-    _ -> Nothing
-    where l = Label :: Label l
-
-
--- | A class for mapping a function over a record.
--- TODO: Can this be made more generic?
-class RowMap (f :: * -> *) (r :: Row *) where
-  type Map f r :: Row *
-  rmap :: Proxy f -> (forall a.  a -> f a) -> Rec r -> Rec (Map f r)
-  rsequence :: Applicative f => Proxy f -> Rec (Map f r) -> f (Rec r)
-
-instance RowMapx f r => RowMap f (R r) where
-  type Map f (R r) = R (RM f r)
-  rmap = rmap'
-  rsequence = rsequence'
-
--- | A helper class for mapping a function over a record.
--- TODO: Can this be made more generic?
-class RowMapx (f :: * -> *) (r :: [LT *]) where
-  type RM f r :: [LT *]
-  rmap' :: Proxy f -> (forall a.  a -> f a) -> Rec (R r) -> Rec (R (RM f r))
-  rsequence' :: Applicative f => Proxy f -> Rec (R (RM f r)) -> f (Rec (R r))
-
-instance RowMapx f '[] where
-  type RM f '[] = '[]
-  rmap' _ _ _ = empty
-  rsequence' _ _ = pure empty
-
-instance (KnownSymbol l,  RowMapx f t) => RowMapx f (l :-> v ': t) where
-  type RM f (l :-> v ': t) = l :-> f v ': RM f t
-  rmap' w f r = unsafeInjectFront l (f (r .! l)) (rmap' w f (r .- l))
-    where l = Label :: Label l
-  rsequence' w r = unsafeInjectFront l <$> r .! l <*> rsequence' w (r .- l)
-    where l = Label :: Label l
-
-
--- | A class for mapping a function over a record where each element of the record
--- satisfies a constraint.
--- TODO: Can this be made more generic?
-class RowMapCF (c :: * -> Constraint) (f :: * -> *) (r :: Row *) where
-  type MapCF c f r :: Row *
-  rmapcf :: Proxy c -> Proxy f -> (forall a. c a => a -> f a) -> Rec r -> Rec (MapCF c f r)
-
-instance RMapcf c f r => RowMapCF c f (R r) where
-  type MapCF c f (R r) = R (RMappf c f r)
-  rmapcf = rmapcf'
-
--- | A helper class for mapping a function over a record where each element of the record
--- satisfies a constraint.
--- TODO: Can this be made more generic?
-class RMapcf (c :: * -> Constraint) (f :: * -> *) (r :: [LT *]) where
-  type RMappf c f r :: [LT *]
-  rmapcf' :: Proxy c -> Proxy f -> (forall a. c a => a -> f a) -> Rec (R r) -> Rec (R (RMappf c f r))
-
-instance RMapcf c f '[] where
-  type RMappf c f '[] = '[]
-  rmapcf' _ _ _ _ = empty
-
-instance (KnownSymbol l, c v, RMapcf c f t) => RMapcf c f (l :-> v ': t) where
-  type RMappf c f (l :-> v ': t) = l :-> f v ': RMappf c f t
-  rmapcf' c w f r = unsafeInjectFront l (f (r .! l)) (rmapcf' c w f (r .- l))
-    where l = Label :: Label l
-
-
--- | A class for mapping a function over a record where each element of the record
--- satisfies a constraint and the types don't change.
--- TODO: Can this be made more generic?
-class RowMapC (c :: * -> Constraint) (r :: Row *) where
-  type MapC c r :: Row *
-  rmapc :: Proxy c -> (forall a. c a => a -> a) -> Rec r -> Rec (MapC c r)
-
-instance RMapc c r => RowMapC c (R r) where
-  type MapC c (R r) = R (RMapp c r)
-  rmapc = rmapc'
-
--- | A class for mapping a function over a record where each element of the record
--- satisfies a constraint and the types don't change.
--- TODO: Can this be made more generic?
-class RMapc (c :: * -> Constraint) (r :: [LT *]) where
-  type RMapp c r :: [LT *]
-  rmapc' :: Proxy c -> (forall a. c a => a -> a) -> Rec (R r) -> Rec (R (RMapp c r))
-
-instance RMapc c '[] where
-  type RMapp c '[] = '[]
-  rmapc' _ _ _ = empty
-
-instance (KnownSymbol l, c v, RMapc c t) => RMapc c (l :-> v ': t) where
-  type RMapp c (l :-> v ': t) = l :-> v ': RMapp c t
-  rmapc' c f r = unsafeInjectFront l (f (r .! l)) (rmapc' c f (r .- l))
-    where l = Label :: Label l
-
-
--- | A class for zipping two records together.
--- TODO: Can this be made more generic?
-class RowZip (r1 :: Row *) (r2 :: Row *) where
-  type RZip r1 r2 :: Row *
-  rzip :: Rec r1 -> Rec r2 -> Rec (RZip r1 r2)
-
-instance RZipt r1 r2 => RowZip (R r1) (R r2) where
-  type RZip (R r1) (R r2) = R (RZipp r1 r2)
-  rzip = rzip'
-
--- | A helper class for zipping two records together.
--- TODO: Can this be made more generic?
-class RZipt (r1 :: [LT *]) (r2 :: [LT *]) where
-  type RZipp r1 r2 :: [LT *]
-  rzip' :: Rec (R r1) -> Rec (R r2) -> Rec (R (RZipp r1 r2))
-
-instance RZipt '[] '[] where
-  type RZipp '[] '[] = '[]
-  rzip' _ _ = empty
-
-instance (KnownSymbol l, RZipt t1 t2) =>
-   RZipt (l :-> v1 ': t1) (l :-> v2 ': t2) where
-
-   type RZipp (l :-> v1 ': t1) (l :-> v2 ': t2) = l :-> (v1,v2) ': RZipp t1 t2
-   rzip' r1 r2 = unsafeInjectFront l (r1 .! l, r2 .! l) (rzip' (r1 .- l) (r2 .- l))
-       where l = Label :: Label l
-
--- | A helper function for unsafely adding an element to the front of a record
-unsafeInjectFront :: KnownSymbol l => Label l -> a -> Rec (R r) -> Rec (R (l :-> a ': r))
-unsafeInjectFront (show -> a) b (OR m) = OR $ M.insert a v m
-  where v = HideType b <| M.lookupDefault S.empty a m
 
 -- | A helper function for showing labels
 show' :: (IsString s, Show a) => a -> s

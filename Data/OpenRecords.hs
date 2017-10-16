@@ -25,22 +25,6 @@ module Data.OpenRecords
   )
 where
 
-import Data.Functor.Const
-import Data.Hashable
-import Data.HashMap.Lazy(HashMap)
-import Data.Sequence(Seq,viewl,ViewL(..),(><),(<|))
-import qualified Data.HashMap.Lazy as M
-import qualified Data.Sequence as S
-import Unsafe.Coerce
-import Data.List
-import Data.Maybe (fromMaybe)
-import Data.String (IsString (fromString))
-import GHC.TypeLits
-import GHC.Exts -- needed for constraints kinds
-import Data.Proxy
-import Data.Type.Equality (type (==))
-import Unconstrained
-
 import Data.OpenRecords.Records
 
 

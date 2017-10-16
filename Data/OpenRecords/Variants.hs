@@ -11,38 +11,37 @@ module Data.OpenRecords.Variants
   (
   -- * Types and constraints
     Label(..)
-  , KnownSymbol(..)
-  , Var, Row
+  , KnownSymbol
+  , Var, Row(..), LT(..)
   -- * Construction
   , HasType, just, just'
   -- ** Extension
   , extend, Subset, diversify, (:+), (:++)
   -- ** Modification
   , update, focus, Modify, rename, Rename
+  -- ** Syntactic sugar
+  , VarOp(..), RowOp(..), (*|), (:|)
   -- * Destruction
   , impossible, trial, trial', multiTrial, Complement
   , (:!), (:-)
-  , Switch(..)
-  -- * labels
+  -- * Folds
+  , Erasable(..)
+  -- ** labels
   , labels
   )
 where
 
 import Data.Functor.Const
-import Data.Hashable
-import Data.HashMap.Lazy(HashMap)
-import Data.Sequence(Seq,viewl,ViewL(..),(><),(<|))
-import qualified Data.HashMap.Lazy as M
-import qualified Data.Sequence as S
-import Unsafe.Coerce
-import Data.List
-import Data.Maybe (fromMaybe)
-import Data.String (IsString (fromString))
+import Data.Maybe (fromMaybe, fromJust)
+import Data.Proxy
+import Data.String (IsString)
+
 import GHC.TypeLits
 import GHC.Exts -- needed for constraints kinds
-import Data.Proxy
-import Data.Type.Equality (type (==))
+
 import Unconstrained
+
+import Unsafe.Coerce
 
 import Data.OpenRecords.Internal.Row
 
@@ -50,45 +49,63 @@ import Data.OpenRecords.Internal.Row
   Polymorphic Variants
 --------------------------------------------------------------------}
 
+-- | The variant type.
+data Var (r :: Row *) where
+  OneOf :: (String, HideType) -> Var r
+
+instance Forall r Show => Show (Var r) where
+  show v = (\ (x, y) -> "{" ++ x ++ "=" ++ y ++ "}") $ eraseWithLabels (Proxy @Show) show v
+
+instance Forall r Eq => Eq (Var r) where
+  r == r' = fromMaybe False $ eraseZip (Proxy @Eq) (==) r r'
+
+type instance ValOf Var τ = Maybe τ
+
+
+{--------------------------------------------------------------------
+  Basic Operations
+--------------------------------------------------------------------}
+
 -- | A Variant with no options is uninhabited.
--- impossible :: Var Empty -> a
--- impossible _ = error "Impossible! Somehow, a variant of nothing was produced."
+impossible :: Var Empty -> a
+impossible _ = error "Impossible! Somehow, a variant of nothing was produced."
 
 -- | Create a variant.  The first type argument is the set of types that the Variant
 -- lives in.
-just :: forall r l a. (HasType l a r, KnownSymbol l) => Label l -> a -> Var r
-just (show -> l) a = OneOf (l, HideType a)
+just' :: forall r l a. (HasType l a r, KnownSymbol l) => Label l -> a -> Var r
+just' (show -> l) a = OneOf (l, HideType a)
 
 -- | A version of 'just' that creates the variant of only one type.
-just' :: KnownSymbol l => Label l -> a -> Var (Extend l a Empty)
-just' = just
+just :: KnownSymbol l => Label l -> a -> Var (Extend l a Empty)
+just = just'
 
--- | Extend the variant with a single type via value-level label and proxy.
--- extendV :: forall l a r. KnownSymbol l => Label l -> Proxy a -> Var r -> Var (Extend l a r)
--- extendV _ _ (OneOf (l, x)) = OneOf (l, x)
+instance Extendable Var where
+  type Inp Var a = Proxy a
+  -- | Extend the variant with a single type via value-level label and proxy.
+  extend _ _ (OneOf (l, x)) = OneOf (l, x)
 
 -- | Make the variant arbitrarily more diverse.
 diversify :: forall r' r. Subset r r' => Var r -> Var r'
 diversify (OneOf (l, x)) = OneOf (l, x)
 
--- | If the variant exists at the given label, update it to the given value.
--- Otherwise, do nothing.
--- updateV :: KnownSymbol l => Label l -> r :! l -> Var r -> Var r
--- updateV (show -> l') a (OneOf (l, x)) = OneOf (l, if l == l' then HideType a else x)
+instance Updatable Var where
+  -- | If the variant exists at the given label, update it to the given value.
+  -- Otherwise, do nothing.
+  update (show -> l') a (OneOf (l, x)) = OneOf (l, if l == l' then HideType a else x)
 
--- | If the variant exists at the given label, focus on the value associated with it.
--- Otherwise, do nothing.
--- focusV :: (Applicative f, KnownSymbol l) => Label l -> (r :! l -> f a) -> Var r -> f (Var (Modify l a r))
--- focusV (show -> l') f (OneOf (l, HideType x)) = if l == l' then (OneOf . (l,) . HideType) <$> f (unsafeCoerce x) else pure (OneOf (l, HideType x))
+instance Focusable Var where
+  -- | If the variant exists at the given label, focus on the value associated with it.
+  -- Otherwise, do nothing.
+  focus (show -> l') f (OneOf (l, HideType x)) = if l == l' then (OneOf . (l,) . HideType) <$> f (unsafeCoerce x) else pure (OneOf (l, HideType x))
 
--- | Rename the given label.
--- renameV :: (KnownSymbol l, KnownSymbol l') => Label l -> Label l' -> Var r -> Var (Rename l l' r)
--- renameV (show -> l1) (show -> l2) (OneOf (l, x)) = OneOf (if l == l1 then l2 else l, x)
+instance Renamable Var where
+  -- | Rename the given label.
+  rename (show -> l1) (show -> l2) (OneOf (l, x)) = OneOf (if l == l1 then l2 else l, x)
 
 -- | Convert a variant into either the value at the given label or a variant without
 -- that label.  This is the basic variant destructor.
--- trial :: KnownSymbol l => Var r -> Label l -> Either (r :! l) (Var (r :- l))
--- trial (OneOf (l, HideType x)) (show -> l') = if l == l' then Left (unsafeCoerce x) else Right (OneOf (l, HideType x))
+trial :: KnownSymbol l => Var r -> Label l -> Either (r :! l) (Var (r :- l))
+trial (OneOf (l, HideType x)) (show -> l') = if l == l' then Left (unsafeCoerce x) else Right (OneOf (l, HideType x))
 
 -- | A version of 'trial' that ignores the leftover variant.
 trial' :: KnownSymbol l => Var r -> Label l -> Maybe (r :! l)
@@ -96,21 +113,62 @@ trial' = (either Just (const Nothing) .) . trial
 
 -- | A trial over multiple types
 multiTrial :: forall y x. Forall y Unconstrained1 => Var x -> Either (Var y) (Var (Complement x y))
-multiTrial (OneOf (l, x)) = if l `elem` labels (Proxy @y) then Left (OneOf (l, x)) else Right (OneOf (l, x))
+multiTrial (OneOf (l, x)) = if l `elem` labels @y @Unconstrained1 Proxy then Left (OneOf (l, x)) else Right (OneOf (l, x))
+
+infix 5 :*=
+infix 5 :*!=
+infix 5 :*<-
+data VarOp (c :: Row * -> Constraint) (rowOp :: RowOp *) where
+  (:*<-)  :: KnownSymbol l           => Label l -> a -> VarOp (HasType l a) RUp
+  (:*=)   :: KnownSymbol l           => Label l -> Proxy a -> VarOp Unconstrained1 (l ::= a)
+  (:*!=)  :: KnownSymbol l           => Label l -> Proxy a -> VarOp (Lacks l) (l ::= a)
+  (:*<-|) :: (KnownSymbol l, KnownSymbol l')          => Label l' -> Label l -> VarOp Unconstrained1 (l' ::<-| l)
+  (:*<-!) :: (KnownSymbol l, KnownSymbol l', r :\ l') => Label l' -> Label l -> VarOp (Lacks l') (l' ::<-| l)
 
 
-class Switch (r :: Row *) (v :: Row *) x where
-  -- | Given a Record of functions matching a Variant of values, apply the correct
-  -- function to the value in the variant.
-  switch :: Rec r -> Var v -> x
 
-instance Switch r (R '[]) x where
-  switch _ = impossible
 
-instance (KnownSymbol l, HasType l (a -> b) r, Switch r (R v) b)
-      => Switch r (R (l :-> a ': v)) b where
-  switch r v = case trial v l of
-    Left x  -> (r .! l) x
-    Right v -> switch r v
-    where l = Label :: Label l
+-- | Apply an operation to a record.
+infixr 4 *|
+(*|) :: c r => VarOp c ro -> Var r -> Var (ro :| r)
+(l  :*<- a)  *| m  = update l a m
+(l  :*= a)   *| m  = extend l a m
+(l  :*!= a)  *| m  = extendUnique l a m
+(l' :*<-| l) *| m  = rename l l' m
+(l' :*<-! l) *| m  = renameUnique l l' m
+
+
+{--------------------------------------------------------------------
+  Folds and maps
+--------------------------------------------------------------------}
+instance Erasable Var where
+  type Output Var a = a
+  type OutputZip Var a = Maybe a
+  erase p f = snd @String . eraseWithLabels p f
+  eraseWithLabels :: forall s ρ c b. (Forall ρ c, IsString s) => Proxy c -> (forall a. c a => a -> b) -> Var ρ -> (s,b)
+  eraseWithLabels _ f = fromJust . getConst . foldRow @ρ @c @Var @(Const (Maybe (s,b))) impossible doUncons doCons
+    where doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
+                   => Var ('R (ℓ :-> τ ': ρ)) -> (Maybe τ, Var ('R ρ))
+          doUncons v = case trial v (Label @ℓ) of
+            Left  x  -> (Just x, error "impossible")
+            Right v' -> (Nothing, v')
+          doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
+                 => Maybe τ -> Const (Maybe (s,b)) ('R ρ) -> Const (Maybe (s,b)) ('R (ℓ :-> τ ': ρ))
+          doCons (Just x) _ = Const $ Just (show' (Label @ℓ), f x)
+          doCons Nothing (Const c) = Const c
+  eraseZip :: forall ρ c b. Forall ρ c => Proxy c -> (forall a. c a => a -> a -> b) -> Var ρ -> Var ρ -> Maybe b
+  eraseZip _ f x y = getConst $ foldRow @ρ @c @(RowPair Var) @(Const (Maybe b)) doNil doUncons doCons (RowPair (x,y))
+    where doNil _ = Const Nothing
+          doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
+                   => (RowPair Var) ('R (ℓ :-> τ ': ρ)) -> ((Maybe τ, Maybe τ), (RowPair Var) ('R ρ))
+          doUncons (RowPair (r1, r2)) = case (trial r1 (Label @ℓ), trial r2 (Label @ℓ)) of
+            (Left a,  Left b)  -> ((Just a, Just b),  error "impossible")
+            (Left a,  Right _) -> ((Just a, Nothing), error "impossible")
+            (Right _, Left b)  -> ((Nothing, Just b), error "impossible")
+            (Right x, Right y) -> ((Nothing, Nothing), RowPair (x, y))
+          doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
+                 => (Maybe τ, Maybe τ) -> Const (Maybe b) ('R ρ) -> Const (Maybe b) ('R (ℓ :-> τ ': ρ))
+          doCons (Just a,  Just b) _ = Const $ Just $ f a b
+          doCons _ (Const c) = Const $ c
+
 
