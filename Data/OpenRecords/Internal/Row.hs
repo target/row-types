@@ -30,6 +30,7 @@ module Data.OpenRecords.Internal.Row
   , Labels, labels
   , ValOf, RowPair(..)
   , Forall(..)
+  , Unconstrained1
   , Erasable(..)
   -- * Helper functions
   , show'
@@ -234,6 +235,9 @@ instance (KnownSymbol ℓ, c τ, Forall ('R ρ) c) => Forall ('R (ℓ :-> τ ': 
   foldRow empty uncons cons r = cons t $ foldRow @('R ρ) @c empty uncons cons r'
     where (t, r') = uncons r
 
+-- | A null constraint
+class Unconstrained1 a
+instance Unconstrained1 a
 
 -- | The labels in a Row.
 type family Labels (r :: Row a) where

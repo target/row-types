@@ -70,8 +70,6 @@ import Data.String (IsString)
 import GHC.TypeLits
 import GHC.Exts -- needed for constraints kinds
 
-import Unconstrained
-
 import Unsafe.Coerce
 
 import Data.OpenRecords.Internal.Row

@@ -17,7 +17,6 @@ Library
                  containers,
                  hashable >= 1.2,
                  mtl >= 1.0,
-                 unconstrained >= 0.1.0.1,
                  unordered-containers >= 0.2
   Exposed-modules: Data.OpenRecords,
                    Data.OpenRecords.Internal.Row,
