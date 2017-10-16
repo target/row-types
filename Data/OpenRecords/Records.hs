@@ -24,7 +24,7 @@ module Data.OpenRecords.Records
              Rec,   Row(..), LT(..),
              -- * Construction
              empty, Empty,
-             rinit, rinitA, rinitAWithLabel
+             rinit, rinitA, rinitAWithLabel,
              -- ** Extension
              extend, extendUnique, Extend,
              -- ** Renaming
