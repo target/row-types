@@ -21,23 +21,23 @@ module Data.OpenRecords.Records
              -- * Types and constraints
              Label(..),
              KnownSymbol,
-             Rec,   Row(..), LT(..),
+             Rec,   Row,
              -- * Construction
              empty, Empty,
              rinit, rinitA, rinitAWithLabel,
              -- ** Extension
-             extend, extendUnique, Extend,
+             Extendable(..), Extend,
              -- ** Renaming
-             rename, renameUnique, Rename,
+             Renamable(..), Rename,
              -- ** Restriction
              (.-), (:-),
              Restrict(..),
              -- ** Update
-             update,
+             Updatable(..),
              -- * Query
              (.!), (:!),
              -- * Focus
-             focus, Modify,
+             Focusable(..), Modify,
              -- * Combine
              -- ** Union
               (.++), (:++),
@@ -242,7 +242,7 @@ instance Erasable Rec where
   type OutputZip Rec a = [a]
   erase p f = fmap (snd @String) . eraseWithLabels p f
   eraseWithLabels :: forall s ρ c b. (Forall ρ c, IsString s) => Proxy c -> (forall a. c a => a -> b) -> Rec ρ -> [(s,b)]
-  eraseWithLabels _ f = getConst . foldRow @ρ @c @Rec @(Const [(s,b)]) doNil doUncons doCons
+  eraseWithLabels _ f = getConst . metamorph @ρ @c @Rec @(Const [(s,b)]) doNil doUncons doCons
     where doNil _ = Const []
           doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
                    => Rec ('R (ℓ :-> τ ': ρ)) -> (τ, Rec ('R ρ))
@@ -251,7 +251,7 @@ instance Erasable Rec where
                  => τ -> Const [(s,b)] ('R ρ) -> Const [(s,b)] ('R (ℓ :-> τ ': ρ))
           doCons x (Const c) = Const $ (show' (Label @ℓ), f x) : c
   eraseZip :: forall ρ c b. Forall ρ c => Proxy c -> (forall a. c a => a -> a -> b) -> Rec ρ -> Rec ρ -> [b]
-  eraseZip _ f x y = getConst $ foldRow @ρ @c @(RowPair Rec) @(Const [b]) (const $ Const []) doUncons doCons (RowPair (x,y))
+  eraseZip _ f x y = getConst $ metamorph @ρ @c @(RowPair Rec) @(Const [b]) (const $ Const []) doUncons doCons (RowPair (x,y))
     where doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
                    => (RowPair Rec) ('R (ℓ :-> τ ': ρ)) -> ((τ,τ), (RowPair Rec) ('R ρ))
           doUncons (RowPair (r1, r2)) = ((r1 .! l, r2 .! l), RowPair (r1 .- l, r2 .- l)) where l = Label @ℓ
@@ -259,7 +259,8 @@ instance Erasable Rec where
                  => (τ,τ) -> Const [b] ('R ρ) -> Const [b] ('R (ℓ :-> τ ': ρ))
           doCons x (Const c) = Const $ uncurry f x : c
 
-
+-- | Turns a record into a 'HashMap' from values representing the labels to
+--   the values of the record.
 eraseToHashMap :: (IsString s, Eq s, Hashable s, Forall r c) =>
                   Proxy c -> (forall a . c a => a -> b) -> Rec r -> HashMap s b
 eraseToHashMap p f r = M.fromList $ eraseWithLabels p f r
@@ -391,9 +392,11 @@ unsafeInjectFront (show -> a) b (OR m) = OR $ M.insert a v m
 --------------------------------------------------------------------}
 newtype FRow (f :: * -> *) (ρ :: Row *) = FRow { unFRow :: f (Rec ρ) }
 
+-- | Initialize a record, where each value is determined by the given function over
+-- the label at that value.  This function works over an 'Applicative'.
 rinitAWithLabel :: forall f ρ c. (Applicative f, Forall ρ c)
                 => Proxy c -> (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Rec ρ)
-rinitAWithLabel _ mk = unFRow $ foldRow @ρ @c @(Const ()) @(FRow f) doNil doUncons doCons (Const ())
+rinitAWithLabel _ mk = unFRow $ metamorph @ρ @c @(Const ()) @(FRow f) doNil doUncons doCons (Const ())
   where doNil :: Const () Empty -> FRow f Empty
         doNil _ = FRow $ pure empty
         doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
@@ -403,10 +406,12 @@ rinitAWithLabel _ mk = unFRow $ foldRow @ρ @c @(Const ()) @(FRow f) doNil doUnc
                => () -> FRow f ('R ρ) -> FRow f ('R (ℓ :-> τ ': ρ))
         doCons _ (FRow r) = FRow $ unsafeInjectFront (Label @ℓ) <$> mk @ℓ @τ (Label @ℓ) <*> r
 
+-- | Initialize a record with a default value at each label; works over an 'Applicative'.
 rinitA :: forall f ρ c. (Applicative f, Forall ρ c)
        => Proxy c -> (forall a. c a => f a) -> f (Rec ρ)
 rinitA p f = rinitAWithLabel p (pure f)
 
+-- | Initialize a record with a default value at each label.
 rinit :: Forall r c => Proxy c -> (forall a. c a => a) -> Rec r
 rinit p mk = runIdentity $ rinitA p $ pure mk
 

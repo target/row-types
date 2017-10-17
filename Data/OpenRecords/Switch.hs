@@ -19,18 +19,19 @@ import Data.OpenRecords.Variants
 
 
 
-
-class Switch (r :: Row *) (v :: Row *) x where
-  -- | Given a Record of functions matching a Variant of values, apply the correct
+-- | A 'Var' and a 'Rec' can combine if their rows line up properly.
+class Switch (v :: Row *) (r :: Row *) x where
+  -- | Given a Variant and a Record of functions from each possible value
+  -- of the variant to a single output type, apply the correct
   -- function to the value in the variant.
-  switch :: Rec r -> Var v -> x
+  switch :: Var v -> Rec r -> x
 
-instance Switch r (R '[]) x where
-  switch _ = impossible
+instance Switch (R '[]) r x where
+  switch = const . impossible
 
-instance (KnownSymbol l, HasType l (a -> b) r, Switch r (R v) b)
-      => Switch r (R (l :-> a ': v)) b where
-  switch r v = case trial v l of
+instance (KnownSymbol l, HasType l (a -> b) r, Switch (R v) r b)
+      => Switch (R (l :-> a ': v)) r b where
+  switch v r = case trial v l of
     Left x  -> (r .! l) x
-    Right v -> switch r v
+    Right v -> switch v r
     where l = Label :: Label l

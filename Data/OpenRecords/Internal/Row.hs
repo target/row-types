@@ -9,16 +9,11 @@
 
 module Data.OpenRecords.Internal.Row
   (
-  -- * Common operations on types over rows
-    Extendable(..)
-  , Updatable(..)
-  , Focusable(..)
-  , Renamable(..)
   -- * Rows
+    Row(..)
   , Label(..)
   , KnownSymbol
   , LT(..)
-  , Row(..)
   , Empty
   , HideType(..)
   -- * Row Operations
@@ -31,6 +26,11 @@ module Data.OpenRecords.Internal.Row
   , ValOf, RowPair(..)
   , Forall(..)
   , Unconstrained1
+  -- * Common operations on types over rows
+  , Extendable(..)
+  , Updatable(..)
+  , Focusable(..)
+  , Renamable(..)
   , Erasable(..)
   -- * Helper functions
   , show'
@@ -51,22 +51,30 @@ import GHC.Exts -- needed for constraints kinds
 {--------------------------------------------------------------------
   Rows
 --------------------------------------------------------------------}
+-- | The kind of rows. This type is only used as a datakind. A row is a typelevel entity telling us
+--   which symbols are associated with which types.  The constructor is exported
+--   here (because this is an internal module) but should not be exported elsewhere.
+newtype Row a = R [LT a]
+
+-- | The kind of elements of rows.  Each element is a label and its associated type.
+data LT a = Symbol :-> a
+
+
 -- | A label
 data Label (s :: Symbol) = Label
 
 instance KnownSymbol s => Show (Label s) where
   show = symbolVal
 
-
--- | The kind of rows. This type is only used as a datakind. A row is a typelevel entity telling us
---   which symbols are associated with which types.
-newtype Row a = R [LT a] -- constructor not exported
+-- | A helper function for showing labels
+show' :: (IsString s, Show a) => a -> s
+show' = fromString . show
 
 -- | Type level variant of 'empty'
 type family Empty :: Row * where
   Empty = R '[]
 
-
+-- | Elements stored in a Row type are usually hidden.
 data HideType where
   HideType :: a -> HideType
 
@@ -80,11 +88,6 @@ data HideType where
 type r :\ l = (LacksP l r ~ LabelUnique l)
 -- | Are the two rows disjoint? (i.e. their sets of labels are disjoint)
 type Disjoint l r = (DisjointR l r ~ IsDisjoint)
-
-
-class Subset r r'
-instance Subset (R '[]) r'
-instance (HasType l a r', Subset (R r) r') => Subset (R (l :-> a ': r)) r'
 
 
 -- | Type level Row extension
@@ -183,56 +186,33 @@ type family (x :: RowOp *) :| (r :: Row *)  :: Row * where
 
 
 {--------------------------------------------------------------------
-  Common operations on types over rows
---------------------------------------------------------------------}
-class Extendable (t :: Row * -> *) where
-  type Inp t a
-  -- | Record extension. The row may already contain the label.
-  extend  :: forall l a r. KnownSymbol l => Label l -> Inp t a -> t r -> t (Extend l a r)
-  -- | Record extension without shadowing. The row may not already contain label l.
-  extendUnique :: forall l a r. (KnownSymbol l,r :\ l) => Label l -> Inp t a -> t r -> t (Extend l a r)
-  extendUnique = extend @t @l @a
-
-class Updatable (t :: Row * -> *) where
-  -- Update the value in the Row at the given label by providing a new one.
-  update :: KnownSymbol l => Label l -> r :! l -> t r -> t r
-
-class Focusable (t :: Row * -> *) where
-  -- Apply the given function to the value in the Row at the given label.
-  focus :: (Applicative f, KnownSymbol l) => Label l -> (r :! l -> f a) -> t r -> f (t (Modify l a r))
-
-class Renamable (t :: Row * -> *) where
-  -- Rename a label. The row may already contain the new label.
-  rename :: (KnownSymbol l, KnownSymbol l') => Label l -> Label l' -> t r -> t (Rename l l' r)
-  -- | Rename a label. The row may not already contain the new label.
-  renameUnique :: (KnownSymbol l, KnownSymbol l', r :\ l') => Label l -> Label l' -> t r -> t (Rename l l' r)
-  renameUnique = rename
-
-
-{--------------------------------------------------------------------
   Constrained record operations
 --------------------------------------------------------------------}
 
+-- | ValOf is used internally by 'Forall' to determine the intermediate value
+--   between the fold and unfold values of 'metamorph'.
 type family ValOf (f :: Row * -> *) (τ :: *) :: *
 type instance ValOf (Const x) τ = x
 
+-- | Any structure over a row in which every element is similarly constrained can
+--   be metamorphized into another structure over the same row.
 class Forall (r :: Row *) (c :: * -> Constraint) where
-  -- foldRow :: forall (f :: Row * -> *).
-  --            f Empty
-  --         -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => f ('R ρ) -> f ('R (ℓ :-> τ ': ρ)))
-  --         -> f r
-  foldRow :: forall (f :: Row * -> *) (g :: Row * -> *).
-             (f Empty -> g Empty)
-          -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => f ('R (ℓ :-> τ ': ρ)) -> (ValOf f τ, f ('R ρ)))
-          -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => ValOf f τ -> g ('R ρ) -> g ('R (ℓ :-> τ ': ρ)))
-          -> f r
-          -> g r
+  -- | A metamorphism is an unfold followed by a fold.
+  metamorph :: forall (f :: Row * -> *) (g :: Row * -> *).
+               (f Empty -> g Empty)
+               -- ^ The way to transform the empty element
+            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => f ('R (ℓ :-> τ ': ρ)) -> (ValOf f τ, f ('R ρ)))
+               -- ^ The unfold
+            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => ValOf f τ -> g ('R ρ) -> g ('R (ℓ :-> τ ': ρ)))
+               -- ^ The fold
+            -> f r  -- ^ The input structure
+            -> g r
 
 instance Forall (R '[]) c where
-  foldRow empty _ _ = empty
+  metamorph empty _ _ = empty
 
 instance (KnownSymbol ℓ, c τ, Forall ('R ρ) c) => Forall ('R (ℓ :-> τ ': ρ)) c where
-  foldRow empty uncons cons r = cons t $ foldRow @('R ρ) @c empty uncons cons r'
+  metamorph empty uncons cons r = cons t $ metamorph @('R ρ) @c empty uncons cons r'
     where (t, r') = uncons r
 
 -- | A null constraint
@@ -246,7 +226,7 @@ type family Labels (r :: Row a) where
 
 -- | Return a list of the labels in a record type.
 labels :: forall ρ c s. (IsString s, Forall ρ c) => Proxy ρ -> [s]
-labels _ = getConst $ foldRow @ρ @c @(Const ()) @(Const [s]) (const $ Const []) doUncons doCons (Const ())
+labels _ = getConst $ metamorph @ρ @c @(Const ()) @(Const [s]) (const $ Const []) doUncons doCons (Const ())
   where doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Const () ('R (ℓ :-> τ ': ρ)) -> ((), Const () ('R ρ))
         doUncons _ = ((), Const ())
         doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
@@ -254,31 +234,72 @@ labels _ = getConst $ foldRow @ρ @c @(Const ()) @(Const [s]) (const $ Const [])
         doCons _ (Const c) = Const $ show' (Label @ℓ) : c
 
 
-
+-- | A newtype for a pair of rows --- useful for functions involving 'metamorph'.
 newtype RowPair (f :: Row * -> *) (ρ :: Row *) = RowPair { unRowPair :: (f ρ, f ρ) }
 type instance ValOf (RowPair f) τ = (ValOf f τ, ValOf f τ)
 
+
+{--------------------------------------------------------------------
+  Common operations on types over rows
+--------------------------------------------------------------------}
+-- | Extendable row types support adding labels to the row.
+class Extendable (t :: Row * -> *) where
+  type Inp t a
+  -- | Record extension. The row may already contain the label.
+  extend  :: forall l a r. KnownSymbol l => Label l -> Inp t a -> t r -> t (Extend l a r)
+  -- | Record extension without shadowing. The row may not already contain label l.
+  extendUnique :: forall l a r. (KnownSymbol l,r :\ l) => Label l -> Inp t a -> t r -> t (Extend l a r)
+  extendUnique = extend @t @l @a
+
+-- | Updatable row types support changing the value at a label in the row.
+class Updatable (t :: Row * -> *) where
+  -- Update the value in the Row at the given label by providing a new one.
+  update :: KnownSymbol l => Label l -> r :! l -> t r -> t r
+
+-- | Focusable row types support modifying the value at a label in the row,
+-- and doing it in a lens-y way
+class Focusable (t :: Row * -> *) where
+  -- Apply the given function to the value in the Row at the given label.
+  focus :: (Applicative f, KnownSymbol l) => Label l -> (r :! l -> f a) -> t r -> f (t (Modify l a r))
+
+-- | Renamable row types support renaming labels in the row.
+class Renamable (t :: Row * -> *) where
+  -- Rename a label. The row may already contain the new label.
+  rename :: (KnownSymbol l, KnownSymbol l') => Label l -> Label l' -> t r -> t (Rename l l' r)
+  -- | Rename a label. The row may not already contain the new label.
+  renameUnique :: (KnownSymbol l, KnownSymbol l', r :\ l') => Label l -> Label l' -> t r -> t (Rename l l' r)
+  renameUnique = rename
+
+-- | Eraseable row types can be folded up.  Really, this should be called RowFoldable
+--   or something, and the inner functions should be
+--   @forall a. c a => a -> Output t b -> Output t b@
+--   with a base case value of @Output t b@ provided, and then 'erase' can be derived
+--   from that.
 class Erasable (t :: Row * -> *) where
+  -- | The output structure of the fold
   type Output t a
+  -- | The output structure of the zip fold
   type OutputZip t a
+  -- | A standard fold
   erase :: Forall r c => Proxy c -> (forall a. c a => a -> b) -> t r -> Output t b
+  -- A fold with labels
   eraseWithLabels :: (Forall r c, IsString s) => Proxy c -> (forall a. c a => a -> b) -> t r -> Output t (s, b)
+  -- | A fold over two row type structures at once
   eraseZip :: Forall r c => Proxy c -> (forall a. c a => a -> a -> b) -> t r -> t r -> OutputZip t b
 
 
--- | A helper function for showing labels
-show' :: (IsString s, Show a) => a -> s
-show' = fromString . show
-
 
 {--------------------------------------------------------------------
-  Convenient type families
+  Convenient type families and classes
 --------------------------------------------------------------------}
 
-data LT a = Symbol :-> a
-
--- gives nicer error message than Bool
+-- | A kind to give nicer error messages than Bool
 data Unique = LabelUnique Symbol | LabelNotUnique Symbol
+
+-- | A constraint that holds if the first Row is a subset of the second.
+class Subset r r'
+instance Subset (R '[]) r'
+instance (HasType l a r', Subset (R r) r') => Subset (R (l :-> a ': r)) r'
 
 type family Inject (l :: LT *) (r :: [LT *]) where
   Inject (l :-> t) '[] = (l :-> t ': '[])
@@ -318,7 +339,7 @@ type family Merge (l :: [LT *]) (r :: [LT *]) where
       (hl :-> al ': Merge tl (hr :-> ar ': tr))
       (hr :-> ar ': Merge (hl :-> al ': tl) tr)
 
--- gives nicer error message than Bool
+-- A kind to give nicer error messages than Bool
 data DisjointErr = IsDisjoint | Duplicate Symbol
 
 type family IfteD (c :: Bool) (t :: DisjointErr) (f :: DisjointErr)   where
@@ -337,6 +358,8 @@ type family DisjointZ (l :: [LT *]) (r :: [LT *]) where
       (DisjointZ tl (hr :-> ar ': tr))
       (DisjointZ (hl :-> al ': tl) tr)
 
+-- | The complement is the leftover.  So, the complement of @l@ and @r@ is
+--   whatever is remaining after all of the elements of @r@ are removed from @l@.
 type family Complement (l :: Row *) (r :: Row *) where
   Complement (R l) (R r) = R (ComplementR l r)
 
@@ -350,7 +373,7 @@ type family ComplementR (l :: [LT *]) (r :: [LT *]) where
     (ComplementR (hl :-> al ': tl) tr)
 
 
--- | there doesn't seem to be a (<=.?) :: Symbol -> Symbol -> Bool,
+-- | There doesn't seem to be a (<=.?) :: Symbol -> Symbol -> Bool,
 -- so here it is in terms of other ghc-7.8 type functions
 type a <=.? b = (CmpSymbol a b == 'LT)
 

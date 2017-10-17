@@ -12,13 +12,13 @@ module Data.OpenRecords.Variants
   -- * Types and constraints
     Label(..)
   , KnownSymbol
-  , Var, Row(..), LT(..)
+  , Var, Row, LT
   -- * Construction
   , HasType, just, just'
   -- ** Extension
-  , extend, Subset, diversify, (:+), (:++)
+  , Extendable(..), Subset, diversify, (:+), (:++)
   -- ** Modification
-  , update, focus, Modify, rename, Rename
+  , Updatable(..), Focusable(..), Modify, Renamable(..), Rename
   -- ** Syntactic sugar
   , VarOp(..), RowOp(..), (*|), (:|)
   -- * Destruction
@@ -70,12 +70,12 @@ impossible _ = error "Impossible! Somehow, a variant of nothing was produced."
 
 -- | Create a variant.  The first type argument is the set of types that the Variant
 -- lives in.
-just' :: forall r l a. (HasType l a r, KnownSymbol l) => Label l -> a -> Var r
-just' (show -> l) a = OneOf (l, HideType a)
+just :: forall r l a. (HasType l a r, KnownSymbol l) => Label l -> a -> Var r
+just (show -> l) a = OneOf (l, HideType a)
 
 -- | A version of 'just' that creates the variant of only one type.
-just :: KnownSymbol l => Label l -> a -> Var (Extend l a Empty)
-just = just'
+just' :: KnownSymbol l => Label l -> a -> Var (l ::= a :| Empty)
+just' = just
 
 instance Extendable Var where
   type Inp Var a = Proxy a
@@ -113,6 +113,22 @@ trial' = (either Just (const Nothing) .) . trial
 multiTrial :: forall y x. Forall y Unconstrained1 => Var x -> Either (Var y) (Var (Complement x y))
 multiTrial (OneOf (l, x)) = if l `elem` labels @y @Unconstrained1 Proxy then Left (OneOf (l, x)) else Right (OneOf (l, x))
 
+-- | Type level datakind corresponding to 'RecOp'.
+--   Here we provide a datatype for denoting row operations. Use ':|' to
+--   actually apply the type level operation.
+--
+--   This allows us to chain value level operations with nicer syntax.
+--   For example we can write:
+--
+-- > p :*<-| z *| y :*<- 'b' *| z :*!= Proxy @Bool *| x :*= Proxy @Double *| just' y 'a'
+--
+-- which is an expression of type:
+--
+-- > Var ("p" ::= Bool :| "x" ::= Double :| "y" ::= Char :| Empty)
+--
+-- Without this sugar, we would have written it like this:
+--
+-- > rename p z $ update y 'b' $ extendUnique z (Proxy @Bool) $ extend x (Proxy @Double) $ just' y 'a'
 infix 5 :*=
 infix 5 :*!=
 infix 5 :*<-
@@ -144,7 +160,7 @@ instance Erasable Var where
   type OutputZip Var a = Maybe a
   erase p f = snd @String . eraseWithLabels p f
   eraseWithLabels :: forall s ρ c b. (Forall ρ c, IsString s) => Proxy c -> (forall a. c a => a -> b) -> Var ρ -> (s,b)
-  eraseWithLabels _ f = fromJust . getConst . foldRow @ρ @c @Var @(Const (Maybe (s,b))) impossible doUncons doCons
+  eraseWithLabels _ f = fromJust . getConst . metamorph @ρ @c @Var @(Const (Maybe (s,b))) impossible doUncons doCons
     where doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
                    => Var ('R (ℓ :-> τ ': ρ)) -> (Maybe τ, Var ('R ρ))
           doUncons v = case trial v (Label @ℓ) of
@@ -155,7 +171,7 @@ instance Erasable Var where
           doCons (Just x) _ = Const $ Just (show' (Label @ℓ), f x)
           doCons Nothing (Const c) = Const c
   eraseZip :: forall ρ c b. Forall ρ c => Proxy c -> (forall a. c a => a -> a -> b) -> Var ρ -> Var ρ -> Maybe b
-  eraseZip _ f x y = getConst $ foldRow @ρ @c @(RowPair Var) @(Const (Maybe b)) doNil doUncons doCons (RowPair (x,y))
+  eraseZip _ f x y = getConst $ metamorph @ρ @c @(RowPair Var) @(Const (Maybe b)) doNil doUncons doCons (RowPair (x,y))
     where doNil _ = Const Nothing
           doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
                    => (RowPair Var) ('R (ℓ :-> τ ': ρ)) -> ((Maybe τ, Maybe τ), (RowPair Var) ('R ρ))
