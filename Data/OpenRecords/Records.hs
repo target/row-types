@@ -23,7 +23,7 @@ module Data.OpenRecords.Records
              KnownSymbol,
              Rec,   Row,
              -- * Construction
-             empty, Empty,
+             empty, (.=), Empty,
              rinit, rinitA, rinitAWithLabel,
              -- ** Extension
              Extendable(..), Extend,
@@ -105,6 +105,11 @@ type instance ValOf Rec τ = τ
 empty :: Rec Empty
 empty = OR M.empty
 
+-- | The singleton record
+infixr 7 .=
+(.=) :: KnownSymbol l => Label l -> a -> Rec (l :== a)
+l .= a = extend l a empty
+
 {--------------------------------------------------------------------
   Basic record operations
 --------------------------------------------------------------------}
@@ -144,6 +149,7 @@ infix  8 .-
 OR m .- (show -> a) = OR $ M.delete a m
 
 -- | Record disjoint union (commutative)
+infixr 6 .+
 (.+) :: Disjoint l r => Rec l -> Rec r -> Rec (l :+ r)
 OR l .+ OR r = OR $ M.unionWith (error "Impossible") l r
 

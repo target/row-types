@@ -20,7 +20,7 @@ module Data.OpenRecords.Variants
   -- ** Modification
   , Updatable(..), Focusable(..), Modify, Renamable(..), Rename
   -- ** Syntactic sugar
-  , VarOp(..), RowOp(..), (*|), (:|)
+  , VarOp(..), RowOp(..), (*|), (:|), (:==)
   -- * Destruction
   , impossible, trial, trial', multiTrial, viewV
   -- ** Types for destruction
@@ -192,6 +192,8 @@ instance Erasable Var where
           doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
                  => (Maybe τ, Maybe τ) -> Const (Maybe b) ('R ρ) -> Const (Maybe b) ('R (ℓ :-> τ ': ρ))
           doCons (Just a,  Just b) _ = Const $ Just $ f a b
-          doCons _ (Const c) = Const $ c
+          doCons (Just _,  Nothing) _ = Const Nothing
+          doCons (Nothing, Just _) _ = Const Nothing
+          doCons (Nothing, Nothing) (Const c) = Const c
 
 

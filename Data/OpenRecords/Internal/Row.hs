@@ -20,7 +20,7 @@ module Data.OpenRecords.Internal.Row
   , (:\), Disjoint, Extend, Modify, Rename
   , (:!), (:-), (:+)
   , Lacks, HasType
-  , RowOp(..), (:|)
+  , RowOp(..), (:|), (:==)
   -- * Row Classes
   , Labels, labels
   , ValOf, RowPair(..)
@@ -88,7 +88,13 @@ data HideType where
 -- | Does the row lack (i.e. it has not) the specified label?
 type r :\ l = (LacksP l r ~ LabelUnique l)
 -- | Are the two rows disjoint? (i.e. their sets of labels are disjoint)
-type Disjoint l r = (DisjointR l r ~ IsDisjoint)
+-- type Disjoint l r = (DisjointR l r ~ IsDisjoint)
+
+class Disjoint x y
+instance {-# INCOHERENT #-} Disjoint (R '[]) y
+instance {-# INCOHERENT #-} Disjoint x (R '[])
+instance {-# INCOHERENT #-} (Disjoint (R x) y, y :\ l) => Disjoint (R (l :-> a ': x)) y
+instance {-# INCOHERENT #-} (Disjoint x (R y), x :\ l) => Disjoint x (R (l :-> a ': y))
 
 
 -- | Type level Row extension
@@ -114,11 +120,12 @@ type family (r :: Row *) :! (t :: Symbol) :: * where
   R r :! l = Get l r
 
 -- | Type level Row element removal
-type family (r :: Row *) :- (s :: Symbol)  :: Row * where
+type family (r :: Row *) :- (s :: Symbol) :: Row * where
   R r :- l = R (Remove l r)
 
 -- | Type level Row append (to be used when Rows are disjoint)
-type family (l :: Row *) :+  (r :: Row *)  :: Row * where
+infixr 6 :+
+type family (l :: Row *) :+ (r :: Row *) :: Row * where
   R l :+ R r = R (Merge l r)
 
 
@@ -179,7 +186,8 @@ type family (x :: RowOp *) :| (r :: Row *)  :: Row * where
   (l ::= a)    :| r = Extend l a r
   (l' ::<-| l) :| r = Rename l l' r
 
-
+infixr 7 :==
+type (l :: Symbol) :== (a :: *) = Extend l a Empty
 
 
 {--------------------------------------------------------------------
@@ -333,25 +341,6 @@ type family Merge (l :: [LT *]) (r :: [LT *]) where
       Ifte (hl <=.? hr)
       (hl :-> al ': Merge tl (hr :-> ar ': tr))
       (hr :-> ar ': Merge (hl :-> al ': tl) tr)
-
--- A kind to give nicer error messages than Bool
-data DisjointErr = IsDisjoint | Duplicate Symbol
-
-type family IfteD (c :: Bool) (t :: DisjointErr) (f :: DisjointErr)   where
-  IfteD True  t f = t
-  IfteD False t f = f
-
-type family DisjointR (l :: Row *) (r :: Row *) where
-  DisjointR (R l) (R r) = DisjointZ l r
-
-type family DisjointZ (l :: [LT *]) (r :: [LT *]) where
-    DisjointZ '[] r = IsDisjoint
-    DisjointZ l '[] = IsDisjoint
-    DisjointZ (l :-> al ': tl) (l :-> ar ': tr) = Duplicate l
-    DisjointZ (hl :-> al ': tl) (hr :-> ar ': tr) =
-      IfteD (hl <=.? hr)
-      (DisjointZ tl (hr :-> ar ': tr))
-      (DisjointZ (hl :-> al ': tl) tr)
 
 -- | There doesn't seem to be a (<=.?) :: Symbol -> Symbol -> Bool,
 -- so here it is in terms of other ghc-7.8 type functions
