@@ -39,8 +39,6 @@ module Data.OpenRecords.Records
              -- * Focus
              Focusable(..), Modify,
              -- * Combine
-             -- ** Union
-              (.++), (:++),
              -- ** Disjoint union
               (.+) , (:+),
              -- * Row constraints
@@ -64,8 +62,6 @@ import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as M
 import Data.List
 import Data.Proxy
-import Data.Sequence (Seq,ViewL(..),(><),(<|))
-import qualified Data.Sequence as S
 import Data.String (IsString)
 
 import GHC.TypeLits
@@ -84,7 +80,7 @@ import Data.OpenRecords.Internal.Row
 --------------------------------------------------------------------}
 -- | A record with row r.
 data Rec (r :: Row *) where
-  OR :: HashMap String (Seq HideType) -> Rec r
+  OR :: HashMap String HideType -> Rec r
 
 instance (Forall r Show) => Show (Rec r) where
   show r = "{ " ++ intercalate ", " binds ++ " }"
@@ -119,51 +115,33 @@ instance Extendable Rec where
   -- | Record extension. The row may already contain the label,
   --   in which case the origin value can be obtained after restriction ('.-') with
   --   the label.
-  extend (show -> l) a (OR m) = OR $ M.insert l v m
-     where v = HideType a <| M.lookupDefault S.empty l m
+  extend (show -> l) a (OR m) = OR $ M.insert l (HideType a) m
 
 
 instance Updatable Rec where
   -- | Update the value associated with the label.
-  update (show -> l) a (OR m) = OR $ M.adjust f l m where f = S.update 0 (HideType a)
+  update (show -> l) a (OR m) = OR $ M.adjust f l m where f = const (HideType a)
 
 
 instance Focusable Rec where
   -- | Focus on the value associated with the label.
-  focus (show -> l) f (OR m) = case S.viewl (m M.! l) of
-    HideType x :< v -> OR . flip (M.insert l) m . (<| v) . HideType <$> f (unsafeCoerce x)
-    EmptyL -> error "Impossible Record state when focusing"
+  focus (show -> l) f (OR m) = case m M.! l of
+    HideType x -> OR . flip (M.insert l) m . HideType <$> f (unsafeCoerce x)
 
 
 instance Renamable Rec where
-  -- | Rename a label. The row may already contain the new label,
-  --   in which case the origin value can be obtained after restriction ('.-') with
-  --   the new label.
-  rename l l' r = extend l' (r .! l) (r .- l)
+  -- | Rename a label.
+  rename (show -> l) (show -> l') (OR m) = OR $ M.insert l' (m M.! l) $ M.delete l m
 
 -- | Record selection
 (.!) :: KnownSymbol l => Rec r -> Label l -> r :! l
-OR m .! (show -> a) = x'
-   where x S.:< _ =  S.viewl $ m M.! a
-         -- notice that this is safe because of the external type
-         x' = case x of HideType p -> unsafeCoerce p
-
-
+OR m .! (show -> a) = case m M.! a of
+  HideType x -> unsafeCoerce x
 
 infix  8 .-
 -- | Record restriction. Delete the label l from the record.
 (.-) :: KnownSymbol l =>  Rec r -> Label l -> Rec (r :- l)
-OR m .- (show -> a) = OR m'
-   where _ S.:< t =  S.viewl $ m M.! a
-         m' = case S.viewl t of
-               EmptyL -> M.delete a m
-               _      -> M.insert a t m
-
-
-
--- | Record union (not commutative)
-(.++) :: Rec l -> Rec r -> Rec (l :++ r)
-OR l .++ OR r = OR $ M.unionWith (><) l r
+OR m .- (show -> a) = OR $ M.delete a m
 
 -- | Record disjoint union (commutative)
 (.+) :: Disjoint l r => Rec l -> Rec r -> Rec (l :+ r)
@@ -178,9 +156,11 @@ instance Restrict '[] where
   type Restricted '[] r = Empty
   restrict _ = empty
 
-instance (KnownSymbol l, Restrict ls) => Restrict (l ': ls) where
+instance (KnownSymbol l, Restrict ls, LacksL l ls ~ LabelUnique l) => Restrict (l ': ls) where
   type Restricted (l ': ls) r = Extend l (r :! l) (Restricted ls r)
-  restrict r = extend (Label @l) (r .! Label @l) (restrict @ls r)
+  restrict r@(OR m) = OR $ M.insert l (m M.! l) m'
+    where (OR m') = restrict @ls r
+          l = show $ Label @l
 
 
 {--------------------------------------------------------------------
@@ -192,7 +172,7 @@ instance (KnownSymbol l, Restrict ls) => Restrict (l ': ls) where
 --   This allows us to chain operations with nicer syntax.
 --   For example we can write:
 --
--- > p :<-| z .| y :<- 'b' .| z :!= False .| x := 2 .| y := 'a' .| empty
+-- > p :<-| z .| y :<- 'b' .| z := False .| x := 2 .| y := 'a' .| empty
 --
 -- Which results in:
 --
@@ -200,27 +180,20 @@ instance (KnownSymbol l, Restrict ls) => Restrict (l ': ls) where
 --
 -- Without this sugar, we would have written it like this:
 --
--- >  rename z p $ update y 'b' $ extendUnique z False $ extend x 2 $ extend y 'a' empty
+-- >  rename z p $ update y 'b' $ extend z False $ extend x 2 $ extend y 'a' empty
 --
 --
 --  [@:<-@] Record update. Sugar for 'update'.
 --
 --  [@:=@] Record extension. Sugar for 'extend'.
 --
---  [@:!=@] Record extension, without shadowing. Sugar for 'extendUnique'.
---
 --  [@:<-|@] Record label renaming. Sugar for 'rename'.
---
---  [@:<-!@] Record label renaming. Sugar for 'renameUnique'.
 infix 5 :=
-infix 5 :!=
 infix 5 :<-
 data RecOp (c :: Row * -> Constraint) (rowOp :: RowOp *) where
   (:<-)  :: KnownSymbol l           => Label l -> a      -> RecOp (HasType l a) RUp
-  (:=)   :: KnownSymbol l           => Label l -> a      -> RecOp Unconstrained1 (l ::= a)
-  (:!=)  :: KnownSymbol l => Label l -> a      -> RecOp (Lacks l) (l ::= a)
-  (:<-|) :: (KnownSymbol l, KnownSymbol l') => Label l' -> Label l -> RecOp Unconstrained1 (l' ::<-| l)
-  (:<-!) :: (KnownSymbol l, KnownSymbol l', r :\ l') => Label l' -> Label l -> RecOp (Lacks l') (l' ::<-| l)
+  (:=)   :: KnownSymbol l           => Label l -> a      -> RecOp (Lacks l) (l ::= a)
+  (:<-|) :: (KnownSymbol l, KnownSymbol l', r :\ l') => Label l' -> Label l -> RecOp (Lacks l') (l' ::<-| l)
 
 
 
@@ -230,9 +203,7 @@ infixr 4 .|
 (.|) :: c r => RecOp c ro -> Rec r -> Rec (ro :| r)
 (l :<- a)   .| m  = update l a m
 (l := a)    .| m  = extend l a m
-(l :!= a)   .| m  = extendUnique l a m
 (l' :<-| l) .| m  = rename l l' m
-(l' :<-! l) .| m  = renameUnique l l' m
 
 {--------------------------------------------------------------------
   Folds and maps
@@ -383,8 +354,7 @@ instance (KnownSymbol l, RZipt t1 t2) =>
 
 -- | A helper function for unsafely adding an element to the front of a record
 unsafeInjectFront :: KnownSymbol l => Label l -> a -> Rec (R r) -> Rec (R (l :-> a ': r))
-unsafeInjectFront (show -> a) b (OR m) = OR $ M.insert a v m
-  where v = HideType b <| M.lookupDefault S.empty a m
+unsafeInjectFront (show -> a) b (OR m) = OR $ M.insert a (HideType b) m
 
 
 {--------------------------------------------------------------------

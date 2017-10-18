@@ -18,7 +18,7 @@ module Data.OpenRecords.Internal.Row
   , HideType(..)
   -- * Row Operations
   , (:\), Disjoint, Subset, Complement, Extend, Modify, Rename
-  , (:!), (:-), (:++), (:+)
+  , (:!), (:-), (:+)
   , Lacks, HasType
   , RowOp(..), (:|)
   -- * Row Classes
@@ -34,6 +34,7 @@ module Data.OpenRecords.Internal.Row
   , Erasable(..)
   -- * Helper functions
   , show'
+  , LacksL, Unique(..), AllUniqueLabels
   )
 where
 
@@ -108,19 +109,15 @@ type family Rename (l :: Symbol) (l' :: Symbol) (r :: Row *) :: Row * where
   Rename l l' r = Extend  l' (r :! l) (r :- l)
 
 infixl 6 :!
--- | Type level label fetching (type level '.!')
+-- | Type level label fetching
 type family (r :: Row *) :! (t :: Symbol) :: * where
   R r :! l = Get l r
 
--- | Type level Row element removal (type level '.-')
+-- | Type level Row element removal
 type family (r :: Row *) :- (s :: Symbol)  :: Row * where
   R r :- l = R (Remove l r)
 
--- | Type level Row append (type level '.++')
-type family (l :: Row *) :++  (r :: Row *)  :: Row * where
-  R l :++ R r = R (Merge l r)
-
--- | Type level Row append to be used when Rows are disjoint (type level '.+')
+-- | Type level Row append (to be used when Rows are disjoint)
 type family (l :: Row *) :+  (r :: Row *)  :: Row * where
   R l :+ R r = R (Merge l r)
 
@@ -245,11 +242,8 @@ type instance ValOf (RowPair f) τ = (ValOf f τ, ValOf f τ)
 -- | Extendable row types support adding labels to the row.
 class Extendable (t :: Row * -> *) where
   type Inp t a
-  -- | Record extension. The row may already contain the label.
-  extend  :: forall l a r. KnownSymbol l => Label l -> Inp t a -> t r -> t (Extend l a r)
-  -- | Record extension without shadowing. The row may not already contain label l.
-  extendUnique :: forall l a r. (KnownSymbol l,r :\ l) => Label l -> Inp t a -> t r -> t (Extend l a r)
-  extendUnique = extend @t @l @a
+  -- | Record extension. The row must not already contain the label.
+  extend  :: forall l a r. (KnownSymbol l,r :\ l) => Label l -> Inp t a -> t r -> t (Extend l a r)
 
 -- | Updatable row types support changing the value at a label in the row.
 class Updatable (t :: Row * -> *) where
@@ -264,11 +258,8 @@ class Focusable (t :: Row * -> *) where
 
 -- | Renamable row types support renaming labels in the row.
 class Renamable (t :: Row * -> *) where
-  -- Rename a label. The row may already contain the new label.
-  rename :: (KnownSymbol l, KnownSymbol l') => Label l -> Label l' -> t r -> t (Rename l l' r)
-  -- | Rename a label. The row may not already contain the new label.
-  renameUnique :: (KnownSymbol l, KnownSymbol l', r :\ l') => Label l -> Label l' -> t r -> t (Rename l l' r)
-  renameUnique = rename
+  -- Rename a label in the row.
+  rename :: (KnownSymbol l, KnownSymbol l', r :\ l') => Label l -> Label l' -> t r -> t (Rename l l' r)
 
 -- | Eraseable row types can be folded up.  Really, this should be called RowFoldable
 --   or something, and the inner functions should be
@@ -299,7 +290,11 @@ data Unique = LabelUnique Symbol | LabelNotUnique Symbol
 -- | A constraint that holds if the first Row is a subset of the second.
 class Subset r r'
 instance Subset (R '[]) r'
-instance (HasType l a r', Subset (R r) r') => Subset (R (l :-> a ': r)) r'
+instance ((r' :! l) ~ a, Subset (R r) (r' :- l)) => Subset (R (l :-> a ': r)) r'
+
+class AllUniqueLabels r
+instance AllUniqueLabels (R '[])
+instance ((R r) :\ l, AllUniqueLabels (R r)) => AllUniqueLabels (R (l :-> a ': r))
 
 type family Inject (l :: LT *) (r :: [LT *]) where
   Inject (l :-> t) '[] = (l :-> t ': '[])
@@ -308,7 +303,7 @@ type family Inject (l :: LT *) (r :: [LT *]) where
       (l :-> t   ': l' :-> t' ': x)
       (l' :-> t' ': Inject (l :-> t)  x)
 
-type family Ifte (c :: Bool) (t :: [LT *]) (f :: [LT *])   where
+type family Ifte (c :: Bool) (t :: k) (f :: k)   where
   Ifte True  t f = t
   Ifte False t f = f
 
@@ -330,6 +325,11 @@ type family LacksR (l :: Symbol) (r :: [LT *]) where
   LacksR l '[] = LabelUnique l
   LacksR l (l :-> t ': x) = LabelNotUnique l
   LacksR l (p ': x) = LacksR l x
+
+type family LacksL (l :: Symbol) (ls :: [Symbol]) where
+  LacksL l '[] = LabelUnique l
+  LacksL l (l ': x) = LabelNotUnique l
+  LacksL l (p ': x) = LacksL l x
 
 type family Merge (l :: [LT *]) (r :: [LT *]) where
   Merge '[] r = r

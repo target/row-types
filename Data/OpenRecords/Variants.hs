@@ -12,11 +12,11 @@ module Data.OpenRecords.Variants
   -- * Types and constraints
     Label(..)
   , KnownSymbol
-  , Var, Row, LT
+  , Var, Row, Empty
   -- * Construction
   , HasType, just, just'
   -- ** Extension
-  , Extendable(..), Subset, diversify, (:+), (:++)
+  , Extendable(..), Subset, diversify, (:+)
   -- ** Modification
   , Updatable(..), Focusable(..), Modify, Renamable(..), Rename
   -- ** Syntactic sugar
@@ -70,7 +70,7 @@ impossible _ = error "Impossible! Somehow, a variant of nothing was produced."
 
 -- | Create a variant.  The first type argument is the set of types that the Variant
 -- lives in.
-just :: forall r l a. (HasType l a r, KnownSymbol l) => Label l -> a -> Var r
+just :: forall r l. (AllUniqueLabels r, KnownSymbol l) => Label l -> r :! l -> Var r
 just (show -> l) a = OneOf (l, HideType a)
 
 -- | A version of 'just' that creates the variant of only one type.
@@ -83,7 +83,7 @@ instance Extendable Var where
   extend _ _ (OneOf (l, x)) = OneOf (l, x)
 
 -- | Make the variant arbitrarily more diverse.
-diversify :: forall r' r. Subset r r' => Var r -> Var r'
+diversify :: forall r' r. AllUniqueLabels (r :+ r') => Var r -> Var (r :+ r')
 diversify (OneOf (l, x)) = OneOf (l, x)
 
 instance Updatable Var where
@@ -130,14 +130,11 @@ multiTrial (OneOf (l, x)) = if l `elem` labels @y @Unconstrained1 Proxy then Lef
 --
 -- > rename p z $ update y 'b' $ extendUnique z (Proxy @Bool) $ extend x (Proxy @Double) $ just' y 'a'
 infix 5 :*=
-infix 5 :*!=
 infix 5 :*<-
 data VarOp (c :: Row * -> Constraint) (rowOp :: RowOp *) where
-  (:*<-)  :: KnownSymbol l           => Label l -> a -> VarOp (HasType l a) RUp
-  (:*=)   :: KnownSymbol l           => Label l -> Proxy a -> VarOp Unconstrained1 (l ::= a)
-  (:*!=)  :: KnownSymbol l           => Label l -> Proxy a -> VarOp (Lacks l) (l ::= a)
-  (:*<-|) :: (KnownSymbol l, KnownSymbol l')          => Label l' -> Label l -> VarOp Unconstrained1 (l' ::<-| l)
-  (:*<-!) :: (KnownSymbol l, KnownSymbol l', r :\ l') => Label l' -> Label l -> VarOp (Lacks l') (l' ::<-| l)
+  (:*<-)  :: KnownSymbol l => Label l -> a -> VarOp (HasType l a) RUp
+  (:*=)   :: KnownSymbol l => Label l -> Proxy a -> VarOp (Lacks l) (l ::= a)
+  (:*<-|) :: (KnownSymbol l, KnownSymbol l', r :\ l') => Label l' -> Label l -> VarOp (Lacks l') (l' ::<-| l)
 
 
 
@@ -147,9 +144,7 @@ infixr 4 *|
 (*|) :: c r => VarOp c ro -> Var r -> Var (ro :| r)
 (l  :*<- a)  *| m  = update l a m
 (l  :*= a)   *| m  = extend l a m
-(l  :*!= a)  *| m  = extendUnique l a m
 (l' :*<-| l) *| m  = rename l l' m
-(l' :*<-! l) *| m  = renameUnique l l' m
 
 
 {--------------------------------------------------------------------
