@@ -16,13 +16,14 @@ module Data.OpenRecords.Variants
   -- * Construction
   , HasType, just, just'
   -- ** Extension
-  , Extendable(..), Subset, diversify, (:+)
+  , Extendable(..), diversify, (:+)
   -- ** Modification
   , Updatable(..), Focusable(..), Modify, Renamable(..), Rename
   -- ** Syntactic sugar
   , VarOp(..), RowOp(..), (*|), (:|)
   -- * Destruction
-  , impossible, trial, trial', multiTrial, Complement
+  , impossible, trial, trial', multiTrial, viewV
+  -- ** Types for destruction
   , (:!), (:-)
   -- * Folds
   , Erasable(..)
@@ -110,8 +111,21 @@ trial' :: KnownSymbol l => Var r -> Label l -> Maybe (r :! l)
 trial' = (either Just (const Nothing) .) . trial
 
 -- | A trial over multiple types
-multiTrial :: forall y x. Forall y Unconstrained1 => Var x -> Either (Var y) (Var (Complement x y))
-multiTrial (OneOf (l, x)) = if l `elem` labels @y @Unconstrained1 Proxy then Left (OneOf (l, x)) else Right (OneOf (l, x))
+multiTrial :: forall x y. Forall x Unconstrained1 => Var (x :+ y) -> Either (Var x) (Var y)
+multiTrial (OneOf (l, x)) = if l `elem` labels @x @Unconstrained1 Proxy then Left (OneOf (l, x)) else Right (OneOf (l, x))
+
+-- | A convenient function for using view patterns when dispatching variants.
+--   For example:
+--
+-- @
+-- myShow :: Var ("y" '::= String :| "x" '::= Int :| Empty) -> String
+-- myShow (viewV x -> Just n) = "Int of "++show n
+-- myShow (viewV y -> Just s) = "String of "++s @
+viewV :: KnownSymbol l => Label l -> Var r -> Maybe (r :! l)
+viewV = flip trial'
+
+
+
 
 -- | Type level datakind corresponding to 'RecOp'.
 --   Here we provide a datatype for denoting row operations. Use ':|' to

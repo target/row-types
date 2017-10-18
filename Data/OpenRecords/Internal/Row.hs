@@ -17,7 +17,7 @@ module Data.OpenRecords.Internal.Row
   , Empty
   , HideType(..)
   -- * Row Operations
-  , (:\), Disjoint, Subset, Complement, Extend, Modify, Rename
+  , (:\), Disjoint, Extend, Modify, Rename
   , (:!), (:-), (:+)
   , Lacks, HasType
   , RowOp(..), (:|)
@@ -287,11 +287,6 @@ class Erasable (t :: Row * -> *) where
 -- | A kind to give nicer error messages than Bool
 data Unique = LabelUnique Symbol | LabelNotUnique Symbol
 
--- | A constraint that holds if the first Row is a subset of the second.
-class Subset r r'
-instance Subset (R '[]) r'
-instance ((r' :! l) ~ a, Subset (R r) (r' :- l)) => Subset (R (l :-> a ': r)) r'
-
 class AllUniqueLabels r
 instance AllUniqueLabels (R '[])
 instance ((R r) :\ l, AllUniqueLabels (R r)) => AllUniqueLabels (R (l :-> a ': r))
@@ -357,21 +352,6 @@ type family DisjointZ (l :: [LT *]) (r :: [LT *]) where
       IfteD (hl <=.? hr)
       (DisjointZ tl (hr :-> ar ': tr))
       (DisjointZ (hl :-> al ': tl) tr)
-
--- | The complement is the leftover.  So, the complement of @l@ and @r@ is
---   whatever is remaining after all of the elements of @r@ are removed from @l@.
-type family Complement (l :: Row *) (r :: Row *) where
-  Complement (R l) (R r) = R (ComplementR l r)
-
-type family ComplementR (l :: [LT *]) (r :: [LT *]) where
-  ComplementR '[] r = '[]
-  ComplementR l '[] = l
-  ComplementR (l :-> al ': tl) (l :-> al ': tr) = ComplementR tl tr
-  ComplementR (hl :-> al ': tl) (hr :-> ar ': tr) =
-    Ifte (hl <=.? hr)
-    (hl :-> al ': ComplementR tl (hr :-> ar ': tr))
-    (ComplementR (hl :-> al ': tl) tr)
-
 
 -- | There doesn't seem to be a (<=.?) :: Symbol -> Symbol -> Bool,
 -- so here it is in terms of other ghc-7.8 type functions

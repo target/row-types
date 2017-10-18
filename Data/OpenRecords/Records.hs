@@ -82,11 +82,11 @@ import Data.OpenRecords.Internal.Row
 data Rec (r :: Row *) where
   OR :: HashMap String HideType -> Rec r
 
-instance (Forall r Show) => Show (Rec r) where
+instance Forall r Show => Show (Rec r) where
   show r = "{ " ++ intercalate ", " binds ++ " }"
     where binds = (\ (x, y) -> x ++ "=" ++ y) <$> eraseWithLabels (Proxy @Show) show r
 
-instance (Forall r Eq) => Eq (Rec r) where
+instance Forall r Eq => Eq (Rec r) where
   r == r' = and $ eraseZip (Proxy @Eq) (==) r r'
 
 instance (Eq (Rec r), Forall r Ord) => Ord (Rec r) where
@@ -95,7 +95,7 @@ instance (Eq (Rec r), Forall r Ord) => Ord (Rec r) where
                   | a : _ <- l' = a
                   where l' = dropWhile (== EQ) l
 
-instance (Forall r Bounded) => Bounded (Rec r) where
+instance Forall r Bounded => Bounded (Rec r) where
   minBound = rinit (Proxy @Bounded) minBound
   maxBound = rinit (Proxy @Bounded) maxBound
 
