@@ -227,10 +227,12 @@ it, we can write a function like this:
 "Int of 1"
 λ> myShow v'
 "String of Foo"
+λ> myShow (just z 3 :: Var ("y" :== String :+ "x" :== Integer :+ "z" :== Double))
+"Unknown"
 
 Once again, the type signature is totally derivable.
 
-There are two minor warts with this.  First, it's fairly common to want to define
+There are two minor annoyances with this.  First, it's fairly common to want to define
 a function like myShow to be exhaustive in the variant's cases, but to do this,
 you must manually provide a type signature:
 
@@ -243,11 +245,11 @@ The second blemish can be seen in this restricted version of myShow.  Even thoug
 we know from the type that we've covered all the posibilities of the variant, GHC
 will generate a "non-exhaustive pattern match" warning without the final line.
 
-Another common case is when you have a variant, and you want to convert it into
-one with a different type signature.  There are two ways to do this.  If the new
-type is strictly more general than the current one, you can diversify your variant.
-Essentially, this works by unwrapping the underlying value and then calling just
-on it so it has the right type.
+Another common operation on a variants is to convert its type signature.  There are
+two ways to do this.  If the new type is strictly more general than the current one,
+then the variant can be diversified.  Essentially, this works by unwrapping the
+underlying value and just-ing it so it has the right type.  In practice, it means
+any extensions to the type can be simply annotated, as in the following example:
 
 λ> diversify @("y" :== String) v2 == v3
 True
@@ -255,7 +257,29 @@ True
 GHC is not quite clever enough to infer the right thing without a type annotation
 here.
 
+The other way to change the type is by doing a multiTrial.  With this, you can
+wholesale change the type of the variant to any (valid) variant type you would
+like.  Of course, there needs to be a recourse if the variant you provide is not
+expressible in the type you want, so multiTrial returns an Either of the type you
+want or a Variant of the leftovers.  Consider the examples:
 
+λ> :t multiTrial @("x" :== Double :+ "y" :== String) v
+multiTrial @("x" :== Double :+ "y" :== String) v
+  :: Either
+       (Var ('R '["x" ':-> Double, "y" ':-> String]))
+       (Var ('R '["x" ':-> Integer]))
+λ> multiTrial @("x" :== Double :+ "y" :== String) v
+Right {x=1}
 
+λ> :t multiTrial @("x" :== Double :+ "y" :== String) v'
+multiTrial @("x" :== Double :+ "y" :== String) v'
+  :: Either
+       (Var ('R '["x" ':-> Double, "y" ':-> String]))
+       (Var ('R '["x" ':-> Integer]))
+λ> multiTrial @("x" :== Double :+ "y" :== String) v'
+Left {y="Foo"}
 
+Thus, multiTrial can be used not only to arbitrarily split apart a variant, but
+also to change unused label associations (in this case, we changed the variant
+from one where "x" is an Integer to one where it's a Double).
 

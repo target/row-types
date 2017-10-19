@@ -111,8 +111,8 @@ trial' :: KnownSymbol l => Var r -> Label l -> Maybe (r :! l)
 trial' = (either Just (const Nothing) .) . trial
 
 -- | A trial over multiple types
-multiTrial :: forall x y. Forall x Unconstrained1 => Var (x :+ y) -> Either (Var x) (Var y)
-multiTrial (OneOf (l, x)) = if l `elem` labels @x @Unconstrained1 Proxy then Left (OneOf (l, x)) else Right (OneOf (l, x))
+multiTrial :: forall x y. (AllUniqueLabels x, Forall (y :// x) Unconstrained1) => Var y -> Either (Var x) (Var (y :// x))
+multiTrial (OneOf (l, x)) = if l `elem` labels @(y :// x) @Unconstrained1 Proxy then Right (OneOf (l, x)) else Left (OneOf (l, x))
 
 -- | A convenient function for using view patterns when dispatching variants.
 --   For example:

@@ -18,7 +18,7 @@ module Data.OpenRecords.Internal.Row
   , HideType(..)
   -- * Row Operations
   , (:\), Disjoint, Extend, Modify, Rename
-  , (:!), (:-), (:+)
+  , (:!), (:-), (:+), (://)
   , Lacks, HasType
   , RowOp(..), (:|), (:==)
   -- * Row Classes
@@ -128,6 +128,9 @@ infixr 6 :+
 type family (l :: Row *) :+ (r :: Row *) :: Row * where
   R l :+ R r = R (Merge l r)
 
+infixr 6 ://
+type family (l :: Row *) :// (r :: Row *) :: Row * where
+  R l :// R r = R (Diff l r)
 
 {--------------------------------------------------------------------
   Syntactic sugar for record operations
@@ -341,6 +344,15 @@ type family Merge (l :: [LT *]) (r :: [LT *]) where
       Ifte (hl <=.? hr)
       (hl :-> al ': Merge tl (hr :-> ar ': tr))
       (hr :-> ar ': Merge (hl :-> al ': tl) tr)
+
+type family Diff (l :: [LT *]) (r :: [LT *]) where
+  Diff '[] r = '[]
+  Diff l '[] = l
+  Diff (l :-> al ': tl) (l :-> al ': tr) = Diff tl tr
+  Diff (hl :-> al ': tl) (hr :-> ar ': tr) =
+    Ifte (hl <=.? hr)
+    (hl :-> al ': Diff tl (hr :-> ar ': tr))
+    (Diff (hl :-> al ': tl) tr)
 
 -- | There doesn't seem to be a (<=.?) :: Symbol -> Symbol -> Bool,
 -- so here it is in terms of other ghc-7.8 type functions
