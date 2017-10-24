@@ -16,15 +16,15 @@ module Data.OpenRecords.Variants
   -- * Construction
   , HasType, just, just'
   -- ** Extension
-  , Extendable(..), diversify, (:+)
+  , Extendable(..), diversify, (:+), AllUniqueLabels
   -- ** Modification
   , Updatable(..), Focusable(..), Modify, Renamable(..), Rename
   -- ** Syntactic sugar
   , VarOp(..), RowOp(..), (*|), (:|), (:==)
   -- * Destruction
-  , impossible, trial, trial', multiTrial, viewV
+  , impossible, trial, trial', multiTrial, viewV, Unconstrained1
   -- ** Types for destruction
-  , (:!), (:-)
+  , (:!), (:-), (://)
   -- * Folds
   , Erasable(..)
   -- ** labels

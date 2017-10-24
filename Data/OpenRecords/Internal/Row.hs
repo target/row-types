@@ -85,11 +85,11 @@ data HideType where
   Row operations
 --------------------------------------------------------------------}
 
--- | Does the row lack (i.e. it has not) the specified label?
+-- | Does the row lack (i.e. it does not have) the specified label?
 type r :\ l = (LacksP l r ~ LabelUnique l)
+
 -- | Are the two rows disjoint? (i.e. their sets of labels are disjoint)
 -- type Disjoint l r = (DisjointR l r ~ IsDisjoint)
-
 class Disjoint x y
 instance {-# INCOHERENT #-} Disjoint (R '[]) y
 instance {-# INCOHERENT #-} Disjoint x (R '[])
@@ -123,7 +123,7 @@ type family (r :: Row *) :! (t :: Symbol) :: * where
 type family (r :: Row *) :- (s :: Symbol) :: Row * where
   R r :- l = R (Remove l r)
 
--- | Type level Row append (to be used when Rows are disjoint)
+-- | Type level Row append
 infixr 6 :+
 type family (l :: Row *) :+ (r :: Row *) :: Row * where
   R l :+ R r = R (Merge l r)
@@ -340,6 +340,8 @@ type family LacksL (l :: Symbol) (ls :: [Symbol]) where
 type family Merge (l :: [LT *]) (r :: [LT *]) where
   Merge '[] r = r
   Merge l '[] = l
+  Merge (h :-> a ': tl)   (h :-> a ': tr) =
+      (h :-> a ': Merge tl tr)
   Merge (hl :-> al ': tl) (hr :-> ar ': tr) =
       Ifte (hl <=.? hr)
       (hl :-> al ': Merge tl (hr :-> ar ': tr))

@@ -3,6 +3,7 @@
 >
 > import Data.OpenRecords.Records
 > import Data.OpenRecords.Variants
+> import Data.OpenRecords.Switch
 > import Data.Proxy
 
 In this example file, we will explore how to create and use records and variants.
@@ -162,7 +163,7 @@ records:
 λ> v'
 {y="Foo"}
 λ> v2
-{y=1}
+{x=1}
 
 Once created, a variant can be expanded by using the same extend function that
 can be used on records, except that instead of providing a value for the new
@@ -170,8 +171,22 @@ label being added, one merely needs to provide a Proxy of the value.
 
 > v3 = extend y (Proxy @String) v2
 
-Of course, showing v2 will look the same as showing v3, but the types are actually
-different.  Indeed, it is a type error to try to check whether they're equal:
+Rather than having to use proxies to extend a variant component by component, we
+can do the same thing with type applications and the diversify function.
+
+> v3' = diversify @("y" :== String) v2
+> v4 = diversify @("y" :== String :+ "z" :== Double) v2
+
+λ> :t v4
+v4 :: Var ('R '["x" ':-> Integer, "y" ':-> String, "z" ':-> Double])
+λ> v3 == v3'
+True
+
+Doing the above equality test does raise the question of how equality works on
+variants.  For instance, v2 and v3 both look the same when you show them, and they
+both have the same value inside, but can we test them for equality?  Indeed, we can't,
+precisely because their types are different: it is a type error to even try to
+check whether they're equal:
 
 λ> v2 == v3
 error:
@@ -245,17 +260,29 @@ The second blemish can be seen in this restricted version of myShow.  Even thoug
 we know from the type that we've covered all the posibilities of the variant, GHC
 will generate a "non-exhaustive pattern match" warning without the final line.
 
+One way to avoid this problem is to use switch.  The switch operator takes a variant
+and a record such that for each label that the variant has, the record has a function
+at that label that consumes the value the variant has and produces a value in a
+common type.  Essentially, switch "applies" the variant to the record to produce
+an output value.
+
+> --myShowRestricted' :: Var ("y" :== String :+ "x" :== Integer) -> String
+> myShowRestricted' v = switch v $
+>      x .= (\n -> "Int of "++show n)
+>   .+ y .= (\s -> "String of "++s)
+
+This version of myShow needs neither a type signature (it is inferred exactly) nor
+a default "unreachable" case.  However, we no longer have the benefit of Haskell's
+standard pattern matching.
+
+
+
 Another common operation on a variants is to convert its type signature.  There are
 two ways to do this.  If the new type is strictly more general than the current one,
 then the variant can be diversified.  Essentially, this works by unwrapping the
 underlying value and just-ing it so it has the right type.  In practice, it means
 any extensions to the type can be simply annotated, as in the following example:
-
-λ> diversify @("y" :== String) v2 == v3
-True
-
-GHC is not quite clever enough to infer the right thing without a type annotation
-here.
+--
 
 The other way to change the type is by doing a multiTrial.  With this, you can
 wholesale change the type of the variant to any (valid) variant type you would
@@ -283,3 +310,17 @@ Thus, multiTrial can be used not only to arbitrarily split apart a variant, but
 also to change unused label associations (in this case, we changed the variant
 from one where "x" is an Integer to one where it's a Double).
 
+
+Here are two functions you can define over variants.  The type constraints are a little
+ugly (the type equalities are necessary but annoying).
+
+> also :: (Forall ys Unconstrained1, AllUniqueLabels xs, ys ~ ((xs :+ ys) :// xs))
+>      => (Var xs -> a)
+>      -> (Var ys -> a)
+>      -> Var (xs :+ ys) -> a
+> also f1 f2 e = case multiTrial e of
+>   Left  e' -> f1 e'
+>   Right e' -> f2 e'
+
+> joinVarLists :: forall x y. (AllUniqueLabels (x :+ y), (x :+ y) ~ (y :+ x)) => [Var x] -> [Var y] -> [Var (x :+ y)]
+> joinVarLists xs ys = map (diversify @y) xs ++ map (diversify @x) ys
