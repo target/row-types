@@ -24,7 +24,7 @@ module Data.OpenRecords.Internal.Row
   -- * Row Classes
   , Labels, labels
   , ValOf, RowPair(..)
-  , Forall(..)
+  , Forall(..), Forall2(..)
   , Unconstrained1
   -- * Common operations on types over rows
   , Extendable(..)
@@ -34,7 +34,7 @@ module Data.OpenRecords.Internal.Row
   , Erasable(..)
   -- * Helper functions
   , show'
-  , LacksL, Unique(..), AllUniqueLabels
+  , LacksL, Unique(..), AllUniqueLabels, RZip, Map
   )
 where
 
@@ -88,15 +88,6 @@ data HideType where
 -- | Does the row lack (i.e. it does not have) the specified label?
 type r :\ l = (LacksP l r ~ LabelUnique l)
 
--- | Are the two rows disjoint? (i.e. their sets of labels are disjoint)
--- type Disjoint l r = (DisjointR l r ~ IsDisjoint)
-class Disjoint x y
-instance {-# INCOHERENT #-} Disjoint (R '[]) y
-instance {-# INCOHERENT #-} Disjoint x (R '[])
-instance {-# INCOHERENT #-} (Disjoint (R x) y, y :\ l) => Disjoint (R (l :-> a ': x)) y
-instance {-# INCOHERENT #-} (Disjoint x (R y), x :\ l) => Disjoint x (R (l :-> a ': y))
-
-
 -- | Type level Row extension
 type family Extend (l :: Symbol) (a :: *) (r :: Row *) :: Row * where
   Extend l a (R x) = R (Inject (l :-> a) x)
@@ -128,6 +119,8 @@ infixr 6 :+
 type family (l :: Row *) :+ (r :: Row *) :: Row * where
   R l :+ R r = R (Merge l r)
 
+-- | Type level Row difference.  That is, @l :// r@ is the row remaining after
+-- removing any matching elements of @r@ from @l@.
 infixr 6 ://
 type family (l :: Row *) :// (r :: Row *) :: Row * where
   R l :// R r = R (Diff l r)
@@ -189,6 +182,7 @@ type family (x :: RowOp *) :| (r :: Row *)  :: Row * where
   (l ::= a)    :| r = Extend l a r
   (l' ::<-| l) :| r = Rename l l' r
 
+-- | A typelevel way to create a singleton Row.
 infixr 7 :==
 type (l :: Symbol) :== (a :: *) = Extend l a Empty
 
@@ -222,6 +216,31 @@ instance Forall (R '[]) c where
 instance (KnownSymbol ℓ, c τ, Forall ('R ρ) c) => Forall ('R (ℓ :-> τ ': ρ)) c where
   metamorph empty uncons cons r = cons t $ metamorph @('R ρ) @c empty uncons cons r'
     where (t, r') = uncons r
+
+-- | Any structure over two rows in which every element of both rows satisfies the
+--   given constraint can be metamorphized into another structure over both of the
+--   rows.
+-- TODO: Perhaps it should be over two constraints?  But this hasn't seemed necessary
+--  in practice.
+class Forall2 (r1 :: Row *) (r2 :: Row *) (c :: * -> Constraint) where
+  -- | A metamorphism is a fold followed by an unfold.  Here, we fold both of the inputs.
+  metamorph2 :: forall (f :: Row * -> *) (g :: Row * -> *) (h :: Row * -> Row * -> *).
+                (f Empty -> g Empty -> h Empty Empty)
+             -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1, c τ2)
+                 => f ('R (ℓ :-> τ1 ': ρ1))
+                 -> g ('R (ℓ :-> τ2 ': ρ2))
+                 -> (ValOf f τ1, f ('R ρ1), ValOf g τ2, g ('R ρ2)))
+             -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1, c τ2)
+                 => ValOf f τ1 -> ValOf g τ2 -> h ('R ρ1) ('R ρ2) -> h ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)))
+             -> f r1 -> g r2 -> h r1 r2
+
+instance Forall2 (R '[]) (R '[]) c where
+  metamorph2 empty _ _ = empty
+
+instance (KnownSymbol ℓ, c τ1, c τ2, Forall2 ('R ρ1) ('R ρ2) c)
+      => Forall2 ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)) c where
+  metamorph2 empty uncons cons r1 r2 = cons t1 t2 $ metamorph2 @('R ρ1) @('R ρ2) @c empty uncons cons r1' r2'
+    where (t1, r1', t2, r2') = uncons r1 r2
 
 -- | A null constraint
 class Unconstrained1 a
@@ -298,9 +317,35 @@ class Erasable (t :: Row * -> *) where
 -- | A kind to give nicer error messages than Bool
 data Unique = LabelUnique Symbol | LabelNotUnique Symbol
 
+-- | Are all of the labels in this Row unique?
 class AllUniqueLabels r
 instance AllUniqueLabels (R '[])
 instance ((R r) :\ l, AllUniqueLabels (R r)) => AllUniqueLabels (R (l :-> a ': r))
+
+-- | Are the two rows disjoint? (i.e. their sets of labels are disjoint)
+class Disjoint x y
+instance {-# INCOHERENT #-} Disjoint (R '[]) y
+instance {-# INCOHERENT #-} Disjoint x (R '[])
+instance {-# INCOHERENT #-} (Disjoint (R x) y, y :\ l) => Disjoint (R (l :-> a ': x)) y
+instance {-# INCOHERENT #-} (Disjoint x (R y), x :\ l) => Disjoint x (R (l :-> a ': y))
+
+-- | Map a type level function over a Row.
+type family Map (f :: a -> b) (r :: Row a) :: Row b where
+  Map f (R r) = R (MapR f r)
+
+type family MapR (f :: a -> b) (r :: [LT a]) :: [LT b] where
+  MapR f '[] = '[]
+  MapR f (l :-> v ': t) = l :-> f v ': MapR f t
+
+-- | Zips two rows together to create a Row of the pairs.
+--   The two rows must have the same set of labels.
+type family RZip (r1 :: Row *) (r2 :: Row *) where
+  RZip (R r1) (R r2) = R (ZipR r1 r2)
+
+type family ZipR (r1 :: [LT *]) (r2 :: [LT *]) where
+  ZipR '[] '[] = '[]
+  ZipR (l :-> t1 ': r1) (l :-> t2 ': r2) =
+    l :-> (t1, t2) ': ZipR r1 r2
 
 type family Inject (l :: LT *) (r :: [LT *]) where
   Inject (l :-> t) '[] = (l :-> t ': '[])
@@ -332,6 +377,7 @@ type family LacksR (l :: Symbol) (r :: [LT *]) where
   LacksR l (l :-> t ': x) = LabelNotUnique l
   LacksR l (p ': x) = LacksR l x
 
+-- | Useful for checking if a symbol is *not* in the symbol list.
 type family LacksL (l :: Symbol) (ls :: [Symbol]) where
   LacksL l '[] = LabelUnique l
   LacksL l (l ': x) = LabelNotUnique l

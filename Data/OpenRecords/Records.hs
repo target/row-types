@@ -43,7 +43,8 @@ module Data.OpenRecords.Records
               (.+) , (:+),
              -- * Row constraints
              (:\), Disjoint, Labels, Forall(..), Erasable(..),
-             RowMap(..), RowMapC(..), RowMapCF(..), RowZip(..),
+             rmapc, rmap, rsequence, rzip,
+             rxform, rxformc,
              eraseToHashMap,
              -- * Row only operations
              -- * Syntactic sugar
@@ -242,121 +243,70 @@ eraseToHashMap :: (IsString s, Eq s, Hashable s, Forall r c) =>
                   Proxy c -> (forall a . c a => a -> b) -> Rec r -> HashMap s b
 eraseToHashMap p f r = M.fromList $ eraseWithLabels p f r
 
+-- | RMap is used internally as a type level lambda for defining record maps.
+newtype RMap (f :: * -> *) (ρ :: Row *) = RMap { unRMap :: Rec (Map f ρ) }
+type instance ValOf (RMap f) τ = f τ
 
--- | A class for mapping a function over a record.
--- TODO: Can this be made more generic?
-class RowMap (f :: * -> *) (r :: Row *) where
-  type Map f r :: Row *
-  rmap :: Proxy f -> (forall a.  a -> f a) -> Rec r -> Rec (Map f r)
-  rsequence :: Applicative f => Proxy f -> Rec (Map f r) -> f (Rec r)
+-- | FRec is used internally as a type level lambda for defining applicative stuff over records.
+newtype FRec (f :: * -> *) (ρ :: Row *) = FRec { unFRec :: f (Rec ρ) }
 
-instance RowMapx f r => RowMap f (R r) where
-  type Map f (R r) = R (RM f r)
-  rmap = rmap'
-  rsequence = rsequence'
+-- | A function to map over a record given a constraint.
+rmapc :: forall c f r. Forall r c => Proxy c -> (forall a. c a => a -> f a) -> Rec r -> Rec (Map f r)
+rmapc _ f = unRMap . metamorph @r @c @Rec @(RMap f) doNil doUncons doCons
+  where
+    doNil _ = RMap empty
+    doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Rec ('R (ℓ :-> τ ': ρ)) -> (τ, Rec ('R ρ))
+    doUncons r = (r .! l, r .- l) where l = Label @ℓ
+    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
+           => τ -> RMap f ('R ρ) -> RMap f ('R (ℓ :-> τ ': ρ))
+    doCons v (RMap r) = RMap (unsafeInjectFront l (f v) r) where l = Label @ℓ
 
--- | A helper class for mapping a function over a record.
--- TODO: Can this be made more generic?
-class RowMapx (f :: * -> *) (r :: [LT *]) where
-  type RM f r :: [LT *]
-  rmap' :: Proxy f -> (forall a.  a -> f a) -> Rec (R r) -> Rec (R (RM f r))
-  rsequence' :: Applicative f => Proxy f -> Rec (R (RM f r)) -> f (Rec (R r))
+-- | A function to map over a record given no constraint.
+rmap :: forall f r. Forall r Unconstrained1 => (forall a. a -> f a) -> Rec r -> Rec (Map f r)
+rmap = rmapc (Proxy @Unconstrained1)
 
-instance RowMapx f '[] where
-  type RM f '[] = '[]
-  rmap' _ _ _ = empty
-  rsequence' _ _ = pure empty
+-- | A mapping function specifically to convert @f a@ values to @g a@ values.
+rxformc :: forall r c f g. Forall r c => Proxy c -> (forall a. c a => f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
+rxformc _ f = unRMap . metamorph @r @c @(RMap f) @(RMap g) doNil doUncons doCons . RMap
+  where
+    doNil _ = RMap empty
+    doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => RMap f ('R (ℓ :-> τ ': ρ)) -> (f τ, RMap f ('R ρ))
+    doUncons (RMap r) = (r .! l, RMap $ r .- l) where l = Label @ℓ
+    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
+           => f τ -> RMap g ('R ρ) -> RMap g ('R (ℓ :-> τ ': ρ))
+    doCons v (RMap r) = RMap (unsafeInjectFront l (f v) r) where l = Label @ℓ
 
-instance (KnownSymbol l,  RowMapx f t) => RowMapx f (l :-> v ': t) where
-  type RM f (l :-> v ': t) = l :-> f v ': RM f t
-  rmap' w f r = unsafeInjectFront l (f (r .! l)) (rmap' w f (r .- l))
-    where l = Label :: Label l
-  rsequence' w r = unsafeInjectFront l <$> r .! l <*> rsequence' w (r .- l)
-    where l = Label :: Label l
+-- | A form of @rxformc@ that doesn't have a constraint on @a@
+rxform :: forall r f g . Forall r Unconstrained1 => (forall a. f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
+rxform = rxformc @r (Proxy @Unconstrained1)
 
+-- | Applicative sequencing over a record
+rsequence :: forall f r. (Forall r Unconstrained1, Applicative f) => Proxy f -> Rec (Map f r) -> f (Rec r)
+rsequence _ = unFRec . metamorph @r @Unconstrained1 @(RMap f) @(FRec f) doNil doUncons doCons . RMap
+  where
+    doNil _ = FRec (pure empty)
+    doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ) => RMap f ('R (ℓ :-> τ ': ρ)) -> (f τ, RMap f ('R ρ))
+    doUncons (RMap r) = (r .! l, RMap (r .- l)) where l = Label @ℓ
+    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ)
+           => f τ -> FRec f ('R ρ) -> FRec f ('R (ℓ :-> τ ': ρ))
+    doCons fv (FRec fr) = FRec $ unsafeInjectFront l <$> fv <*> fr where l = Label @ℓ
 
--- | A class for mapping a function over a record where each element of the record
--- satisfies a constraint.
--- TODO: Can this be made more generic?
-class RowMapCF (c :: * -> Constraint) (f :: * -> *) (r :: Row *) where
-  type MapCF c f r :: Row *
-  rmapcf :: Proxy c -> Proxy f -> (forall a. c a => a -> f a) -> Rec r -> Rec (MapCF c f r)
+-- | RZipPair is used internally as a type level lambda for zipping records.
+newtype RZipPair (ρ1 :: Row *) (ρ2 :: Row *) = RZipPair { unRZipPair :: Rec (RZip ρ1 ρ2) }
 
-instance RMapcf c f r => RowMapCF c f (R r) where
-  type MapCF c f (R r) = R (RMappf c f r)
-  rmapcf = rmapcf'
-
--- | A helper class for mapping a function over a record where each element of the record
--- satisfies a constraint.
--- TODO: Can this be made more generic?
-class RMapcf (c :: * -> Constraint) (f :: * -> *) (r :: [LT *]) where
-  type RMappf c f r :: [LT *]
-  rmapcf' :: Proxy c -> Proxy f -> (forall a. c a => a -> f a) -> Rec (R r) -> Rec (R (RMappf c f r))
-
-instance RMapcf c f '[] where
-  type RMappf c f '[] = '[]
-  rmapcf' _ _ _ _ = empty
-
-instance (KnownSymbol l, c v, RMapcf c f t) => RMapcf c f (l :-> v ': t) where
-  type RMappf c f (l :-> v ': t) = l :-> f v ': RMappf c f t
-  rmapcf' c w f r = unsafeInjectFront l (f (r .! l)) (rmapcf' c w f (r .- l))
-    where l = Label :: Label l
-
-
--- | A class for mapping a function over a record where each element of the record
--- satisfies a constraint and the types don't change.
--- TODO: Can this be made more generic?
-class RowMapC (c :: * -> Constraint) (r :: Row *) where
-  type MapC c r :: Row *
-  rmapc :: Proxy c -> (forall a. c a => a -> a) -> Rec r -> Rec (MapC c r)
-
-instance RMapc c r => RowMapC c (R r) where
-  type MapC c (R r) = R (RMapp c r)
-  rmapc = rmapc'
-
--- | A class for mapping a function over a record where each element of the record
--- satisfies a constraint and the types don't change.
--- TODO: Can this be made more generic?
-class RMapc (c :: * -> Constraint) (r :: [LT *]) where
-  type RMapp c r :: [LT *]
-  rmapc' :: Proxy c -> (forall a. c a => a -> a) -> Rec (R r) -> Rec (R (RMapp c r))
-
-instance RMapc c '[] where
-  type RMapp c '[] = '[]
-  rmapc' _ _ _ = empty
-
-instance (KnownSymbol l, c v, RMapc c t) => RMapc c (l :-> v ': t) where
-  type RMapp c (l :-> v ': t) = l :-> v ': RMapp c t
-  rmapc' c f r = unsafeInjectFront l (f (r .! l)) (rmapc' c f (r .- l))
-    where l = Label :: Label l
-
-
--- | A class for zipping two records together.
--- TODO: Can this be made more generic?
-class RowZip (r1 :: Row *) (r2 :: Row *) where
-  type RZip r1 r2 :: Row *
-  rzip :: Rec r1 -> Rec r2 -> Rec (RZip r1 r2)
-
-instance RZipt r1 r2 => RowZip (R r1) (R r2) where
-  type RZip (R r1) (R r2) = R (RZipp r1 r2)
-  rzip = rzip'
-
--- | A helper class for zipping two records together.
--- TODO: Can this be made more generic?
-class RZipt (r1 :: [LT *]) (r2 :: [LT *]) where
-  type RZipp r1 r2 :: [LT *]
-  rzip' :: Rec (R r1) -> Rec (R r2) -> Rec (R (RZipp r1 r2))
-
-instance RZipt '[] '[] where
-  type RZipp '[] '[] = '[]
-  rzip' _ _ = empty
-
-instance (KnownSymbol l, RZipt t1 t2) =>
-   RZipt (l :-> v1 ': t1) (l :-> v2 ': t2) where
-
-   type RZipp (l :-> v1 ': t1) (l :-> v2 ': t2) = l :-> (v1,v2) ': RZipp t1 t2
-   rzip' r1 r2 = unsafeInjectFront l (r1 .! l, r2 .! l) (rzip' (r1 .- l) (r2 .- l))
-       where l = Label :: Label l
+-- | Zips together two records that have the same set of labels.
+rzip :: forall r1 r2. Forall2 r1 r2 Unconstrained1 => Rec r1 -> Rec r2 -> Rec (RZip r1 r2)
+rzip r1 r2 = unRZipPair $ metamorph2 @r1 @r2 @Unconstrained1 @Rec @Rec @RZipPair doNil doUncons doCons r1 r2
+  where
+    doNil _ _ = RZipPair empty
+    doUncons :: forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ)
+        => Rec ('R (ℓ :-> τ1 ': ρ1))
+        -> Rec ('R (ℓ :-> τ2 ': ρ2))
+        -> (τ1, Rec ('R ρ1), τ2, Rec ('R ρ2))
+    doUncons r1 r2 = (r1 .! l, r1 .- l, r2 .! l, r2 .- l) where l = Label @ℓ
+    doCons :: forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ)
+        => τ1 -> τ2 -> RZipPair ('R ρ1) ('R ρ2) -> RZipPair ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2))
+    doCons v1 v2 (RZipPair r) = RZipPair $ unsafeInjectFront l (v1, v2) r where l = Label @ℓ
 
 -- | A helper function for unsafely adding an element to the front of a record
 unsafeInjectFront :: KnownSymbol l => Label l -> a -> Rec (R r) -> Rec (R (l :-> a ': r))
@@ -366,21 +316,20 @@ unsafeInjectFront (show -> a) b (OR m) = OR $ M.insert a (HideType b) m
 {--------------------------------------------------------------------
   Record initialization
 --------------------------------------------------------------------}
-newtype FRow (f :: * -> *) (ρ :: Row *) = FRow { unFRow :: f (Rec ρ) }
 
 -- | Initialize a record, where each value is determined by the given function over
 -- the label at that value.  This function works over an 'Applicative'.
 rinitAWithLabel :: forall f ρ c. (Applicative f, Forall ρ c)
                 => Proxy c -> (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Rec ρ)
-rinitAWithLabel _ mk = unFRow $ metamorph @ρ @c @(Const ()) @(FRow f) doNil doUncons doCons (Const ())
-  where doNil :: Const () Empty -> FRow f Empty
-        doNil _ = FRow $ pure empty
+rinitAWithLabel _ mk = unFRec $ metamorph @ρ @c @(Const ()) @(FRec f) doNil doUncons doCons (Const ())
+  where doNil :: Const () Empty -> FRec f Empty
+        doNil _ = FRec $ pure empty
         doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
                  => Const () ('R (ℓ :-> τ ': ρ)) -> ((), Const () ('R ρ))
         doUncons _ = ((), Const ())
         doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
-               => () -> FRow f ('R ρ) -> FRow f ('R (ℓ :-> τ ': ρ))
-        doCons _ (FRow r) = FRow $ unsafeInjectFront (Label @ℓ) <$> mk @ℓ @τ (Label @ℓ) <*> r
+               => () -> FRec f ('R ρ) -> FRec f ('R (ℓ :-> τ ': ρ))
+        doCons _ (FRec r) = FRec $ unsafeInjectFront (Label @ℓ) <$> mk @ℓ @τ (Label @ℓ) <*> r
 
 -- | Initialize a record with a default value at each label; works over an 'Applicative'.
 rinitA :: forall f ρ c. (Applicative f, Forall ρ c)
