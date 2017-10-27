@@ -338,6 +338,7 @@ instance {-# INCOHERENT #-} Disjoint x (R '[])
 instance {-# INCOHERENT #-} (Disjoint (R x) y, y :\ l) => Disjoint (R (l :-> a ': x)) y
 instance {-# INCOHERENT #-} (Disjoint x (R y), x :\ l) => Disjoint x (R (l :-> a ': y))
 
+-- | Is the first row a subset of the second?
 class Subset x y
 instance Subset (R '[]) y
 instance (HasType l a y, Subset (R x) y) => Subset (R (l :-> a ': x)) y
