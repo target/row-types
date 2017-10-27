@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Data.OpenRecords.Internal.Row
@@ -34,7 +35,7 @@ module Data.OpenRecords.Internal.Row
   , Erasable(..)
   -- * Helper functions
   , show'
-  , LacksL, Unique(..), AllUniqueLabels, RZip, Map
+  , LacksL, Unique(..), AllUniqueLabels, RZip, Map, Subset
   )
 where
 
@@ -43,8 +44,9 @@ import Data.Proxy
 import Data.String (IsString (fromString))
 import Data.Type.Equality (type (==))
 
-import GHC.TypeLits
 import GHC.Exts -- needed for constraints kinds
+import GHC.OverloadedLabels
+import GHC.TypeLits
 
 
 
@@ -66,6 +68,13 @@ data Label (s :: Symbol) = Label
 
 instance KnownSymbol s => Show (Label s) where
   show = symbolVal
+
+instance x ~ y => IsLabel x (Label y) where
+#if __GLASGOW_HASKELL__ >= 802
+  fromLabel = Label
+#else
+  fromLabel _ = Label
+#endif
 
 -- | A helper function for showing labels
 show' :: (IsString s, Show a) => a -> s
@@ -328,6 +337,10 @@ instance {-# INCOHERENT #-} Disjoint (R '[]) y
 instance {-# INCOHERENT #-} Disjoint x (R '[])
 instance {-# INCOHERENT #-} (Disjoint (R x) y, y :\ l) => Disjoint (R (l :-> a ': x)) y
 instance {-# INCOHERENT #-} (Disjoint x (R y), x :\ l) => Disjoint x (R (l :-> a ': y))
+
+class Subset x y
+instance Subset (R '[]) y
+instance (HasType l a y, Subset (R x) y) => Subset (R (l :-> a ': x)) y
 
 -- | Map a type level function over a Row.
 type family Map (f :: a -> b) (r :: Row a) :: Row b where

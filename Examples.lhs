@@ -1,4 +1,4 @@
-
+> {-# LANGUAGE OverloadedLabels #-}
 > module Examples where
 >
 > import Data.OpenRecords.Records
@@ -8,16 +8,26 @@
 
 In this example file, we will explore how to create and use records and variants.
 
-To begin, we will declare a few label names that we can use throughout.
+--------------------------------------------------------------------------------
+  RECORDS
+--------------------------------------------------------------------------------
 
-> x = Label :: Label "x"
-> y = Label :: Label "y"
-> z = Label :: Label "z"
-> w = Label :: Label "w"
+To begin, we will briefly discuss creating labels -- their use will follow.
 
-Note that with type applications, it is also fine to write:
+The most basic way to create a label is through construction with a type signature:
 
-> name = Label @"name"
+ x = Label :: Label "x"
+
+With the above definition, x is a label for the field x.  Using type applications,
+this can be shortened to:
+
+ x = Label @"x"
+
+And with OverloadedLabels, one can just write:
+
+ #x
+
+We will use the OverloadedLabels notation in these examples.
 
 --------------------------------------------------------------------------------
   RECORDS
@@ -31,7 +41,7 @@ rather than extending an already existing one, so after the initialization, we
 write empty.
 
 > origin :: Rec ("x" :== Double :+ "y" :== Double )
-> origin = x .= 0 .+ y .= 0
+> origin = #x .= 0 .+ #y .= 0
 
 Note that, although we wrote the type explicitly, GHC has no problem inferring
 it exactly.  Also note that the type follows the same form as the value.  Instead
@@ -47,7 +57,7 @@ Of course, as an extensible record, the order that we build it shouldn't matter,
 and indeed, it doesn't.  Consider the following variation:
 
 > origin' :: Rec ("y" :== Double :+ "x" :== Double)
-> origin' = y .= 0 .+ x .= 0
+> origin' = #y .= 0 .+ #x .= 0
 
 If we show this at the repl, we see:
 
@@ -62,7 +72,7 @@ True
 Now, let's expand upon our record.  Why stop at two dimensions when we can make
 a record in three dimensions.
 
-> origin3D = z .= 0.0 .+ origin
+> origin3D = #z .= 0.0 .+ origin
 
 Once again, the type is inferred for us, and the record is exactly as expected.
 
@@ -70,7 +80,7 @@ In fact, we can do this generally.  The following function takes a name and a
 record and adds the "name" field to that record with the given name.
 
 > named :: r :\ "name" => a -> Rec r -> Rec ("name" :== a :+ r)
-> named s r = name .= s .+ r
+> named s r = #name .= s .+ r
 
 Note that we require that the record we are naming must not have a "name" field
 already.  Overlapping labels within a single record/variant is strictly forbidden.
@@ -85,7 +95,7 @@ and we can use this to write whatever we want.  Here is a function for calculati
 Euclidean distance from the origin to a point:
 
 > distance :: (Floating t, (r :! "y") ~ t, (r :! "x") ~ t) => Rec r -> t
-> distance p = sqrt $ p.!x * p.!x + p.!y * p.!y
+> distance p = sqrt $ p .! #x * p .! #x + p .! #y * p .! #y
 
 Once again, the type of distance is entirely inferrable, but we write it here for
 convenience.  This works exactly as expected:
@@ -103,8 +113,8 @@ write a function to move the points we have:
 
 > move :: (Num (r :! "x"), Num (r :! "y"))
 >      => Rec r -> r :! "x" -> r :! "y" -> Rec r
-> move p dx dy = x :<- p.!x + dx .|
->                y :<- p.!y + dy .| p
+> move p dx dy = #x :<- p .! #x + dx .|
+>                #y :<- p .! #y + dy .| p
 
 Here, we're using the update operator :<- to update the value at the label x with
 the value at x plus the given dx, and then we do the same for y.  We string these
@@ -145,15 +155,15 @@ construction and destruction are obviously different.
 Creating a variant can be done with just:
 
 > v,v' :: Var ("y" :== String :+ "x" :== Integer)
-> v  = just x 1
-> v' = just y "Foo"
+> v  = just #x 1
+> v' = just #y "Foo"
 
 Here, the type is necessary to specify what concrete type the variant is (when
 using AllowAmbiguousTypes, the type is not always needed, but it would be needed
 to e.g. show the variant).  In the simple case of a variant of just one type,
 the simpler just' function can be used:
 
-> v2 = just' x 1
+> v2 = just' #x 1
 
 Now, the type can be easily derived by GHC.  We can show variants as easily as
 records:
@@ -169,7 +179,7 @@ Once created, a variant can be expanded by using the same extend function that
 can be used on records, except that instead of providing a value for the new
 label being added, one merely needs to provide a Proxy of the value.
 
-> v3 = extend y (Proxy @String) v2
+> v3 = extend #y (Proxy @String) v2
 
 Rather than having to use proxies to extend a variant component by component, we
 can do the same thing with type applications and the diversify function.
@@ -204,11 +214,11 @@ but since v3 now has the same labels as v1, that comparison is fine:
 
 λ> v == v3
 True
-λ> v == just x 3
+λ> v == just #x 3
 False
 λ> v == v'
 False
-λ> v == just y "fail"
+λ> v == just #y "fail"
 False
 
 (Also note here that using just without a type signature is fine because the correct
@@ -217,13 +227,13 @@ type can be easily inferred due to v's type.)
 What can you do with a variant?  The only way to really use one is to get the value
 out, and to do that, you must trial it:
 
-λ> trial v x
+λ> trial v #x
 Left 1
-λ> trial v y
+λ> trial v #y
 Right {x=1}
-λ> trial v' x
+λ> trial v' #x
 Right {y="Foo"}
-λ> trial v' y
+λ> trial v' #y
 Left "Foo"
 
 If trialing at a label l succeeds, then it provides a Left value of the value at l.
@@ -234,15 +244,15 @@ For ease of use in view patterns, Variants also exposes the viewV function.  Wit
 it, we can write a function like this:
 
 > myShow :: ((r :! "y") ~ String, Show (r :! "x")) => Var r -> String
-> myShow (viewV x -> Just n) = "Int of "++show n
-> myShow (viewV y -> Just s) = "String of "++s
+> myShow (viewV #x -> Just n) = "Int of "++show n
+> myShow (viewV #y -> Just s) = "String of "++s
 > myShow _ = "Unknown"
 
 λ> myShow v
 "Int of 1"
 λ> myShow v'
 "String of Foo"
-λ> myShow (just z 3 :: Var ("y" :== String :+ "x" :== Integer :+ "z" :== Double))
+λ> myShow (just #z 3 :: Var ("y" :== String :+ "x" :== Integer :+ "z" :== Double))
 "Unknown"
 
 Once again, the type signature is totally derivable.
@@ -252,8 +262,8 @@ a function like myShow to be exhaustive in the variant's cases, but to do this,
 you must manually provide a type signature:
 
 > myShowRestricted :: Var ("y" :== String :+ "x" :== Integer) -> String
-> myShowRestricted (viewV x -> Just n) = "Int of "++show n
-> myShowRestricted (viewV y -> Just s) = "String of "++s
+> myShowRestricted (viewV #x -> Just n) = "Int of "++show n
+> myShowRestricted (viewV #y -> Just s) = "String of "++s
 > myShowRestricted _ = error "Unreachable"
 
 The second blemish can be seen in this restricted version of myShow.  Even though
@@ -268,8 +278,8 @@ an output value.
 
 > --myShowRestricted' :: Var ("y" :== String :+ "x" :== Integer) -> String
 > myShowRestricted' v = switch v $
->      x .= (\n -> "Int of "++show n)
->   .+ y .= (\s -> "String of "++s)
+>      #x .= (\n -> "Int of "++show n)
+>   .+ #y .= (\s -> "String of "++s)
 
 This version of myShow needs neither a type signature (it is inferred exactly) nor
 a default "unreachable" case.  However, we no longer have the benefit of Haskell's
@@ -277,18 +287,11 @@ standard pattern matching.
 
 
 
-Another common operation on a variants is to convert its type signature.  There are
-two ways to do this.  If the new type is strictly more general than the current one,
-then the variant can be diversified.  Essentially, this works by unwrapping the
-underlying value and just-ing it so it has the right type.  In practice, it means
-any extensions to the type can be simply annotated, as in the following example:
---
-
-The other way to change the type is by doing a multiTrial.  With this, you can
-wholesale change the type of the variant to any (valid) variant type you would
-like.  Of course, there needs to be a recourse if the variant you provide is not
-expressible in the type you want, so multiTrial returns an Either of the type you
-want or a Variant of the leftovers.  Consider the examples:
+A more powerful version of trial is multiTrial, which tests for multiple labels
+at once.  With this, you can wholesale change the type of the variant to any (valid)
+variant type you would like.  Of course, there needs to be a recourse if the variant
+you provide is not expressible in the type you want, so multiTrial returns an Either
+of the type you want or a Variant of the leftovers.  Consider the examples:
 
 λ> :t multiTrial @("x" :== Double :+ "y" :== String) v
 multiTrial @("x" :== Double :+ "y" :== String) v

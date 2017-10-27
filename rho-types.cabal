@@ -32,6 +32,7 @@ Library
               InstanceSigs,
               KindSignatures,
               MultiParamTypeClasses,
+              OverloadedLabels,
               PatternGuards,
               PolyKinds,
               RankNTypes,

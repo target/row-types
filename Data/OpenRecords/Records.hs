@@ -31,7 +31,7 @@ module Data.OpenRecords.Records
              Renamable(..), Rename,
              -- ** Restriction
              (.-), (:-),
-             Restrict(..),
+             restrict,
              -- ** Update
              Updatable(..),
              -- * Query
@@ -154,21 +154,9 @@ infixr 6 .+
 (.+) :: Disjoint l r => Rec l -> Rec r -> Rec (l :+ r)
 OR l .+ OR r = OR $ M.unionWith (error "Impossible") l r
 
--- | A class for restricting a Record to a particular set of labels
-class Restrict (ls :: [Symbol]) where
-  type Restricted ls (r :: Row *) :: Row *
-  restrict :: Rec r -> Rec (Restricted ls r)
-
-instance Restrict '[] where
-  type Restricted '[] r = Empty
-  restrict _ = empty
-
-instance (KnownSymbol l, Restrict ls, LacksL l ls ~ LabelUnique l) => Restrict (l ': ls) where
-  type Restricted (l ': ls) r = Extend l (r :! l) (Restricted ls r)
-  restrict r@(OR m) = OR $ M.insert l (m M.! l) m'
-    where (OR m') = restrict @ls r
-          l = show $ Label @l
-
+-- | Arbitrary record restriction.  Turn a record into a subset of itself.
+restrict :: forall r r'. Subset r r' => Rec r' -> Rec r
+restrict (OR m) = OR m
 
 {--------------------------------------------------------------------
   Syntactic sugar for record operations
