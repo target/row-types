@@ -1,17 +1,14 @@
-Name:                CTRex
-Version:             0.7
-Synopsis:	           Open records using closed type families.
-Description:         Open records using closed type families.
+Name:                rho-types
+Version:             0.1
+Synopsis:	           Open records and variants.
+Description:         Open records and variants.
 License:             BSD3
 License-file:        LICENSE
-Author:              Atze van der Ploeg
-Maintainer:          atzeus@gmail.com
-Homepage:            http://www.haskell.org/haskellwiki/CTRex
+Author:              Daniel Winograd-Cort
+Maintainer:          dwincort@gmail.com
 Build-Type:          Simple
 Cabal-Version:       >=1.6
-Data-files:          ChangeLog
 Category:            Data, Data Structures
-Tested-With:         GHC==7.8.2
 Library
   Build-Depends: base >= 2 && < 6,
                  containers,
@@ -48,4 +45,4 @@ Library
 
 source-repository head
     type:     git
-    location: https://github.com/atzeus/CTRex
+    location: https://git.target.com/RedOptHaskell/rho-types/
