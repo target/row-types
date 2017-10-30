@@ -20,7 +20,7 @@ module Data.OpenRecords.Records
   -- * Types and constraints
     Label(..)
   , KnownSymbol, AllUniqueLabels
-  , Var, Row, Empty
+  , Rec, Row, Empty
   -- * Construction
   , empty, (.=)
   , rinit, rinitA, rinitAWithLabel
@@ -47,7 +47,6 @@ module Data.OpenRecords.Records
   , RZip, rzip
   -- ** Sequence
   , rsequence
-  , Forall(..), Erasable(..), Unconstrained1
   -- ** labels
   , labels
   )
