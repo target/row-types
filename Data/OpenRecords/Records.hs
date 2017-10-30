@@ -43,7 +43,7 @@ module Data.OpenRecords.Records
               (.+) , (:+),
              -- * Row constraints
              (:\), Disjoint, Labels, Forall(..), Erasable(..),
-             rmapc, rmap, rsequence, rzip,
+             rmapc, rmap, rsequence, Map, rzip, RZip,
              rxform, rxformc,
              eraseToHashMap,
              -- * Row only operations
