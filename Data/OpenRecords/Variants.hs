@@ -11,19 +11,20 @@ module Data.OpenRecords.Variants
   (
   -- * Types and constraints
     Label(..)
-  , KnownSymbol
+  , KnownSymbol, AllUniqueLabels
   , Var, Row, Empty
   -- * Construction
   , HasType, just, just'
   , vinitAWithLabel
   -- ** Extension
-  , Extendable(..), diversify, (:+), AllUniqueLabels
+  , Extendable(..), Extend, (:\), diversify, (:+)
   -- ** Modification
   , Updatable(..), Focusable(..), Modify, Renamable(..), Rename
   -- ** Syntactic sugar
   , VarOp(..), RowOp(..), (*|), (:|), (:==)
   -- * Destruction
-  , impossible, trial, trial', multiTrial, viewV, Unconstrained1
+  , impossible, trial, trial', multiTrial, viewV
+  , Forall(..), Unconstrained1
   -- ** Types for destruction
   , (:!), (:-), (://)
   -- * Folds

@@ -16,43 +16,41 @@
 
 
 module Data.OpenRecords.Records
-
- (
-             -- * Types and constraints
-             Label(..),
-             KnownSymbol,
-             Rec,   Row,
-             -- * Construction
-             empty, (.=), Empty,
-             rinit, rinitA, rinitAWithLabel,
-             -- ** Extension
-             Extendable(..), Extend,
-             -- ** Renaming
-             Renamable(..), Rename,
-             -- ** Restriction
-             (.-), (:-),
-             restrict,
-             -- ** Update
-             Updatable(..),
-             -- * Query
-             (.!), (:!),
-             -- * Focus
-             Focusable(..), Modify,
-             -- * Combine
-             -- ** Disjoint union
-              (.+) , (:+),
-             -- * Row constraints
-             (:\), Disjoint, Labels, Forall(..), Erasable(..),
-             rmapc, rmap, rsequence, Map, rzip, RZip,
-             rxform, rxformc,
-             eraseToHashMap,
-             -- * Row only operations
-             -- * Syntactic sugar
-             RecOp(..), RowOp(..), (.|), (:|),
-             -- * Labels
-             labels
-
-     )
+  (
+  -- * Types and constraints
+    Label(..)
+  , KnownSymbol, AllUniqueLabels
+  , Var, Row, Empty
+  -- * Construction
+  , empty, (.=)
+  , rinit, rinitA, rinitAWithLabel
+  -- ** Extension
+  , Extendable(..), Extend, (:\)
+  -- ** Restriction
+  , (.-), (:-)
+  , restrict
+  -- ** Modification
+  , Updatable(..), Focusable(..), Modify, Renamable(..), Rename
+  -- * Query
+  , (.!), (:!)
+  -- * Combine
+  -- ** Disjoint union
+  , Disjoint, (.+), (:+), (:==)
+  -- * Syntactic sugar
+  , RecOp(..), RowOp(..), (.|), (:|)
+  -- * Row operations
+  -- ** Map
+  , Map, rmapc, rmap, rxformc, rxform
+  -- ** Fold
+  , Forall(..), Erasable(..), eraseToHashMap, Unconstrained1
+  -- ** Zip
+  , RZip, rzip
+  -- ** Sequence
+  , rsequence
+  , Forall(..), Erasable(..), Unconstrained1
+  -- ** labels
+  , labels
+  )
 where
 
 import Control.Monad.Identity
@@ -269,8 +267,8 @@ rxform :: forall r f g . Forall r Unconstrained1 => (forall a. f a -> g a) -> Re
 rxform = rxformc @r (Proxy @Unconstrained1)
 
 -- | Applicative sequencing over a record
-rsequence :: forall f r. (Forall r Unconstrained1, Applicative f) => Proxy f -> Rec (Map f r) -> f (Rec r)
-rsequence _ = unFRec . metamorph @r @Unconstrained1 @(RMap f) @(FRec f) doNil doUncons doCons . RMap
+rsequence :: forall f r. (Forall r Unconstrained1, Applicative f) => Rec (Map f r) -> f (Rec r)
+rsequence = unFRec . metamorph @r @Unconstrained1 @(RMap f) @(FRec f) doNil doUncons doCons . RMap
   where
     doNil _ = FRec (pure empty)
     doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ) => RMap f ('R (ℓ :-> τ ': ρ)) -> (f τ, RMap f ('R ρ))
