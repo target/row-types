@@ -96,7 +96,7 @@ instance (Eq (Rec r), Forall r Ord) => Ord (Rec r) where
                   | a : _ <- l' = a
                   where l' = dropWhile (== EQ) l
 
-instance Forall r Bounded => Bounded (Rec r) where
+instance (Forall r Bounded, AllUniqueLabels r) => Bounded (Rec r) where
   minBound = rinit (Proxy @Bounded) minBound
   maxBound = rinit (Proxy @Bounded) maxBound
 
@@ -307,7 +307,7 @@ unsafeInjectFront (show -> a) b (OR m) = OR $ M.insert a (HideType b) m
 
 -- | Initialize a record, where each value is determined by the given function over
 -- the label at that value.  This function works over an 'Applicative'.
-rinitAWithLabel :: forall f ρ c. (Applicative f, Forall ρ c)
+rinitAWithLabel :: forall f ρ c. (Applicative f, Forall ρ c, AllUniqueLabels ρ)
                 => Proxy c -> (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Rec ρ)
 rinitAWithLabel _ mk = unFRec $ metamorph @ρ @c @(Const ()) @(FRec f) doNil doUncons doCons (Const ())
   where doNil :: Const () Empty -> FRec f Empty
@@ -320,12 +320,12 @@ rinitAWithLabel _ mk = unFRec $ metamorph @ρ @c @(Const ()) @(FRec f) doNil doU
         doCons _ (FRec r) = FRec $ unsafeInjectFront (Label @ℓ) <$> mk @ℓ @τ (Label @ℓ) <*> r
 
 -- | Initialize a record with a default value at each label; works over an 'Applicative'.
-rinitA :: forall f ρ c. (Applicative f, Forall ρ c)
+rinitA :: forall f ρ c. (Applicative f, Forall ρ c, AllUniqueLabels ρ)
        => Proxy c -> (forall a. c a => f a) -> f (Rec ρ)
 rinitA p f = rinitAWithLabel p (pure f)
 
 -- | Initialize a record with a default value at each label.
-rinit :: Forall r c => Proxy c -> (forall a. c a => a) -> Rec r
+rinit :: forall ρ c. (Forall ρ c, AllUniqueLabels ρ) => Proxy c -> (forall a. c a => a) -> Rec ρ
 rinit p mk = runIdentity $ rinitA p $ pure mk
 
 

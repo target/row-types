@@ -15,6 +15,7 @@ module Data.OpenRecords.Variants
   , Var, Row, Empty
   -- * Construction
   , HasType, just, just'
+  , vinitAWithLabel
   -- ** Extension
   , Extendable(..), diversify, (:+), AllUniqueLabels
   -- ** Modification
@@ -75,7 +76,7 @@ just :: forall r l. (AllUniqueLabels r, KnownSymbol l) => Label l -> r :! l -> V
 just (show -> l) a = OneOf (l, HideType a)
 
 -- | A version of 'just' that creates the variant of only one type.
-just' :: KnownSymbol l => Label l -> a -> Var (l ::= a :| Empty)
+just' :: KnownSymbol l => Label l -> a -> Var (l :== a)
 just' = just
 
 instance Extendable Var where
@@ -196,4 +197,32 @@ instance Erasable Var where
           doCons (Nothing, Just _) _ = Const Nothing
           doCons (Nothing, Nothing) (Const c) = Const c
 
+
+{--------------------------------------------------------------------
+  Variant initialization
+--------------------------------------------------------------------}
+
+-- | FVar is used internally as a type level lambda for defining applicative stuff over records.
+newtype FVar (f :: * -> *) (ρ :: Row *) = FVar { unFVar :: f (Maybe (Var ρ)) }
+
+-- | Initialize a variant from a producer function over labels.
+--   This function works over an 'Applicative'.
+vinitAWithLabel :: forall f ρ c. (Monad f, Forall ρ c, AllUniqueLabels ρ)
+                => Proxy c -> (forall l a. (KnownSymbol l, c a) => Label l -> f (Maybe a)) -> f (Maybe (Var ρ))
+vinitAWithLabel _ mk = unFVar $ metamorph @ρ @c @(Const ()) @(FVar f) doNil doUncons doCons (Const ())
+  where doNil :: Const () Empty -> FVar f Empty
+        doNil _ = FVar $ pure $ Nothing
+        doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
+                 => Const () ('R (ℓ :-> τ ': ρ)) -> ((), Const () ('R ρ))
+        doUncons _ = ((), Const ())
+        doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
+               => () -> FVar f ('R ρ) -> FVar f ('R (ℓ :-> τ ': ρ))
+        doCons _ (FVar mv) = FVar $ maybe
+          <$> fmap (fmap (unsafeInjectFront @ℓ @τ)) mv
+          <*> pure (\a -> Just $ OneOf (show $ Label @ℓ, HideType a))
+          <*> mk @ℓ @τ Label
+
+-- | A helper function for unsafely adding an element to the front of a record
+unsafeInjectFront :: forall l a r. KnownSymbol l => Var (R r) -> Var (R (l :-> a ': r))
+unsafeInjectFront (OneOf (l, x)) = OneOf (l, x)
 
