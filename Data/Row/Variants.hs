@@ -32,7 +32,8 @@ module Data.Row.Variants
   )
 where
 
-import Data.Functor.Const
+import Control.Applicative
+
 import Data.Maybe (fromMaybe, fromJust)
 import Data.Proxy
 import Data.String (IsString)
@@ -49,7 +50,7 @@ import Data.Row.Internal
 
 -- | The variant type.
 data Var (r :: Row *) where
-  OneOf :: (String, HideType) -> Var r
+  OneOf :: String -> HideType -> Var r
 
 instance Forall r Show => Show (Var r) where
   show v = (\ (x, y) -> "{" ++ x ++ "=" ++ y ++ "}") $ eraseWithLabels (Proxy @Show) show v
@@ -71,7 +72,7 @@ impossible _ = error "Impossible! Somehow, a variant of nothing was produced."
 -- | Create a variant.  The first type argument is the set of types that the Variant
 -- lives in.
 just :: forall r l. (AllUniqueLabels r, KnownSymbol l) => Label l -> r :! l -> Var r
-just (show -> l) a = OneOf (l, HideType a)
+just (show -> l) a = OneOf l $ HideType a
 
 -- | A version of 'just' that creates the variant of only one type.
 just' :: KnownSymbol l => Label l -> a -> Var (l :== a)
@@ -80,30 +81,30 @@ just' = just
 instance Extendable Var where
   type Inp Var a = Proxy a
   -- | Extend the variant with a single type via value-level label and proxy.
-  extend _ _ (OneOf (l, x)) = OneOf (l, x)
+  extend _ _ = unsafeCoerce --(OneOf l x) = OneOf l x
 
 -- | Make the variant arbitrarily more diverse.
 diversify :: forall r' r. AllUniqueLabels (r :+ r') => Var r -> Var (r :+ r')
-diversify (OneOf (l, x)) = OneOf (l, x)
+diversify = unsafeCoerce -- (OneOf l x) = OneOf l x
 
 instance Updatable Var where
   -- | If the variant exists at the given label, update it to the given value.
   -- Otherwise, do nothing.
-  update (show -> l') a (OneOf (l, x)) = OneOf (l, if l == l' then HideType a else x)
+  update (show -> l') a (OneOf l x) = OneOf l $ if l == l' then HideType a else x
 
 instance Focusable Var where
   -- | If the variant exists at the given label, focus on the value associated with it.
   -- Otherwise, do nothing.
-  focus (show -> l') f (OneOf (l, HideType x)) = if l == l' then (OneOf . (l,) . HideType) <$> f (unsafeCoerce x) else pure (OneOf (l, HideType x))
+  focus (show -> l') f (OneOf l (HideType x)) = if l == l' then (OneOf l . HideType) <$> f (unsafeCoerce x) else pure (OneOf l (HideType x))
 
 instance Renamable Var where
   -- | Rename the given label.
-  rename (show -> l1) (show -> l2) (OneOf (l, x)) = OneOf (if l == l1 then l2 else l, x)
+  rename (show -> l1) (show -> l2) (OneOf l x) = OneOf (if l == l1 then l2 else l) x
 
 -- | Convert a variant into either the value at the given label or a variant without
 -- that label.  This is the basic variant destructor.
 trial :: KnownSymbol l => Var r -> Label l -> Either (r :! l) (Var (r :- l))
-trial (OneOf (l, HideType x)) (show -> l') = if l == l' then Left (unsafeCoerce x) else Right (OneOf (l, HideType x))
+trial (OneOf l (HideType x)) (show -> l') = if l == l' then Left (unsafeCoerce x) else Right (OneOf l (HideType x))
 
 -- | A version of 'trial' that ignores the leftover variant.
 trial' :: KnownSymbol l => Var r -> Label l -> Maybe (r :! l)
@@ -111,7 +112,7 @@ trial' = (either Just (const Nothing) .) . trial
 
 -- | A trial over multiple types
 multiTrial :: forall x y. (AllUniqueLabels x, Forall (y :// x) Unconstrained1) => Var y -> Either (Var x) (Var (y :// x))
-multiTrial (OneOf (l, x)) = if l `elem` labels @(y :// x) @Unconstrained1 then Right (OneOf (l, x)) else Left (OneOf (l, x))
+multiTrial (OneOf l x) = if l `elem` labels @(y :// x) @Unconstrained1 then Right (OneOf l x) else Left (OneOf l x)
 
 -- | A convenient function for using view patterns when dispatching variants.
 --   For example:
@@ -166,27 +167,22 @@ instance Erasable Var where
   Variant initialization
 --------------------------------------------------------------------}
 
--- | FVar is used internally as a type level lambda for defining applicative stuff over records.
-newtype FVar (f :: * -> *) (ρ :: Row *) = FVar { unFVar :: f (Maybe (Var ρ)) }
-
 -- | Initialize a variant from a producer function over labels.
---   This function works over an 'Applicative'.
-vinitAWithLabel :: forall c f ρ. (Monad f, Forall ρ c, AllUniqueLabels ρ)
-                => (forall l a. (KnownSymbol l, c a) => Label l -> f (Maybe a)) -> f (Maybe (Var ρ))
-vinitAWithLabel mk = unFVar $ metamorph @ρ @c @(Const ()) @(FVar f) doNil doUncons doCons (Const ())
-  where doNil :: Const () Empty -> FVar f Empty
-        doNil _ = FVar $ pure $ Nothing
+--   This function works over an 'Alternative'.
+vinitAWithLabel :: forall c f ρ. (Alternative f, Forall ρ c, AllUniqueLabels ρ)
+                => (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Var ρ)
+vinitAWithLabel mk = unFRow $ metamorph @ρ @c @(Const ()) @(FRow Var f) doNil doUncons doCons (Const ())
+  where doNil :: Const () Empty -> FRow Var f Empty
+        doNil _ = FRow $ empty
         doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
                  => Const () ('R (ℓ :-> τ ': ρ)) -> ((), Const () ('R ρ))
         doUncons _ = ((), Const ())
         doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
-               => () -> FVar f ('R ρ) -> FVar f ('R (ℓ :-> τ ': ρ))
-        doCons _ (FVar mv) = FVar $ maybe
-          <$> fmap (fmap (unsafeInjectFront @ℓ @τ)) mv
-          <*> pure (\a -> Just $ OneOf (show $ Label @ℓ, HideType a))
-          <*> mk @ℓ @τ Label
+               => () -> FRow Var f ('R ρ) -> FRow Var f ('R (ℓ :-> τ ': ρ))
+        doCons _ (FRow v) = FRow $
+          ((OneOf (show $ Label @ℓ) . HideType) <$> mk @ℓ @τ Label) <|> (unsafeInjectFront @ℓ @τ <$> v)
 
 -- | A helper function for unsafely adding an element to the front of a record
 unsafeInjectFront :: forall l a r. KnownSymbol l => Var (R r) -> Var (R (l :-> a ': r))
-unsafeInjectFront (OneOf (l, x)) = OneOf (l, x)
+unsafeInjectFront = unsafeCoerce
 

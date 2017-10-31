@@ -24,7 +24,7 @@ module Data.Row.Internal
   , RowOp(..), (:|), (:==)
   -- * Row Classes
   , Labels, labels
-  , ValOf, RowPair(..)
+  , ValOf, RowPair(..), FRow(..)
   , Forall(..), Forall2(..)
   , Unconstrained1
   -- * Common operations on types over rows
@@ -145,8 +145,8 @@ instance (r :\ l) => Lacks l r
 
 -- | Alias for @(r :! l) ~ a@. It is a class rather than an alias, so that
 --   it can be partially appliced.
-class ((r :! l) ~ a ) => HasType l a r
-instance ((r :! l) ~ a ) => HasType l a r
+class ((r :! l) ~ a) => HasType l a r
+instance ((r :! l) ~ a) => HasType l a r
 
 -- | Type level datakind corresponding to 'RecOp'.
 --   Here we provide a datatype for denoting row operations. Use ':|' to
@@ -273,6 +273,10 @@ labels = getConst $ metamorph @ρ @c @(Const ()) @(Const [s]) (const $ Const [])
 -- | A newtype for a pair of rows --- useful for functions involving 'metamorph'.
 newtype RowPair (f :: Row * -> *) (ρ :: Row *) = RowPair { unRowPair :: (f ρ, f ρ) }
 type instance ValOf (RowPair f) τ = (ValOf f τ, ValOf f τ)
+
+-- | A newtype for a modifier over a row --- useful for functions involving 'metamorph'.
+newtype FRow (f :: Row * -> *) (g :: * -> *) (ρ :: Row *) = FRow { unFRow :: g (f ρ) }
+
 
 
 {--------------------------------------------------------------------

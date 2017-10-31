@@ -232,9 +232,6 @@ eraseToHashMap p f r = M.fromList $ eraseWithLabels p f r
 newtype RMap (f :: * -> *) (ρ :: Row *) = RMap { unRMap :: Rec (Map f ρ) }
 type instance ValOf (RMap f) τ = f τ
 
--- | FRec is used internally as a type level lambda for defining applicative stuff over records.
-newtype FRec (f :: * -> *) (ρ :: Row *) = FRec { unFRec :: f (Rec ρ) }
-
 -- | A function to map over a record given a constraint.
 rmapc :: forall c f r. Forall r c => (forall a. c a => a -> f a) -> Rec r -> Rec (Map f r)
 rmapc f = unRMap . metamorph @r @c @Rec @(RMap f) doNil doUncons doCons
@@ -267,14 +264,14 @@ rxform = rxformc @r @Unconstrained1
 
 -- | Applicative sequencing over a record
 rsequence :: forall f r. (Forall r Unconstrained1, Applicative f) => Rec (Map f r) -> f (Rec r)
-rsequence = unFRec . metamorph @r @Unconstrained1 @(RMap f) @(FRec f) doNil doUncons doCons . RMap
+rsequence = unFRow . metamorph @r @Unconstrained1 @(RMap f) @(FRow Rec f) doNil doUncons doCons . RMap
   where
-    doNil _ = FRec (pure empty)
+    doNil _ = FRow (pure empty)
     doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ) => RMap f ('R (ℓ :-> τ ': ρ)) -> (f τ, RMap f ('R ρ))
     doUncons (RMap r) = (r .! l, RMap (r .- l)) where l = Label @ℓ
     doCons :: forall ℓ τ ρ. (KnownSymbol ℓ)
-           => f τ -> FRec f ('R ρ) -> FRec f ('R (ℓ :-> τ ': ρ))
-    doCons fv (FRec fr) = FRec $ unsafeInjectFront l <$> fv <*> fr where l = Label @ℓ
+           => f τ -> FRow Rec f ('R ρ) -> FRow Rec f ('R (ℓ :-> τ ': ρ))
+    doCons fv (FRow fr) = FRow $ unsafeInjectFront l <$> fv <*> fr where l = Label @ℓ
 
 -- | RZipPair is used internally as a type level lambda for zipping records.
 newtype RZipPair (ρ1 :: Row *) (ρ2 :: Row *) = RZipPair { unRZipPair :: Rec (RZip ρ1 ρ2) }
@@ -306,15 +303,15 @@ unsafeInjectFront (show -> a) b (OR m) = OR $ M.insert a (HideType b) m
 -- the label at that value.  This function works over an 'Applicative'.
 rinitAWithLabel :: forall c f ρ. (Applicative f, Forall ρ c, AllUniqueLabels ρ)
                 => (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Rec ρ)
-rinitAWithLabel mk = unFRec $ metamorph @ρ @c @(Const ()) @(FRec f) doNil doUncons doCons (Const ())
-  where doNil :: Const () Empty -> FRec f Empty
-        doNil _ = FRec $ pure empty
+rinitAWithLabel mk = unFRow $ metamorph @ρ @c @(Const ()) @(FRow Rec f) doNil doUncons doCons (Const ())
+  where doNil :: Const () Empty -> FRow Rec f Empty
+        doNil _ = FRow $ pure empty
         doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
                  => Const () ('R (ℓ :-> τ ': ρ)) -> ((), Const () ('R ρ))
         doUncons _ = ((), Const ())
         doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
-               => () -> FRec f ('R ρ) -> FRec f ('R (ℓ :-> τ ': ρ))
-        doCons _ (FRec r) = FRec $ unsafeInjectFront (Label @ℓ) <$> mk @ℓ @τ (Label @ℓ) <*> r
+               => () -> FRow Rec f ('R ρ) -> FRow Rec f ('R (ℓ :-> τ ': ρ))
+        doCons _ (FRow r) = FRow $ unsafeInjectFront (Label @ℓ) <$> mk @ℓ @τ (Label @ℓ) <*> r
 
 -- | Initialize a record with a default value at each label; works over an 'Applicative'.
 rinitA :: forall c f ρ. (Applicative f, Forall ρ c, AllUniqueLabels ρ)
