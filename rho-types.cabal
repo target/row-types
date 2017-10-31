@@ -16,10 +16,10 @@ Library
                  mtl >= 1.0,
                  unordered-containers >= 0.2
   Exposed-modules: Data.OpenRecords,
-                   Data.OpenRecords.Internal.Row,
-                   Data.OpenRecords.Records,
-                   Data.OpenRecords.Variants,
-                   Data.OpenRecords.Switch
+                   Data.Row.Internal,
+                   Data.Row.Records,
+                   Data.Row.Variants,
+                   Data.Row.Switch
   ghc-options: -W
   other-modules:
   Extensions: AllowAmbiguousTypes,

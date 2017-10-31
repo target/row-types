@@ -8,15 +8,15 @@
 -----------------------------------------------------------------------------
 
 
-module Data.OpenRecords.Switch
+module Data.Row.Switch
   (
     Switch(..)
   )
 where
 
-import Data.OpenRecords.Internal.Row
-import Data.OpenRecords.Records
-import Data.OpenRecords.Variants
+import Data.Row.Internal
+import Data.Row.Records
+import Data.Row.Variants
 
 
 

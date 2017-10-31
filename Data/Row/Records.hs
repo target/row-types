@@ -15,7 +15,7 @@
 -----------------------------------------------------------------------------
 
 
-module Data.OpenRecords.Records
+module Data.Row.Records
   (
   -- * Types and constraints
     Label(..)
@@ -67,7 +67,7 @@ import GHC.Exts -- needed for constraints kinds
 
 import Unsafe.Coerce
 
-import Data.OpenRecords.Internal.Row
+import Data.Row.Internal
 
 
 
@@ -94,8 +94,8 @@ instance (Eq (Rec r), Forall r Ord) => Ord (Rec r) where
                   where l' = dropWhile (== EQ) l
 
 instance (Forall r Bounded, AllUniqueLabels r) => Bounded (Rec r) where
-  minBound = rinit (Proxy @Bounded) minBound
-  maxBound = rinit (Proxy @Bounded) maxBound
+  minBound = rinit @Bounded minBound
+  maxBound = rinit @Bounded maxBound
 
 type instance ValOf Rec τ = τ
 
@@ -236,8 +236,8 @@ type instance ValOf (RMap f) τ = f τ
 newtype FRec (f :: * -> *) (ρ :: Row *) = FRec { unFRec :: f (Rec ρ) }
 
 -- | A function to map over a record given a constraint.
-rmapc :: forall c f r. Forall r c => Proxy c -> (forall a. c a => a -> f a) -> Rec r -> Rec (Map f r)
-rmapc _ f = unRMap . metamorph @r @c @Rec @(RMap f) doNil doUncons doCons
+rmapc :: forall c f r. Forall r c => (forall a. c a => a -> f a) -> Rec r -> Rec (Map f r)
+rmapc f = unRMap . metamorph @r @c @Rec @(RMap f) doNil doUncons doCons
   where
     doNil _ = RMap empty
     doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Rec ('R (ℓ :-> τ ': ρ)) -> (τ, Rec ('R ρ))
@@ -248,11 +248,11 @@ rmapc _ f = unRMap . metamorph @r @c @Rec @(RMap f) doNil doUncons doCons
 
 -- | A function to map over a record given no constraint.
 rmap :: forall f r. Forall r Unconstrained1 => (forall a. a -> f a) -> Rec r -> Rec (Map f r)
-rmap = rmapc (Proxy @Unconstrained1)
+rmap = rmapc @Unconstrained1
 
 -- | A mapping function specifically to convert @f a@ values to @g a@ values.
-rxformc :: forall r c f g. Forall r c => Proxy c -> (forall a. c a => f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
-rxformc _ f = unRMap . metamorph @r @c @(RMap f) @(RMap g) doNil doUncons doCons . RMap
+rxformc :: forall r c f g. Forall r c => (forall a. c a => f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
+rxformc f = unRMap . metamorph @r @c @(RMap f) @(RMap g) doNil doUncons doCons . RMap
   where
     doNil _ = RMap empty
     doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => RMap f ('R (ℓ :-> τ ': ρ)) -> (f τ, RMap f ('R ρ))
@@ -263,7 +263,7 @@ rxformc _ f = unRMap . metamorph @r @c @(RMap f) @(RMap g) doNil doUncons doCons
 
 -- | A form of @rxformc@ that doesn't have a constraint on @a@
 rxform :: forall r f g . Forall r Unconstrained1 => (forall a. f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
-rxform = rxformc @r (Proxy @Unconstrained1)
+rxform = rxformc @r @Unconstrained1
 
 -- | Applicative sequencing over a record
 rsequence :: forall f r. (Forall r Unconstrained1, Applicative f) => Rec (Map f r) -> f (Rec r)
@@ -304,9 +304,9 @@ unsafeInjectFront (show -> a) b (OR m) = OR $ M.insert a (HideType b) m
 
 -- | Initialize a record, where each value is determined by the given function over
 -- the label at that value.  This function works over an 'Applicative'.
-rinitAWithLabel :: forall f ρ c. (Applicative f, Forall ρ c, AllUniqueLabels ρ)
-                => Proxy c -> (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Rec ρ)
-rinitAWithLabel _ mk = unFRec $ metamorph @ρ @c @(Const ()) @(FRec f) doNil doUncons doCons (Const ())
+rinitAWithLabel :: forall c f ρ. (Applicative f, Forall ρ c, AllUniqueLabels ρ)
+                => (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Rec ρ)
+rinitAWithLabel mk = unFRec $ metamorph @ρ @c @(Const ()) @(FRec f) doNil doUncons doCons (Const ())
   where doNil :: Const () Empty -> FRec f Empty
         doNil _ = FRec $ pure empty
         doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
@@ -317,12 +317,12 @@ rinitAWithLabel _ mk = unFRec $ metamorph @ρ @c @(Const ()) @(FRec f) doNil doU
         doCons _ (FRec r) = FRec $ unsafeInjectFront (Label @ℓ) <$> mk @ℓ @τ (Label @ℓ) <*> r
 
 -- | Initialize a record with a default value at each label; works over an 'Applicative'.
-rinitA :: forall f ρ c. (Applicative f, Forall ρ c, AllUniqueLabels ρ)
-       => Proxy c -> (forall a. c a => f a) -> f (Rec ρ)
-rinitA p f = rinitAWithLabel p (pure f)
+rinitA :: forall c f ρ. (Applicative f, Forall ρ c, AllUniqueLabels ρ)
+       => (forall a. c a => f a) -> f (Rec ρ)
+rinitA f = rinitAWithLabel @c $ pure f
 
 -- | Initialize a record with a default value at each label.
-rinit :: forall ρ c. (Forall ρ c, AllUniqueLabels ρ) => Proxy c -> (forall a. c a => a) -> Rec ρ
-rinit p mk = runIdentity $ rinitA p $ pure mk
+rinit :: forall c ρ. (Forall ρ c, AllUniqueLabels ρ) => (forall a. c a => a) -> Rec ρ
+rinit f = runIdentity $ rinitA @c $ pure f
 
 

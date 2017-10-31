@@ -8,7 +8,7 @@
 -----------------------------------------------------------------------------
 
 
-module Data.OpenRecords.Internal.Row
+module Data.Row.Internal
   (
   -- * Rows
     Row(..)
@@ -261,8 +261,8 @@ type family Labels (r :: Row a) where
   Labels (R (l :-> a ': xs)) = l ': Labels (R xs)
 
 -- | Return a list of the labels in a record type.
-labels :: forall ρ c s. (IsString s, Forall ρ c) => Proxy ρ -> [s]
-labels _ = getConst $ metamorph @ρ @c @(Const ()) @(Const [s]) (const $ Const []) doUncons doCons (Const ())
+labels :: forall ρ c s. (IsString s, Forall ρ c) => [s]
+labels = getConst $ metamorph @ρ @c @(Const ()) @(Const [s]) (const $ Const []) doUncons doCons (Const ())
   where doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Const () ('R (ℓ :-> τ ': ρ)) -> ((), Const () ('R ρ))
         doUncons _ = ((), Const ())
         doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
@@ -282,7 +282,7 @@ type instance ValOf (RowPair f) τ = (ValOf f τ, ValOf f τ)
 class Extendable (t :: Row * -> *) where
   type Inp t a
   -- | Record extension. The row must not already contain the label.
-  extend  :: forall l a r. (KnownSymbol l,r :\ l) => Label l -> Inp t a -> t r -> t (Extend l a r)
+  extend  :: forall a l r. (KnownSymbol l,r :\ l) => Label l -> Inp t a -> t r -> t (Extend l a r)
 
 -- | Updatable row types support changing the value at a label in the row.
 class Updatable (t :: Row * -> *) where

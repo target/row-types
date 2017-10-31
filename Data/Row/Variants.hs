@@ -7,7 +7,7 @@
 -----------------------------------------------------------------------------
 
 
-module Data.OpenRecords.Variants
+module Data.Row.Variants
   (
   -- * Types and constraints
     Label(..)
@@ -20,8 +20,6 @@ module Data.OpenRecords.Variants
   , Extendable(..), Extend, (:\), diversify, (:+)
   -- ** Modification
   , Updatable(..), Focusable(..), Modify, Renamable(..), Rename
-  -- ** Syntactic sugar
-  , VarOp(..), RowOp(..), (*|), (:|), (:==)
   -- * Destruction
   , impossible, trial, trial', multiTrial, viewV
   , Forall(..), Unconstrained1
@@ -40,11 +38,10 @@ import Data.Proxy
 import Data.String (IsString)
 
 import GHC.TypeLits
-import GHC.Exts -- needed for constraints kinds
 
 import Unsafe.Coerce
 
-import Data.OpenRecords.Internal.Row
+import Data.Row.Internal
 
 {--------------------------------------------------------------------
   Polymorphic Variants
@@ -114,7 +111,7 @@ trial' = (either Just (const Nothing) .) . trial
 
 -- | A trial over multiple types
 multiTrial :: forall x y. (AllUniqueLabels x, Forall (y :// x) Unconstrained1) => Var y -> Either (Var x) (Var (y :// x))
-multiTrial (OneOf (l, x)) = if l `elem` labels @(y :// x) @Unconstrained1 Proxy then Right (OneOf (l, x)) else Left (OneOf (l, x))
+multiTrial (OneOf (l, x)) = if l `elem` labels @(y :// x) @Unconstrained1 then Right (OneOf (l, x)) else Left (OneOf (l, x))
 
 -- | A convenient function for using view patterns when dispatching variants.
 --   For example:
@@ -127,40 +124,6 @@ viewV :: KnownSymbol l => Label l -> Var r -> Maybe (r :! l)
 viewV = flip trial'
 
 
-
-
--- | Type level datakind corresponding to 'RecOp'.
---   Here we provide a datatype for denoting row operations. Use ':|' to
---   actually apply the type level operation.
---
---   This allows us to chain value level operations with nicer syntax.
---   For example we can write:
---
--- > p :*<-| z *| y :*<- 'b' *| z :*!= Proxy @Bool *| x :*= Proxy @Double *| just' y 'a'
---
--- which is an expression of type:
---
--- > Var ("p" ::= Bool :| "x" ::= Double :| "y" ::= Char :| Empty)
---
--- Without this sugar, we would have written it like this:
---
--- > rename p z $ update y 'b' $ extendUnique z (Proxy @Bool) $ extend x (Proxy @Double) $ just' y 'a'
-infix 5 :*=
-infix 5 :*<-
-data VarOp (c :: Row * -> Constraint) (rowOp :: RowOp *) where
-  (:*<-)  :: KnownSymbol l => Label l -> a -> VarOp (HasType l a) RUp
-  (:*=)   :: KnownSymbol l => Label l -> Proxy a -> VarOp (Lacks l) (l ::= a)
-  (:*<-|) :: (KnownSymbol l, KnownSymbol l', r :\ l') => Label l' -> Label l -> VarOp (Lacks l') (l' ::<-| l)
-
-
-
-
--- | Apply an operation to a record.
-infixr 4 *|
-(*|) :: c r => VarOp c ro -> Var r -> Var (ro :| r)
-(l  :*<- a)  *| m  = update l a m
-(l  :*= a)   *| m  = extend l a m
-(l' :*<-| l) *| m  = rename l l' m
 
 
 {--------------------------------------------------------------------
@@ -208,9 +171,9 @@ newtype FVar (f :: * -> *) (ρ :: Row *) = FVar { unFVar :: f (Maybe (Var ρ)) }
 
 -- | Initialize a variant from a producer function over labels.
 --   This function works over an 'Applicative'.
-vinitAWithLabel :: forall f ρ c. (Monad f, Forall ρ c, AllUniqueLabels ρ)
-                => Proxy c -> (forall l a. (KnownSymbol l, c a) => Label l -> f (Maybe a)) -> f (Maybe (Var ρ))
-vinitAWithLabel _ mk = unFVar $ metamorph @ρ @c @(Const ()) @(FVar f) doNil doUncons doCons (Const ())
+vinitAWithLabel :: forall c f ρ. (Monad f, Forall ρ c, AllUniqueLabels ρ)
+                => (forall l a. (KnownSymbol l, c a) => Label l -> f (Maybe a)) -> f (Maybe (Var ρ))
+vinitAWithLabel mk = unFVar $ metamorph @ρ @c @(Const ()) @(FVar f) doNil doUncons doCons (Const ())
   where doNil :: Const () Empty -> FVar f Empty
         doNil _ = FVar $ pure $ Nothing
         doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)

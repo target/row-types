@@ -21,10 +21,10 @@
 
 module Data.OpenRecords
   (
-    module Data.OpenRecords.Records
+    module Data.Row.Records
   )
 where
 
-import Data.OpenRecords.Records
+import Data.Row.Records
 
 

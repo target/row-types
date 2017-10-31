@@ -1,9 +1,9 @@
 > {-# LANGUAGE OverloadedLabels #-}
 > module Examples where
 >
-> import Data.OpenRecords.Records
-> import Data.OpenRecords.Variants
-> import Data.OpenRecords.Switch
+> import Data.Row.Records
+> import Data.Row.Variants
+> import Data.Row.Switch
 > import Data.Proxy
 
 In this example file, we will explore how to create and use records and variants.
@@ -134,7 +134,7 @@ number of dimensions.  We could write out each of the 0s necessary, but there's
 an easier way to initialize a record:
 
 > origin4 :: Rec ("x" :== Double :+ "y" :== Double :+ "z" :== Double :+ "w" :== Double)
-> origin4 = rinit (Proxy @Num) 0
+> origin4 = rinit @Num 0
 
 Finally, we have come to a case where GHC cannot infer the type signature, and how
 could it!  The type is providing crucial information about the shape of the record.
