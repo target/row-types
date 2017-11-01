@@ -15,8 +15,7 @@ Library
                  hashable >= 1.2,
                  mtl >= 1.0,
                  unordered-containers >= 0.2
-  Exposed-modules: Data.OpenRecords,
-                   Data.Row.Internal,
+  Exposed-modules: Data.Row.Internal,
                    Data.Row.Records,
                    Data.Row.Variants,
                    Data.Row.Switch
