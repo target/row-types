@@ -23,19 +23,20 @@ module Data.Row.Records
   , Rec, Row, Empty
   -- * Construction
   , empty
+  , type (=:), (=:)
   , rinit, rinitA, rinitAWithLabel
   -- ** Extension
   , Extendable(..), Extend, type (\:)
   -- ** Restriction
-  , (-:)
+  , type (-:), (-:)
   , restrict
   -- ** Modification
   , Updatable(..), Focusable(..), Modify, Renamable(..), Rename
   -- * Query
-  , (!:)
+  , type (!:), (!:)
   -- * Combine
   -- ** Disjoint union
-  , Disjoint, (+:), (=:)
+  , Disjoint, type (+:), (+:)
   -- * Row operations
   -- ** Map
   , Map, rmapc, rmap, rxformc, rxform
