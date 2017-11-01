@@ -1,4 +1,4 @@
-Rho-Types
+Row-Types
 =======
 
 Open records and variants for Haskell using closed type families and type literals

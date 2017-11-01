@@ -1,4 +1,4 @@
-Name:                rho-types
+Name:                row-types
 Version:             0.1
 Synopsis:	           Open records and variants.
 Description:         Open records and variants.
@@ -45,4 +45,4 @@ Library
 
 source-repository head
     type:     git
-    location: https://git.target.com/RedOptHaskell/rho-types/
+    location: https://git.target.com/RedOptHaskell/row-types/
