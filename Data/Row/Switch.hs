@@ -39,6 +39,6 @@ instance Switch (R '[]) (R '[]) x where
 instance (KnownSymbol l, Switch (R v) (R r) b)
       => Switch (R (l :-> a ': v)) (R (l :-> (a -> b) ': r)) b where
   switch v r = case trial v l of
-    Left x  -> (r .! l) x
-    Right v -> switch v (r .- l)
+    Left x  -> (r !: l) x
+    Right v -> switch v (r -: l)
     where l = Label :: Label l

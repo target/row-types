@@ -18,10 +18,9 @@ module Data.Row.Internal
   , Empty
   , HideType(..)
   -- * Row Operations
-  , (:\), Disjoint, Extend, Modify, Rename
-  , (:!), (:-), (:+), (://)
+  , Disjoint, Extend, Modify, Rename
+  , type (\:), type (!:), type (-:), type (+:), type (\\:), type (=:)
   , Lacks, HasType
-  , RowOp(..), (:|), (:==)
   -- * Row Classes
   , Labels, labels
   , ValOf, RowPair(..), FRow(..)
@@ -95,7 +94,7 @@ data HideType where
 --------------------------------------------------------------------}
 
 -- | Does the row lack (i.e. it does not have) the specified label?
-type r :\ l = (LacksP l r ~ LabelUnique l)
+type r \: l = (LacksP l r ~ LabelUnique l)
 
 -- | Type level Row extension
 type family Extend (l :: Symbol) (a :: *) (r :: Row *) :: Row * where
@@ -112,88 +111,45 @@ type family ModifyR (l :: Symbol) (a :: *) (ρ :: [LT *]) :: [LT *] where
 
 -- | Type level row renaming
 type family Rename (l :: Symbol) (l' :: Symbol) (r :: Row *) :: Row * where
-  Rename l l' r = Extend  l' (r :! l) (r :- l)
+  Rename l l' r = Extend  l' (r !: l) (r -: l)
 
-infixl 6 :!
+infixl 6 !:
 -- | Type level label fetching
-type family (r :: Row *) :! (t :: Symbol) :: * where
-  R r :! l = Get l r
+type family (r :: Row *) !: (t :: Symbol) :: * where
+  R r !: l = Get l r
 
 -- | Type level Row element removal
-type family (r :: Row *) :- (s :: Symbol) :: Row * where
-  R r :- l = R (Remove l r)
+type family (r :: Row *) -: (s :: Symbol) :: Row * where
+  R r -: l = R (Remove l r)
 
 -- | Type level Row append
-infixr 6 :+
-type family (l :: Row *) :+ (r :: Row *) :: Row * where
-  R l :+ R r = R (Merge l r)
+infixr 6 +:
+type family (l :: Row *) +: (r :: Row *) :: Row * where
+  R l +: R r = R (Merge l r)
 
 -- | Type level Row difference.  That is, @l :// r@ is the row remaining after
 -- removing any matching elements of @r@ from @l@.
-infixr 6 ://
-type family (l :: Row *) :// (r :: Row *) :: Row * where
-  R l :// R r = R (Diff l r)
+infixr 6 \\:
+type family (l :: Row *) \\: (r :: Row *) :: Row * where
+  R l \\: R r = R (Diff l r)
 
 {--------------------------------------------------------------------
   Syntactic sugar for record operations
 --------------------------------------------------------------------}
 -- | Alias for ':\'. It is a class rather than an alias, so that
 --   it can be partially appliced.
-class (r :\ l) => Lacks (l :: Symbol) (r :: Row *)
-instance (r :\ l) => Lacks l r
+class (r \: l) => Lacks (l :: Symbol) (r :: Row *)
+instance (r \: l) => Lacks l r
 
 
 -- | Alias for @(r :! l) ~ a@. It is a class rather than an alias, so that
 --   it can be partially appliced.
-class ((r :! l) ~ a) => HasType l a r
-instance ((r :! l) ~ a) => HasType l a r
-
--- | Type level datakind corresponding to 'RecOp'.
---   Here we provide a datatype for denoting row operations. Use ':|' to
---   actually apply the type level operation.
---
---   This allows us to chain type level operations with nicer syntax.
---   For example we can write:
---
--- > "p" ::<-| "z" :| RUp :| "z" ::= Bool :| "x" ::= Double :| "y" ::= Char :| Empty
---
--- As the type of the expression:
---
--- > p :<-| z .| y :<- 'b' .| z :!= False .| x := 2 .| y := 'a' .| empty
---
--- Without this sugar, we would have written it like this:
---
--- >  Rename "p" "z" (Extend "z" Bool (Extend x Double (Extend "x" Int Empty)))
---
--- Of course, we can also just write:
---
--- > "p" ::= Bool :| "x" ::= Double :| "y" ::= Int :|  Empty
---
--- instead, doing the computation ourselves, or even let the type infer.
---
---  [@RUp@] Type level equivalent of ':<-'. Is the identity Row Operation.
---
---  [@::=@] Type level equivalent of ':='. Row extension. Sugar for 'Extend'.
---
---  [@::<-|@] Type level equivalent of ':<-|'. Row label renaming. Sugar for 'Rename'.
-infix 5 ::=
-infix 5 ::<-|
-data RowOp (a :: *) where
-  RUp      :: RowOp a
-  (::=)    :: Symbol -> a -> RowOp a
-  (::<-|)   :: Symbol -> Symbol -> RowOp a
-
-
--- | Apply a (typelevel) operation to a row. Type level operation of '.|'
-infixr 4 :|
-type family (x :: RowOp *) :| (r :: Row *)  :: Row * where
-  RUp          :| r = r
-  (l ::= a)    :| r = Extend l a r
-  (l' ::<-| l) :| r = Rename l l' r
+class ((r !: l) ~ a) => HasType l a r
+instance ((r !: l) ~ a) => HasType l a r
 
 -- | A typelevel way to create a singleton Row.
-infixr 7 :==
-type (l :: Symbol) :== (a :: *) = Extend l a Empty
+infixr 7 =:
+type (l :: Symbol) =: (a :: *) = Extend l a Empty
 
 
 {--------------------------------------------------------------------
@@ -238,7 +194,7 @@ class Forall2 (r1 :: Row *) (r2 :: Row *) (c :: * -> Constraint) where
              -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1, c τ2)
                  => f ('R (ℓ :-> τ1 ': ρ1))
                  -> g ('R (ℓ :-> τ2 ': ρ2))
-                 -> (ValOf f τ1, f ('R ρ1), ValOf g τ2, g ('R ρ2)))
+                 -> ((ValOf f τ1, f ('R ρ1)), (ValOf g τ2, g ('R ρ2))))
              -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1, c τ2)
                  => ValOf f τ1 -> ValOf g τ2 -> h ('R ρ1) ('R ρ2) -> h ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)))
              -> f r1 -> g r2 -> h r1 r2
@@ -249,7 +205,7 @@ instance Forall2 (R '[]) (R '[]) c where
 instance (KnownSymbol ℓ, c τ1, c τ2, Forall2 ('R ρ1) ('R ρ2) c)
       => Forall2 ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)) c where
   metamorph2 empty uncons cons r1 r2 = cons t1 t2 $ metamorph2 @('R ρ1) @('R ρ2) @c empty uncons cons r1' r2'
-    where (t1, r1', t2, r2') = uncons r1 r2
+    where ((t1, r1'), (t2, r2')) = uncons r1 r2
 
 -- | A null constraint
 class Unconstrained1 a
@@ -286,23 +242,23 @@ newtype FRow (f :: Row * -> *) (g :: * -> *) (ρ :: Row *) = FRow { unFRow :: g 
 class Extendable (t :: Row * -> *) where
   type Inp t a
   -- | Record extension. The row must not already contain the label.
-  extend  :: forall a l r. (KnownSymbol l,r :\ l) => Label l -> Inp t a -> t r -> t (Extend l a r)
+  extend  :: forall a l r. (KnownSymbol l,r \: l) => Label l -> Inp t a -> t r -> t (Extend l a r)
 
 -- | Updatable row types support changing the value at a label in the row.
 class Updatable (t :: Row * -> *) where
   -- Update the value in the Row at the given label by providing a new one.
-  update :: KnownSymbol l => Label l -> r :! l -> t r -> t r
+  update :: KnownSymbol l => Label l -> r !: l -> t r -> t r
 
 -- | Focusable row types support modifying the value at a label in the row,
 -- and doing it in a lens-y way
 class Focusable (t :: Row * -> *) where
   -- Apply the given function to the value in the Row at the given label.
-  focus :: (Applicative f, KnownSymbol l) => Label l -> (r :! l -> f a) -> t r -> f (t (Modify l a r))
+  focus :: (Applicative f, KnownSymbol l) => Label l -> (r !: l -> f a) -> t r -> f (t (Modify l a r))
 
 -- | Renamable row types support renaming labels in the row.
 class Renamable (t :: Row * -> *) where
   -- Rename a label in the row.
-  rename :: (KnownSymbol l, KnownSymbol l', r :\ l') => Label l -> Label l' -> t r -> t (Rename l l' r)
+  rename :: (KnownSymbol l, KnownSymbol l', r \: l') => Label l -> Label l' -> t r -> t (Rename l l' r)
 
 -- | Eraseable row types can be folded up.  Really, this should be called RowFoldable
 --   or something, and the inner functions should be
@@ -333,14 +289,14 @@ data Unique = LabelUnique Symbol | LabelNotUnique Symbol
 -- | Are all of the labels in this Row unique?
 class AllUniqueLabels r
 instance AllUniqueLabels (R '[])
-instance ((R r) :\ l, AllUniqueLabels (R r)) => AllUniqueLabels (R (l :-> a ': r))
+instance ((R r) \: l, AllUniqueLabels (R r)) => AllUniqueLabels (R (l :-> a ': r))
 
 -- | Are the two rows disjoint? (i.e. their sets of labels are disjoint)
 class Disjoint x y
 instance {-# INCOHERENT #-} Disjoint (R '[]) y
 instance {-# INCOHERENT #-} Disjoint x (R '[])
-instance {-# INCOHERENT #-} (Disjoint (R x) y, y :\ l) => Disjoint (R (l :-> a ': x)) y
-instance {-# INCOHERENT #-} (Disjoint x (R y), x :\ l) => Disjoint x (R (l :-> a ': y))
+instance {-# INCOHERENT #-} (Disjoint (R x) y, y \: l) => Disjoint (R (l :-> a ': x)) y
+instance {-# INCOHERENT #-} (Disjoint x (R y), x \: l) => Disjoint x (R (l :-> a ': y))
 
 -- | Is the first row a subset of the second?
 class Subset x y

@@ -17,14 +17,14 @@ module Data.Row.Variants
   , HasType, just, just'
   , vinitAWithLabel
   -- ** Extension
-  , Extendable(..), Extend, (:\), diversify, (:+)
+  , Extendable(..), Extend, type (\:), diversify, type (+:)
   -- ** Modification
   , Updatable(..), Focusable(..), Modify, Renamable(..), Rename
   -- * Destruction
   , impossible, trial, trial', multiTrial, viewV
   , Forall(..), Unconstrained1
   -- ** Types for destruction
-  , (:!), (:-), (://)
+  , type (!:), type (-:), type (\\:), type (=:)
   -- * Folds
   , Erasable(..)
   -- ** labels
@@ -71,11 +71,11 @@ impossible _ = error "Impossible! Somehow, a variant of nothing was produced."
 
 -- | Create a variant.  The first type argument is the set of types that the Variant
 -- lives in.
-just :: forall r l. (AllUniqueLabels r, KnownSymbol l) => Label l -> r :! l -> Var r
+just :: forall r l. (AllUniqueLabels r, KnownSymbol l) => Label l -> r !: l -> Var r
 just (show -> l) a = OneOf l $ HideType a
 
 -- | A version of 'just' that creates the variant of only one type.
-just' :: KnownSymbol l => Label l -> a -> Var (l :== a)
+just' :: KnownSymbol l => Label l -> a -> Var (l =: a)
 just' = just
 
 instance Extendable Var where
@@ -84,7 +84,7 @@ instance Extendable Var where
   extend _ _ = unsafeCoerce --(OneOf l x) = OneOf l x
 
 -- | Make the variant arbitrarily more diverse.
-diversify :: forall r' r. AllUniqueLabels (r :+ r') => Var r -> Var (r :+ r')
+diversify :: forall r' r. AllUniqueLabels (r +: r') => Var r -> Var (r +: r')
 diversify = unsafeCoerce -- (OneOf l x) = OneOf l x
 
 instance Updatable Var where
@@ -103,16 +103,16 @@ instance Renamable Var where
 
 -- | Convert a variant into either the value at the given label or a variant without
 -- that label.  This is the basic variant destructor.
-trial :: KnownSymbol l => Var r -> Label l -> Either (r :! l) (Var (r :- l))
+trial :: KnownSymbol l => Var r -> Label l -> Either (r !: l) (Var (r -: l))
 trial (OneOf l (HideType x)) (show -> l') = if l == l' then Left (unsafeCoerce x) else Right (OneOf l (HideType x))
 
 -- | A version of 'trial' that ignores the leftover variant.
-trial' :: KnownSymbol l => Var r -> Label l -> Maybe (r :! l)
+trial' :: KnownSymbol l => Var r -> Label l -> Maybe (r !: l)
 trial' = (either Just (const Nothing) .) . trial
 
 -- | A trial over multiple types
-multiTrial :: forall x y. (AllUniqueLabels x, Forall (y :// x) Unconstrained1) => Var y -> Either (Var x) (Var (y :// x))
-multiTrial (OneOf l x) = if l `elem` labels @(y :// x) @Unconstrained1 then Right (OneOf l x) else Left (OneOf l x)
+multiTrial :: forall x y. (AllUniqueLabels x, Forall (y \\: x) Unconstrained1) => Var y -> Either (Var x) (Var (y \\: x))
+multiTrial (OneOf l x) = if l `elem` labels @(y \\: x) @Unconstrained1 then Right (OneOf l x) else Left (OneOf l x)
 
 -- | A convenient function for using view patterns when dispatching variants.
 --   For example:
@@ -121,7 +121,7 @@ multiTrial (OneOf l x) = if l `elem` labels @(y :// x) @Unconstrained1 then Righ
 -- myShow :: Var ("y" '::= String :| "x" '::= Int :| Empty) -> String
 -- myShow (viewV x -> Just n) = "Int of "++show n
 -- myShow (viewV y -> Just s) = "String of "++s @
-viewV :: KnownSymbol l => Label l -> Var r -> Maybe (r :! l)
+viewV :: KnownSymbol l => Label l -> Var r -> Maybe (r !: l)
 viewV = flip trial'
 
 
