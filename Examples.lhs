@@ -35,12 +35,12 @@ We will use the OverloadedLabels notation in these examples.
 
 With some labels defined, let's begin with records.  To start, let's create a
 record representing the Cartesian coordinates of the origin.  To do this,
-we use the =: operator to initialize values in a record, and we separate each
-initialized value with the +: operator.Notice that the value level code uses the
+we use the .== operator to initialize values in a record, and we separate each
+initialized value with the .+ operator.Notice that the value level code uses the
 same operators as the type level code.
 
-> origin :: Rec ("x" =: Double +: "y" =: Double )
-> origin = #x =: 0 +: #y =: 0
+> origin :: Rec ("x" .== Double .+ "y" .== Double )
+> origin = #x .== 0 .+ #y .== 0
 
 Note that, although we wrote the type explicitly, GHC has no problem inferring
 it exactly.
@@ -52,8 +52,8 @@ If we show this at the repl, we see:
 Of course, as an extensible record, the order that we build it shouldn't matter,
 and indeed, it doesn't.  Consider the following variation:
 
-> origin' :: Rec ("y" =: Double +: "x" =: Double)
-> origin' = #y =: 0 +: #x =: 0
+> origin' :: Rec ("y" .== Double .+ "x" .== Double)
+> origin' = #y .== 0 .+ #x .== 0
 
 If we show this at the repl, we see:
 
@@ -68,30 +68,30 @@ True
 Now, let's expand upon our record.  Why stop at two dimensions when we can make
 a record in three dimensions.
 
-> origin3D = #z =: 0.0 +: origin
+> origin3D = #z .== 0.0 .+ origin
 
 Once again, the type is inferred for us, and the record is exactly as expected.
 
 In fact, we can do this generally.  The following function takes a name and a
 record and adds the "name" field to that record with the given name.
 
-> named :: r \: "name" => a -> Rec r -> Rec ("name" =: a +: r)
-> named s r = #name =: s +: r
+> named :: r .\ "name" => a -> Rec r -> Rec ("name" .== a .+ r)
+> named s r = #name .== s .+ r
 
 Note that we require that the record we are naming must not have a "name" field
 already.  Overlapping labels within a single record/variant is strictly forbidden.
 
 Let's say we want to get the values out of the record.  Simple selection is achieved
-with the !: operator, like so:
+with the .! operator, like so:
 
-λ> origin !: x
+λ> origin .! x
 0.0
 
 and we can use this to write whatever we want.  Here is a function for calculating
 Euclidean distance from the origin to a point:
 
-> distance :: (Floating t, (r !: "y") ~ t, (r !: "x") ~ t) => Rec r -> t
-> distance p = sqrt $ p !: #x * p !: #x + p !: #y * p !: #y
+> distance :: (Floating t, (r .! "y") ~ t, (r .! "x") ~ t) => Rec r -> t
+> distance p = sqrt $ p .! #x * p .! #x + p .! #y * p .! #y
 
 Once again, the type of distance is entirely inferrable, but we write it here for
 convenience.  This works exactly as expected:
@@ -107,10 +107,10 @@ Of course, that wasn't very interesting when our only points are at the origin
 already.  We could make new records representing new points, but instead, let's
 write a function to move the points we have:
 
-> move :: (Num (r !: "x"), Num (r !: "y"))
->      => Rec r -> r !: "x" -> r !: "y" -> Rec r
-> move p dx dy = update #x (p !: #x + dx) $
->                update #y (p !: #y + dy) p
+> move :: (Num (r .! "x"), Num (r .! "y"))
+>      => Rec r -> r .! "x" -> r .! "y" -> Rec r
+> move p dx dy = update #x (p .! #x + dx) $
+>                update #y (p .! #y + dy) p
 
 Here, we're using the update operator to update the value at the label x by
 adding dx to it, and then we do the same for y.
@@ -129,7 +129,7 @@ adventurous mathematicians who want to have points in a space with some arbitrar
 number of dimensions.  We could write out each of the 0s necessary, but there's
 an easier way to initialize a record:
 
-> origin4 :: Rec ("x" =: Double +: "y" =: Double +: "z" =: Double +: "w" =: Double)
+> origin4 :: Rec ("x" .== Double .+ "y" .== Double .+ "z" .== Double .+ "w" .== Double)
 > origin4 = rinit @Num 0
 
 Finally, we have come to a case where GHC cannot infer the type signature, and how
@@ -150,7 +150,7 @@ construction and destruction are obviously different.
 
 Creating a variant can be done with just:
 
-> v,v' :: Var ("y" =: String +: "x" =: Integer)
+> v,v' :: Var ("y" .== String .+ "x" .== Integer)
 > v  = just #x 1
 > v' = just #y "Foo"
 
@@ -180,8 +180,8 @@ label being added, one merely needs to provide a Proxy of the value.
 Rather than having to use proxies to extend a variant component by component, we
 can do the same thing with type applications and the diversify function.
 
-> v3' = diversify @("y" =: String) v2
-> v4 = diversify @("y" =: String +: "z" =: Double) v2
+> v3' = diversify @("y" .== String) v2
+> v4 = diversify @("y" .== String .+ "z" .== Double) v2
 
 λ> :t v4
 v4 :: Var ('R '["x" ':-> Integer, "y" ':-> String, "z" ':-> Double])
@@ -239,7 +239,7 @@ trial failed, we now can be sure that the value is not from l.
 For ease of use in view patterns, Variants also exposes the viewV function.  With
 it, we can write a function like this:
 
-> myShow :: ((r !: "y") ~ String, Show (r !: "x")) => Var r -> String
+> myShow :: ((r .! "y") ~ String, Show (r .! "x")) => Var r -> String
 > myShow (viewV #x -> Just n) = "Int of "++show n
 > myShow (viewV #y -> Just s) = "String of "++s
 > myShow _ = "Unknown"
@@ -248,7 +248,7 @@ it, we can write a function like this:
 "Int of 1"
 λ> myShow v'
 "String of Foo"
-λ> myShow (just #z 3 :: Var ("y" =: String +: "x" =: Integer +: "z" =: Double))
+λ> myShow (just #z 3 :: Var ("y" .== String .+ "x" .== Integer .+ "z" .== Double))
 "Unknown"
 
 Once again, the type signature is totally derivable.
@@ -257,7 +257,7 @@ There are two minor annoyances with this.  First, it's fairly common to want to 
 a function like myShow to be exhaustive in the variant's cases, but to do this,
 you must manually provide a type signature:
 
-> myShowRestricted :: Var ("y" =: String +: "x" =: Integer) -> String
+> myShowRestricted :: Var ("y" .== String .+ "x" .== Integer) -> String
 > myShowRestricted (viewV #x -> Just n) = "Int of "++show n
 > myShowRestricted (viewV #y -> Just s) = "String of "++s
 > myShowRestricted _ = error "Unreachable"
@@ -272,10 +272,10 @@ at that label that consumes the value the variant has and produces a value in a
 common type.  Essentially, switch "applies" the variant to the record to produce
 an output value.
 
-> --myShowRestricted' :: Var ("y" =: String +: "x" =: Integer) -> String
+> --myShowRestricted' :: Var ("y" .== String .+ "x" .== Integer) -> String
 > myShowRestricted' v = switch v $
->      #x =: (\n -> "Int of "++show n)
->   +: #y =: (\s -> "String of "++s)
+>      #x .== (\n -> "Int of "++show n)
+>   .+ #y .== (\s -> "String of "++s)
 
 This version of myShow needs neither a type signature (it is inferred exactly) nor
 a default "unreachable" case.  However, we no longer have the benefit of Haskell's
@@ -289,20 +289,20 @@ variant type you would like.  Of course, there needs to be a recourse if the var
 you provide is not expressible in the type you want, so multiTrial returns an Either
 of the type you want or a Variant of the leftovers.  Consider the examples:
 
-λ> :t multiTrial @("x" =: Double +: "y" =: String) v
-multiTrial @("x" =: Double +: "y" =: String) v
+λ> :t multiTrial @("x" .== Double .+ "y" .== String) v
+multiTrial @("x" .== Double .+ "y" .== String) v
   :: Either
        (Var ('R '["x" ':-> Double, "y" ':-> String]))
        (Var ('R '["x" ':-> Integer]))
-λ> multiTrial @("x" =: Double +: "y" =: String) v
+λ> multiTrial @("x" .== Double .+ "y" .== String) v
 Right {x=1}
 
-λ> :t multiTrial @("x" =: Double +: "y" =: String) v'
-multiTrial @("x" =: Double +: "y" =: String) v'
+λ> :t multiTrial @("x" .== Double .+ "y" .== String) v'
+multiTrial @("x" .== Double .+ "y" .== String) v'
   :: Either
        (Var ('R '["x" ':-> Double, "y" ':-> String]))
        (Var ('R '["x" ':-> Integer]))
-λ> multiTrial @("x" =: Double +: "y" =: String) v'
+λ> multiTrial @("x" .== Double .+ "y" .== String) v'
 Left {y="Foo"}
 
 Thus, multiTrial can be used not only to arbitrarily split apart a variant, but
@@ -313,13 +313,13 @@ from one where "x" is an Integer to one where it's a Double).
 Here are two functions you can define over variants.  The type constraints are a little
 ugly (the type equalities are necessary but annoying).
 
-> also :: (Forall ys Unconstrained1, AllUniqueLabels xs, ys ~ ((xs +: ys) \\: xs))
+> also :: (Forall ys Unconstrained1, AllUniqueLabels xs, ys ~ ((xs .+ ys) .\\ xs))
 >      => (Var xs -> a)
 >      -> (Var ys -> a)
->      -> Var (xs +: ys) -> a
+>      -> Var (xs .+ ys) -> a
 > also f1 f2 e = case multiTrial e of
 >   Left  e' -> f1 e'
 >   Right e' -> f2 e'
 
-> joinVarLists :: forall x y. (AllUniqueLabels (x +: y), (x +: y) ~ (y +: x)) => [Var x] -> [Var y] -> [Var (x +: y)]
+> joinVarLists :: forall x y. (AllUniqueLabels (x .+ y), (x .+ y) ~ (y .+ x)) => [Var x] -> [Var y] -> [Var (x .+ y)]
 > joinVarLists xs ys = map (diversify @y) xs ++ map (diversify @x) ys

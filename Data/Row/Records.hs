@@ -23,20 +23,20 @@ module Data.Row.Records
   , Rec, Row, Empty
   -- * Construction
   , empty
-  , type (=:), (=:)
+  , type (.==), (.==)
   , rinit, rinitA, rinitAWithLabel
   -- ** Extension
-  , Extendable(..), Extend, type (\:)
+  , Extendable(..), Extend, type (.\)
   -- ** Restriction
-  , type (-:), (-:)
+  , type (.-), (.-)
   , restrict
   -- ** Modification
   , Updatable(..), Focusable(..), Modify, Renamable(..), Rename
   -- * Query
-  , type (!:), (!:)
+  , type (.!), (.!)
   -- * Combine
   -- ** Disjoint union
-  , Disjoint, type (+:), (+:)
+  , Disjoint, type (.+), (.+)
   -- * Row operations
   -- ** Map
   , Map, rmapc, rmap, rxformc, rxform
@@ -102,9 +102,9 @@ empty :: Rec Empty
 empty = OR M.empty
 
 -- | The singleton record
-infixr 7 =:
-(=:) :: KnownSymbol l => Label l -> a -> Rec (l =: a)
-l =: a = extend l a empty
+infixr 7 .==
+(.==) :: KnownSymbol l => Label l -> a -> Rec (l .== a)
+l .== a = extend l a empty
 
 {--------------------------------------------------------------------
   Basic record operations
@@ -135,19 +135,19 @@ instance Renamable Rec where
   rename (show -> l) (show -> l') (OR m) = OR $ M.insert l' (m M.! l) $ M.delete l m
 
 -- | Record selection
-(!:) :: KnownSymbol l => Rec r -> Label l -> r !: l
-OR m !: (show -> a) = case m M.! a of
+(.!) :: KnownSymbol l => Rec r -> Label l -> r .! l
+OR m .! (show -> a) = case m M.! a of
   HideType x -> unsafeCoerce x
 
-infix  8 -:
+infix  8 .-
 -- | Record restriction. Delete the label l from the record.
-(-:) :: KnownSymbol l =>  Rec r -> Label l -> Rec (r -: l)
-OR m -: (show -> a) = OR $ M.delete a m
+(.-) :: KnownSymbol l =>  Rec r -> Label l -> Rec (r .- l)
+OR m .- (show -> a) = OR $ M.delete a m
 
 -- | Record disjoint union (commutative)
-infixr 6 +:
-(+:) :: Disjoint l r => Rec l -> Rec r -> Rec (l +: r)
-OR l +: OR r = OR $ M.unionWith (error "Impossible") l r
+infixr 6 .+
+(.+) :: Disjoint l r => Rec l -> Rec r -> Rec (l .+ r)
+OR l .+ OR r = OR $ M.unionWith (error "Impossible") l r
 
 -- | Arbitrary record restriction.  Turn a record into a subset of itself.
 restrict :: forall r r'. Subset r r' => Rec r' -> Rec r
@@ -155,8 +155,8 @@ restrict (OR m) = OR m
 
 -- | Removes a label from the record, returning the value at that label along
 -- with the updated record.
-remove :: KnownSymbol l => Label l -> Rec r -> (r !: l, Rec (r -: l))
-remove l r = (r !: l, r -: l)
+remove :: KnownSymbol l => Label l -> Rec r -> (r .! l, Rec (r .- l))
+remove l r = (r .! l, r .- l)
 
 
 {--------------------------------------------------------------------
@@ -181,7 +181,7 @@ instance Erasable Rec where
   eraseZip _ f x y = getConst $ metamorph @ρ @c @(RowPair Rec) @(Const [b]) (const $ Const []) doUncons doCons (RowPair (x,y))
     where doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
                    => (RowPair Rec) ('R (ℓ :-> τ ': ρ)) -> ((τ,τ), (RowPair Rec) ('R ρ))
-          doUncons (RowPair (r1, r2)) = ((r1 !: l, r2 !: l), RowPair (r1 -: l, r2 -: l)) where l = Label @ℓ
+          doUncons (RowPair (r1, r2)) = ((r1 .! l, r2 .! l), RowPair (r1 .- l, r2 .- l)) where l = Label @ℓ
           doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
                  => (τ,τ) -> Const [b] ('R ρ) -> Const [b] ('R (ℓ :-> τ ': ρ))
           doCons x (Const c) = Const $ uncurry f x : c
@@ -217,7 +217,7 @@ rxformc f = unRMap . metamorph @r @c @(RMap f) @(RMap g) doNil doUncons doCons .
   where
     doNil _ = RMap empty
     doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => RMap f ('R (ℓ :-> τ ': ρ)) -> (f τ, RMap f ('R ρ))
-    doUncons (RMap r) = (r !: l, RMap $ r -: l) where l = Label @ℓ
+    doUncons (RMap r) = (r .! l, RMap $ r .- l) where l = Label @ℓ
     doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
            => f τ -> RMap g ('R ρ) -> RMap g ('R (ℓ :-> τ ': ρ))
     doCons v (RMap r) = RMap (unsafeInjectFront l (f v) r) where l = Label @ℓ
@@ -232,7 +232,7 @@ rsequence = unFRow . metamorph @r @Unconstrained1 @(RMap f) @(FRow Rec f) doNil 
   where
     doNil _ = FRow (pure empty)
     doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ) => RMap f ('R (ℓ :-> τ ': ρ)) -> (f τ, RMap f ('R ρ))
-    doUncons (RMap r) = (r !: l, RMap $ r -: l) where l = Label @ℓ
+    doUncons (RMap r) = (r .! l, RMap $ r .- l) where l = Label @ℓ
     doCons :: forall ℓ τ ρ. (KnownSymbol ℓ)
            => f τ -> FRow Rec f ('R ρ) -> FRow Rec f ('R (ℓ :-> τ ': ρ))
     doCons fv (FRow fr) = FRow $ unsafeInjectFront l <$> fv <*> fr where l = Label @ℓ
