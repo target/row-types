@@ -58,6 +58,24 @@ instance Forall r Show => Show (Var r) where
 instance Forall r Eq => Eq (Var r) where
   r == r' = fromMaybe False $ eraseZip (Proxy @Eq) (==) r r'
 
+instance (Eq (Var r), Forall r Ord) => Ord (Var r) where
+  compare :: Var r -> Var r -> Ordering
+  compare x y = getConst $ metamorph @r @Ord @(RowPair Var) @(Const Ordering) doNil doUncons doCons (RowPair (x,y))
+    where doNil = impossible . fst . unRowPair
+          doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, Ord τ)
+                   => (RowPair Var) ('R (ℓ :-> τ ': ρ)) -> ((Maybe τ, Maybe τ), (RowPair Var) ('R ρ))
+          doUncons (RowPair (r1, r2)) = case (trial r1 (Label @ℓ), trial r2 (Label @ℓ)) of
+            (Left a,  Left b)  -> ((Just a, Just b),  error "impossible")
+            (Left a,  Right _) -> ((Just a, Nothing), error "impossible")
+            (Right _, Left b)  -> ((Nothing, Just b), error "impossible")
+            (Right x, Right y) -> ((Nothing, Nothing), RowPair (x, y))
+          doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, Ord τ)
+                 => (Maybe τ, Maybe τ) -> Const Ordering ('R ρ) -> Const Ordering ('R (ℓ :-> τ ': ρ))
+          doCons (Just a,  Just b) _ = Const $ compare a b
+          doCons (Just _,  Nothing) _ = Const LT
+          doCons (Nothing, Just _) _ = Const GT
+          doCons (Nothing, Nothing) (Const c) = Const c
+
 type instance ValOf Var τ = Maybe τ
 
 
