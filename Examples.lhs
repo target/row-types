@@ -9,7 +9,7 @@
 In this example file, we will explore how to create and use records and variants.
 
 --------------------------------------------------------------------------------
-  RECORDS
+  LABELS
 --------------------------------------------------------------------------------
 
 To begin, we will briefly discuss creating labels -- their use will follow.
@@ -28,6 +28,25 @@ And with OverloadedLabels, one can just write:
  #x
 
 We will use the OverloadedLabels notation in these examples.
+
+--------------------------------------------------------------------------------
+  LENS
+--------------------------------------------------------------------------------
+
+Records and variants play nicely with the lens library.  Each overloaded label
+is also a Lens for a record and a Traversal for variants.  Thus, .! can be
+replaced with ^. and trial can be made infix with ^?.  Additionally, update
+can be made infix:
+
+update #x v r === r & #x .~ v
+
+And because of the power of lens, it's easy to make modifications rather than
+just update:
+
+update #x (f $ r .! #x) r === r & #x %~ f
+
+Lens is not included with row-types by default, but using it can make row-types
+much friendlier.
 
 --------------------------------------------------------------------------------
   RECORDS

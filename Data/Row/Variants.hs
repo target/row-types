@@ -111,6 +111,7 @@ instance Updatable Var where
   update (show -> l') a (OneOf l x) = OneOf l $ if l == l' then HideType a else x
 
 instance Focusable Var where
+  type FRequires Var = Applicative
   -- | If the variant exists at the given label, focus on the value associated with it.
   -- Otherwise, do nothing.
   focus (show -> l') f (OneOf l (HideType x)) = if l == l' then (OneOf l . HideType) <$> f (unsafeCoerce x) else pure (OneOf l (HideType x))

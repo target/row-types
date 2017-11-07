@@ -75,6 +75,16 @@ instance x ~ y => IsLabel x (Label y) where
   fromLabel _ = Label
 #endif
 
+instance ( FRequires t f, KnownSymbol l, Focusable t
+         , a' ~ (r .! l -> f a), b' ~ (t r -> f (t (Modify l a r))))
+      => IsLabel l (a' -> b') where
+#if __GLASGOW_HASKELL__ >= 802
+  fromLabel = focus @t (Label @l)
+#else
+  fromLabel _ = focus @t (Label @l)
+#endif
+
+
 -- | A helper function for showing labels
 show' :: (IsString s, Show a) => a -> s
 show' = fromString . show
@@ -251,8 +261,9 @@ class Updatable (t :: Row * -> *) where
 -- | Focusable row types support modifying the value at a label in the row,
 -- and doing it in a lens-y way
 class Focusable (t :: Row * -> *) where
+  type FRequires t :: (* -> *) -> Constraint
   -- Apply the given function to the value in the Row at the given label.
-  focus :: (Applicative f, KnownSymbol l) => Label l -> (r .! l -> f a) -> t r -> f (t (Modify l a r))
+  focus :: (FRequires t f, KnownSymbol l) => Label l -> (r .! l -> f a) -> t r -> f (t (Modify l a r))
 
 -- | Renamable row types support renaming labels in the row.
 class Renamable (t :: Row * -> *) where

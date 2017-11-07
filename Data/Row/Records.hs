@@ -125,6 +125,7 @@ instance Updatable Rec where
 
 
 instance Focusable Rec where
+  type FRequires Rec = Functor
   -- | Focus on the value associated with the label.
   focus (show -> l) f (OR m) = case m M.! l of
     HideType x -> OR . flip (M.insert l) m . HideType <$> f (unsafeCoerce x)
