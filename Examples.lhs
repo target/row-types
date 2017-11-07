@@ -255,8 +255,9 @@ If trialing at a label l succeeds, then it provides a Left value of the value at
 If not, it provides a Right value of the variant with this label removed---since the
 trial failed, we now can be sure that the value is not from l.
 
-For ease of use in view patterns, Variants also exposes the viewV function.  With
-it, we can write a function like this:
+For ease of use in view patterns, Variants also exposes the viewV function.
+(If using lens, this can be replaced with preview.)  With it, we can write a
+function like this:
 
 > myShow :: ((r .! "y") ~ String, Show (r .! "x")) => Var r -> String
 > myShow (viewV #x -> Just n) = "Int of "++show n

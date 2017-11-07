@@ -1,9 +1,10 @@
 {-# LANGUAGE FunctionalDependencies #-}
 -----------------------------------------------------------------------------
 -- |
--- Module      :  Data.OpenRecords.Variants
+-- Module: Data.Row.Switch
 --
--- This module implements extensible variants using closed type famillies.
+-- This module provides the ability to discharge a polymorphic variant using
+-- a record that has matching fields.
 --
 -----------------------------------------------------------------------------
 
@@ -41,4 +42,4 @@ instance (KnownSymbol l, Switch (R v) (R r) b)
   switch v r = case trial v l of
     Left x  -> (r .! l) x
     Right v -> switch v (r .- l)
-    where l = Label :: Label l
+    where l = Label @l

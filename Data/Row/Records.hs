@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------------
 -- |
--- Module      :  Data.OpenRecords.Records
+-- Module      :  Data.Row.Records
 --
 -- This module implements extensible records using closed type famillies.
 --
@@ -26,14 +26,14 @@ module Data.Row.Records
   , type (.==), (.==)
   , rinit, rinitA, rinitAWithLabel
   -- ** Extension
-  , Extendable(..), Extend, type (.\)
+  , Extendable(..), Extend, Lacks, type (.\)
   -- ** Restriction
   , type (.-), (.-)
   , restrict
   -- ** Modification
   , Updatable(..), Focusable(..), Modify, Renamable(..), Rename
   -- * Query
-  , type (.!), (.!)
+  , HasType, type (.!), (.!)
   -- * Combine
   -- ** Disjoint union
   , Disjoint, type (.+), (.+)

@@ -1,8 +1,8 @@
 -----------------------------------------------------------------------------
 -- |
--- Module      :  Data.OpenRecords.Variants
+-- Module      :  Data.Row.Variants
 --
--- This module implements extensible variants using closed type famillies.
+-- This module implements extensible variants using closed type families.
 --
 -----------------------------------------------------------------------------
 
@@ -17,7 +17,7 @@ module Data.Row.Variants
   , HasType, just, just'
   , vinitAWithLabel
   -- ** Extension
-  , Extendable(..), Extend, type (.\), diversify, type (.+)
+  , Extendable(..), Extend, type (.\), Lacks, diversify, type (.+)
   -- ** Modification
   , Updatable(..), Focusable(..), Modify, Renamable(..), Rename
   -- * Destruction
