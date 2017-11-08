@@ -53,6 +53,7 @@ where
 
 import Control.Monad.Identity
 
+import Data.Functor.Compose
 import Data.Functor.Const
 import Data.Hashable
 import Data.HashMap.Lazy (HashMap)
@@ -229,14 +230,14 @@ rxform = rxformc @r @Unconstrained1
 
 -- | Applicative sequencing over a record
 rsequence :: forall f r. (Forall r Unconstrained1, Applicative f) => Rec (Map f r) -> f (Rec r)
-rsequence = unFRow . metamorph @r @Unconstrained1 @(RMap f) @(FRow Rec f) doNil doUncons doCons . RMap
+rsequence = getCompose . metamorph @r @Unconstrained1 @(RMap f) @(Compose f Rec) doNil doUncons doCons . RMap
   where
-    doNil _ = FRow (pure empty)
+    doNil _ = Compose (pure empty)
     doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ) => RMap f ('R (ℓ :-> τ ': ρ)) -> (f τ, RMap f ('R ρ))
     doUncons (RMap r) = (r .! l, RMap $ r .- l) where l = Label @ℓ
     doCons :: forall ℓ τ ρ. (KnownSymbol ℓ)
-           => f τ -> FRow Rec f ('R ρ) -> FRow Rec f ('R (ℓ :-> τ ': ρ))
-    doCons fv (FRow fr) = FRow $ unsafeInjectFront l <$> fv <*> fr where l = Label @ℓ
+           => f τ -> Compose f Rec ('R ρ) -> Compose f Rec ('R (ℓ :-> τ ': ρ))
+    doCons fv (Compose fr) = Compose $ unsafeInjectFront l <$> fv <*> fr where l = Label @ℓ
 
 -- | RZipPair is used internally as a type level lambda for zipping records.
 newtype RZipPair (ρ1 :: Row *) (ρ2 :: Row *) = RZipPair { unRZipPair :: Rec (RZip ρ1 ρ2) }
@@ -268,15 +269,15 @@ unsafeInjectFront (show -> a) b (OR m) = OR $ M.insert a (HideType b) m
 -- the label at that value.  This function works over an 'Applicative'.
 rinitAWithLabel :: forall c f ρ. (Applicative f, Forall ρ c, AllUniqueLabels ρ)
                 => (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Rec ρ)
-rinitAWithLabel mk = unFRow $ metamorph @ρ @c @(Const ()) @(FRow Rec f) doNil doUncons doCons (Const ())
-  where doNil :: Const () Empty -> FRow Rec f Empty
-        doNil _ = FRow $ pure empty
+rinitAWithLabel mk = getCompose $ metamorph @ρ @c @(Const ()) @(Compose f Rec) doNil doUncons doCons (Const ())
+  where doNil :: Const () Empty -> Compose f Rec Empty
+        doNil _ = Compose $ pure empty
         doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
                  => Const () ('R (ℓ :-> τ ': ρ)) -> ((), Const () ('R ρ))
         doUncons _ = ((), Const ())
         doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
-               => () -> FRow Rec f ('R ρ) -> FRow Rec f ('R (ℓ :-> τ ': ρ))
-        doCons _ (FRow r) = FRow $ unsafeInjectFront (Label @ℓ) <$> mk @ℓ @τ (Label @ℓ) <*> r
+               => () -> Compose f Rec ('R ρ) -> Compose f Rec ('R (ℓ :-> τ ': ρ))
+        doCons _ (Compose r) = Compose $ unsafeInjectFront (Label @ℓ) <$> mk @ℓ @τ (Label @ℓ) <*> r
 
 -- | Initialize a record with a default value at each label; works over an 'Applicative'.
 rinitA :: forall c f ρ. (Applicative f, Forall ρ c, AllUniqueLabels ρ)

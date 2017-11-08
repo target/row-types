@@ -22,18 +22,24 @@ module Data.Row.Variants
   , Updatable(..), Focusable(..), Modify, Renamable(..), Rename
   -- * Destruction
   , impossible, trial, trial', multiTrial, viewV
-  , Forall(..), Unconstrained1
   -- ** Types for destruction
   , type (.!), type (.-), type (.\\), type (.==)
-  -- * Folds
-  , Erasable(..)
+  -- * Row operations
+  -- ** Map
+  , Map, vmapc, vmap, vxformc, vxform
+  -- ** Fold
+  , Forall(..), Erasable(..), Unconstrained1
+  -- ** Sequence
+  , vsequence
   -- ** labels
   , labels
   )
 where
 
 import Control.Applicative
+import Control.Arrow (second)
 
+import Data.Functor.Compose
 import Data.Maybe (fromMaybe, fromJust)
 import Data.Proxy
 import Data.String (IsString)
@@ -144,6 +150,16 @@ viewV :: KnownSymbol l => Label l -> Var r -> Maybe (r .! l)
 viewV = flip trial'
 
 
+-- | performs a trial at the given label and returns either:
+--
+-- * Just the value at the label and undefined, or
+--
+-- * Nothing and the Variant without that label.
+unsafeVRemove :: KnownSymbol l => Label l -> Var r -> (Maybe (r .! l), Var (r .- l))
+unsafeVRemove l v = case trial v l of
+  Left  x  -> (Just x, error "impossible")
+  Right v' -> (Nothing, v')
+
 
 
 {--------------------------------------------------------------------
@@ -157,9 +173,7 @@ instance Erasable Var where
   eraseWithLabels _ f = fromJust . getConst . metamorph @ρ @c @Var @(Const (Maybe (s,b))) impossible doUncons doCons
     where doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
                    => Var ('R (ℓ :-> τ ': ρ)) -> (Maybe τ, Var ('R ρ))
-          doUncons v = case trial v (Label @ℓ) of
-            Left  x  -> (Just x, error "impossible")
-            Right v' -> (Nothing, v')
+          doUncons = unsafeVRemove (Label @ℓ)
           doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
                  => Maybe τ -> Const (Maybe (s,b)) ('R ρ) -> Const (Maybe (s,b)) ('R (ℓ :-> τ ': ρ))
           doCons (Just x) _ = Const $ Just (show' (Label @ℓ), f x)
@@ -190,18 +204,68 @@ instance Erasable Var where
 --   This function works over an 'Alternative'.
 vinitAWithLabel :: forall c f ρ. (Alternative f, Forall ρ c, AllUniqueLabels ρ)
                 => (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Var ρ)
-vinitAWithLabel mk = unFRow $ metamorph @ρ @c @(Const ()) @(FRow Var f) doNil doUncons doCons (Const ())
-  where doNil :: Const () Empty -> FRow Var f Empty
-        doNil _ = FRow $ empty
+vinitAWithLabel mk = getCompose $ metamorph @ρ @c @(Const ()) @(Compose f Var) doNil doUncons doCons (Const ())
+  where doNil :: Const () Empty -> Compose f Var Empty
+        doNil _ = Compose $ empty
         doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
                  => Const () ('R (ℓ :-> τ ': ρ)) -> ((), Const () ('R ρ))
         doUncons _ = ((), Const ())
         doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
-               => () -> FRow Var f ('R ρ) -> FRow Var f ('R (ℓ :-> τ ': ρ))
-        doCons _ (FRow v) = FRow $
+               => () -> Compose f Var ('R ρ) -> Compose f Var ('R (ℓ :-> τ ': ρ))
+        doCons _ (Compose v) = Compose $
           ((OneOf (show $ Label @ℓ) . HideType) <$> mk @ℓ @τ Label) <|> (unsafeInjectFront @ℓ @τ <$> v)
 
--- | A helper function for unsafely adding an element to the front of a record
+-- | A helper function for unsafely adding an element to the front of a variant
 unsafeInjectFront :: forall l a r. KnownSymbol l => Var (R r) -> Var (R (l :-> a ': r))
 unsafeInjectFront = unsafeCoerce
+
+-- | VMap is used internally as a type level lambda for defining variant maps.
+newtype VMap (f :: * -> *) (ρ :: Row *) = VMap { unVMap :: Var (Map f ρ) }
+type instance ValOf (VMap f) τ = Maybe (f τ)
+
+-- | A function to map over a variant given a constraint.
+vmapc :: forall c f r. Forall r c => (forall a. c a => a -> f a) -> Var r -> Var (Map f r)
+vmapc f = unVMap . metamorph @r @c @Var @(VMap f) doNil doUncons doCons
+  where
+    doNil = impossible
+    doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Var ('R (ℓ :-> τ ': ρ)) -> (Maybe τ, Var ('R ρ))
+    doUncons = unsafeVRemove (Label @ℓ)
+    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
+           => Maybe τ -> VMap f ('R ρ) -> VMap f ('R (ℓ :-> τ ': ρ))
+    doCons (Just x) _ = VMap $ OneOf (show $ Label @ℓ) $ HideType $ f x
+    doCons Nothing (VMap v) = VMap $ unsafeInjectFront @ℓ @(f τ) v
+
+-- | A function to map over a variant given no constraint.
+vmap :: forall f r. Forall r Unconstrained1 => (forall a. a -> f a) -> Var r -> Var (Map f r)
+vmap = vmapc @Unconstrained1
+
+-- | A mapping function specifically to convert @f a@ values to @g a@ values.
+vxformc :: forall r c f g. Forall r c => (forall a. c a => f a -> g a) -> Var (Map f r) -> Var (Map g r)
+vxformc f = unVMap . metamorph @r @c @(VMap f) @(VMap g) doNil doUncons doCons . VMap
+  where
+    doNil (VMap x) = impossible x
+    doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => VMap f ('R (ℓ :-> τ ': ρ)) -> (Maybe (f τ), VMap f ('R ρ))
+    doUncons (VMap r) = second VMap $ unsafeVRemove (Label @ℓ) r
+    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
+           => Maybe (f τ) -> VMap g ('R ρ) -> VMap g ('R (ℓ :-> τ ': ρ))
+    doCons (Just x) _ = VMap $ OneOf (show $ Label @ℓ) $ HideType $ f x
+    doCons Nothing (VMap v) = VMap $ unsafeInjectFront @ℓ @(g τ) v
+
+-- | A form of @rxformc@ that doesn't have a constraint on @a@
+vxform :: forall r f g . Forall r Unconstrained1 => (forall a. f a -> g a) -> Var (Map f r) -> Var (Map g r)
+vxform = vxformc @r @Unconstrained1
+
+-- | Applicative sequencing over a variant
+vsequence :: forall f r. (Forall r Unconstrained1, Applicative f) => Var (Map f r) -> f (Var r)
+vsequence = getCompose . metamorph @r @Unconstrained1 @(VMap f) @(Compose f Var) doNil doUncons doCons . VMap
+  where
+    doNil (VMap x) = impossible x
+    doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ) => VMap f ('R (ℓ :-> τ ': ρ)) -> (Maybe (f τ), VMap f ('R ρ))
+    doUncons (VMap v) = case trial v (Label @ℓ) of
+      Left  x  -> (Just x, error "impossible")
+      Right v' -> (Nothing, VMap v')
+    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ)
+           => Maybe (f τ) -> Compose f Var ('R ρ) -> Compose f Var ('R (ℓ :-> τ ': ρ))
+    doCons (Just fx) _ = Compose $ (OneOf (show $ Label @ℓ) . HideType) <$> fx
+    doCons Nothing (Compose v) = Compose $ unsafeInjectFront @ℓ @τ <$> v
 

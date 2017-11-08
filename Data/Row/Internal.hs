@@ -23,7 +23,7 @@ module Data.Row.Internal
   , Lacks, HasType
   -- * Row Classes
   , Labels, labels
-  , ValOf, RowPair(..), FRow(..)
+  , ValOf, RowPair(..)
   , Forall(..), Forall2(..)
   , Unconstrained1
   -- * Common operations on types over rows
@@ -238,9 +238,6 @@ labels = getConst $ metamorph @ρ @c @(Const ()) @(Const [s]) (const $ Const [])
 -- | A newtype for a pair of rows --- useful for functions involving 'metamorph'.
 newtype RowPair (f :: Row * -> *) (ρ :: Row *) = RowPair { unRowPair :: (f ρ, f ρ) }
 type instance ValOf (RowPair f) τ = (ValOf f τ, ValOf f τ)
-
--- | A newtype for a modifier over a row --- useful for functions involving 'metamorph'.
-newtype FRow (f :: Row * -> *) (g :: * -> *) (ρ :: Row *) = FRow { unFRow :: g (f ρ) }
 
 
 
