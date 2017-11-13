@@ -145,17 +145,17 @@ type family (l :: Row *) .\\ (r :: Row *) :: Row * where
   Syntactic sugar for record operations
 --------------------------------------------------------------------}
 -- | Alias for ':\'. It is a class rather than an alias, so that
---   it can be partially appliced.
+-- it can be partially applied.
 class (r .\ l) => Lacks (l :: Symbol) (r :: Row *)
 instance (r .\ l) => Lacks l r
 
 
--- | Alias for @(r :! l) ~ a@. It is a class rather than an alias, so that
---   it can be partially appliced.
+-- | Alias for @(r .! l) ~ a@. It is a class rather than an alias, so that
+-- it can be partially applied.
 class ((r .! l) ~ a) => HasType l a r
 instance ((r .! l) ~ a) => HasType l a r
 
--- | A typelevel way to create a singleton Row.
+-- | A type level way to create a singleton Row.
 infixr 7 .==
 type (l :: Symbol) .== (a :: *) = Extend l a Empty
 
