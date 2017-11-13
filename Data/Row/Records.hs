@@ -51,10 +51,12 @@ module Data.Row.Records
   )
 where
 
+import Control.Arrow (first, second)
 import Control.Monad.Identity
 
 import Data.Functor.Compose
 import Data.Functor.Const
+import Data.Functor.Product
 import Data.Hashable
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as M
@@ -95,8 +97,6 @@ instance (Eq (Rec r), Forall r Ord) => Ord (Rec r) where
 instance (Forall r Bounded, AllUniqueLabels r) => Bounded (Rec r) where
   minBound = rinit @Bounded minBound
   maxBound = rinit @Bounded maxBound
-
-type instance ValOf Rec τ = τ
 
 -- | The empty record
 empty :: Rec Empty
@@ -164,29 +164,36 @@ remove l r = (r .! l, r .- l)
 {--------------------------------------------------------------------
   Folds and maps
 --------------------------------------------------------------------}
+-- An easier type synonym for a pair where both elements are the same type.
+type IPair = Product Identity Identity
+
+-- Construct an IPair.
+iPair :: τ -> τ -> IPair τ
+iPair = (. Identity) . Pair . Identity
+
+-- Destruct an IPair.  Easily used with ViewPatterns.
+unIPair :: IPair τ -> (τ, τ)
+unIPair (Pair (Identity x) (Identity y)) = (x,y)
+
 instance Erasable Rec where
   type Output Rec a = [a]
   type OutputZip Rec a = [a]
   erase p f = fmap (snd @String) . eraseWithLabels p f
 
   eraseWithLabels :: forall s ρ c b. (Forall ρ c, IsString s) => Proxy c -> (forall a. c a => a -> b) -> Rec ρ -> [(s,b)]
-  eraseWithLabels _ f = getConst . metamorph @ρ @c @Rec @(Const [(s,b)]) doNil doUncons doCons
+  eraseWithLabels _ f = getConst . metamorph @ρ @c @Rec @(Const [(s,b)]) @Identity Proxy doNil doUncons doCons
     where doNil _ = Const []
-          doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
-                   => Rec ('R (ℓ :-> τ ': ρ)) -> (τ, Rec ('R ρ))
-          doUncons = remove (Label @ℓ)
+          doUncons l = first Identity . remove l
           doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
-                 => τ -> Const [(s,b)] ('R ρ) -> Const [(s,b)] ('R (ℓ :-> τ ': ρ))
-          doCons x (Const c) = Const $ (show' (Label @ℓ), f x) : c
+                 => Label ℓ -> Identity τ -> Const [(s,b)] ('R ρ) -> Const [(s,b)] ('R (ℓ :-> τ ': ρ))
+          doCons l (Identity x) (Const c) = Const $ (show' l, f x) : c
 
   eraseZip :: forall ρ c b. Forall ρ c => Proxy c -> (forall a. c a => a -> a -> b) -> Rec ρ -> Rec ρ -> [b]
-  eraseZip _ f x y = getConst $ metamorph @ρ @c @(RowPair Rec) @(Const [b]) (const $ Const []) doUncons doCons (RowPair (x,y))
-    where doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
-                   => (RowPair Rec) ('R (ℓ :-> τ ': ρ)) -> ((τ,τ), (RowPair Rec) ('R ρ))
-          doUncons (RowPair (r1, r2)) = ((r1 .! l, r2 .! l), RowPair (r1 .- l, r2 .- l)) where l = Label @ℓ
-          doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
-                 => (τ,τ) -> Const [b] ('R ρ) -> Const [b] ('R (ℓ :-> τ ': ρ))
-          doCons x (Const c) = Const $ uncurry f x : c
+  eraseZip _ f x y = getConst $ metamorph @ρ @c @(Product Rec Rec) @(Const [b]) @IPair Proxy (const $ Const []) doUncons doCons (Pair x y)
+    where doUncons l (Pair r1 r2) = (iPair (r1 .! l) (r2 .! l), Pair (r1 .- l) (r2 .- l))
+          doCons :: forall ℓ τ ρ. c τ
+                 => Label ℓ -> IPair τ -> Const [b] ('R ρ) -> Const [b] ('R (ℓ :-> τ ': ρ))
+          doCons _ (unIPair -> x) (Const c) = Const $ uncurry f x : c
 
 -- | Turns a record into a 'HashMap' from values representing the labels to
 --   the values of the record.
@@ -196,18 +203,16 @@ eraseToHashMap p f r = M.fromList $ eraseWithLabels p f r
 
 -- | RMap is used internally as a type level lambda for defining record maps.
 newtype RMap (f :: * -> *) (ρ :: Row *) = RMap { unRMap :: Rec (Map f ρ) }
-type instance ValOf (RMap f) τ = f τ
 
 -- | A function to map over a record given a constraint.
 rmapc :: forall c f r. Forall r c => (forall a. c a => a -> f a) -> Rec r -> Rec (Map f r)
-rmapc f = unRMap . metamorph @r @c @Rec @(RMap f) doNil doUncons doCons
+rmapc f = unRMap . metamorph @r @c @Rec @(RMap f) @Identity Proxy doNil doUncons doCons
   where
     doNil _ = RMap empty
-    doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Rec ('R (ℓ :-> τ ': ρ)) -> (τ, Rec ('R ρ))
-    doUncons = remove (Label @ℓ)
+    doUncons l = first Identity . remove l
     doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
-           => τ -> RMap f ('R ρ) -> RMap f ('R (ℓ :-> τ ': ρ))
-    doCons v (RMap r) = RMap (unsafeInjectFront l (f v) r) where l = Label @ℓ
+           => Label ℓ -> Identity τ -> RMap f ('R ρ) -> RMap f ('R (ℓ :-> τ ': ρ))
+    doCons l (Identity v) (RMap r) = RMap (unsafeInjectFront l (f v) r)
 
 -- | A function to map over a record given no constraint.
 rmap :: forall f r. Forall r Unconstrained1 => (forall a. a -> f a) -> Rec r -> Rec (Map f r)
@@ -215,14 +220,13 @@ rmap = rmapc @Unconstrained1
 
 -- | A mapping function specifically to convert @f a@ values to @g a@ values.
 rxformc :: forall r c f g. Forall r c => (forall a. c a => f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
-rxformc f = unRMap . metamorph @r @c @(RMap f) @(RMap g) doNil doUncons doCons . RMap
+rxformc f = unRMap . metamorph @r @c @(RMap f) @(RMap g) @f Proxy doNil doUncons doCons . RMap
   where
     doNil _ = RMap empty
-    doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => RMap f ('R (ℓ :-> τ ': ρ)) -> (f τ, RMap f ('R ρ))
-    doUncons (RMap r) = (r .! l, RMap $ r .- l) where l = Label @ℓ
+    doUncons l (RMap r) = (r .! l, RMap $ r .- l)
     doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
-           => f τ -> RMap g ('R ρ) -> RMap g ('R (ℓ :-> τ ': ρ))
-    doCons v (RMap r) = RMap (unsafeInjectFront l (f v) r) where l = Label @ℓ
+           => Label ℓ -> f τ -> RMap g ('R ρ) -> RMap g ('R (ℓ :-> τ ': ρ))
+    doCons l v (RMap r) = RMap (unsafeInjectFront l (f v) r)
 
 -- | A form of @rxformc@ that doesn't have a constraint on @a@
 rxform :: forall r f g . Forall r Unconstrained1 => (forall a. f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
@@ -230,31 +234,22 @@ rxform = rxformc @r @Unconstrained1
 
 -- | Applicative sequencing over a record
 rsequence :: forall f r. (Forall r Unconstrained1, Applicative f) => Rec (Map f r) -> f (Rec r)
-rsequence = getCompose . metamorph @r @Unconstrained1 @(RMap f) @(Compose f Rec) doNil doUncons doCons . RMap
+rsequence = getCompose . metamorph @r @Unconstrained1 @(RMap f) @(Compose f Rec) @f Proxy doNil doUncons doCons . RMap
   where
     doNil _ = Compose (pure empty)
-    doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ) => RMap f ('R (ℓ :-> τ ': ρ)) -> (f τ, RMap f ('R ρ))
-    doUncons (RMap r) = (r .! l, RMap $ r .- l) where l = Label @ℓ
-    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ)
-           => f τ -> Compose f Rec ('R ρ) -> Compose f Rec ('R (ℓ :-> τ ': ρ))
-    doCons fv (Compose fr) = Compose $ unsafeInjectFront l <$> fv <*> fr where l = Label @ℓ
+    doUncons l (RMap r) = second RMap $ remove l r
+    doCons l fv (Compose fr) = Compose $ unsafeInjectFront l <$> fv <*> fr
 
 -- | RZipPair is used internally as a type level lambda for zipping records.
 newtype RZipPair (ρ1 :: Row *) (ρ2 :: Row *) = RZipPair { unRZipPair :: Rec (RZip ρ1 ρ2) }
 
 -- | Zips together two records that have the same set of labels.
 rzip :: forall r1 r2. Forall2 r1 r2 Unconstrained1 => Rec r1 -> Rec r2 -> Rec (RZip r1 r2)
-rzip r1 r2 = unRZipPair $ metamorph2 @r1 @r2 @Unconstrained1 @Rec @Rec @RZipPair doNil doUncons doCons r1 r2
+rzip r1 r2 = unRZipPair $ metamorph2 @r1 @r2 @Unconstrained1 @Rec @Rec @RZipPair @Identity @Identity Proxy Proxy doNil doUncons doCons r1 r2
   where
     doNil _ _ = RZipPair empty
-    doUncons :: forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ)
-        => Rec ('R (ℓ :-> τ1 ': ρ1))
-        -> Rec ('R (ℓ :-> τ2 ': ρ2))
-        -> ((τ1, Rec ('R ρ1)), (τ2, Rec ('R ρ2)))
-    doUncons r1 r2 = (remove l r1, remove l r2) where l = Label @ℓ
-    doCons :: forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ)
-        => τ1 -> τ2 -> RZipPair ('R ρ1) ('R ρ2) -> RZipPair ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2))
-    doCons v1 v2 (RZipPair r) = RZipPair $ unsafeInjectFront l (v1, v2) r where l = Label @ℓ
+    doUncons l r1 r2 = (first Identity $ remove l r1, first Identity $ remove l r2)
+    doCons l (Identity v1) (Identity v2) (RZipPair r) = RZipPair $ unsafeInjectFront l (v1, v2) r
 
 -- | A helper function for unsafely adding an element to the front of a record
 unsafeInjectFront :: KnownSymbol l => Label l -> a -> Rec (R r) -> Rec (R (l :-> a ': r))
@@ -269,15 +264,12 @@ unsafeInjectFront (show -> a) b (OR m) = OR $ M.insert a (HideType b) m
 -- the label at that value.  This function works over an 'Applicative'.
 rinitAWithLabel :: forall c f ρ. (Applicative f, Forall ρ c, AllUniqueLabels ρ)
                 => (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Rec ρ)
-rinitAWithLabel mk = getCompose $ metamorph @ρ @c @(Const ()) @(Compose f Rec) doNil doUncons doCons (Const ())
-  where doNil :: Const () Empty -> Compose f Rec Empty
-        doNil _ = Compose $ pure empty
-        doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
-                 => Const () ('R (ℓ :-> τ ': ρ)) -> ((), Const () ('R ρ))
-        doUncons _ = ((), Const ())
+rinitAWithLabel mk = getCompose $ metamorph @ρ @c @(Const ()) @(Compose f Rec) @(Const ()) Proxy doNil doUncons doCons (Const ())
+  where doNil _ = Compose $ pure empty
+        doUncons _ _ = (Const (), Const ())
         doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
-               => () -> Compose f Rec ('R ρ) -> Compose f Rec ('R (ℓ :-> τ ': ρ))
-        doCons _ (Compose r) = Compose $ unsafeInjectFront (Label @ℓ) <$> mk @ℓ @τ (Label @ℓ) <*> r
+               => Label ℓ -> Const () τ -> Compose f Rec ('R ρ) -> Compose f Rec ('R (ℓ :-> τ ': ρ))
+        doCons l _ (Compose r) = Compose $ unsafeInjectFront l <$> mk @ℓ @τ l <*> r
 
 -- | Initialize a record with a default value at each label; works over an 'Applicative'.
 rinitA :: forall c f ρ. (Applicative f, Forall ρ c, AllUniqueLabels ρ)

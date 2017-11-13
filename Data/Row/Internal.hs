@@ -23,7 +23,6 @@ module Data.Row.Internal
   , Lacks, HasType
   -- * Row Classes
   , Labels, labels
-  , ValOf, RowPair(..)
   , Forall(..), Forall2(..)
   , Unconstrained1
   -- * Common operations on types over rows
@@ -165,31 +164,63 @@ type (l :: Symbol) .== (a :: *) = Extend l a Empty
   Constrained record operations
 --------------------------------------------------------------------}
 
--- | ValOf is used internally by 'Forall' to determine the intermediate value
---   between the fold and unfold values of 'metamorph'.
-type family ValOf (f :: Row * -> *) (τ :: *) :: *
-type instance ValOf (Const x) τ = x
-
 -- | Any structure over a row in which every element is similarly constrained can
 --   be metamorphized into another structure over the same row.
 class Forall (r :: Row *) (c :: * -> Constraint) where
-  -- | A metamorphism is an unfold followed by a fold.
-  metamorph :: forall (f :: Row * -> *) (g :: Row * -> *).
-               (f Empty -> g Empty)
+  -- | A metamorphism is an unfold followed by a fold.  This one is for
+  -- product-like row-types (e.g. Rec).
+  metamorph :: forall (f :: Row * -> *) (g :: Row * -> *) (h :: * -> *).
+               Proxy h
+            -> (f Empty -> g Empty)
                -- ^ The way to transform the empty element
-            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => f ('R (ℓ :-> τ ': ρ)) -> (ValOf f τ, f ('R ρ)))
+            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> f ('R (ℓ :-> τ ': ρ)) -> (h τ, f ('R ρ)))
                -- ^ The unfold
-            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => ValOf f τ -> g ('R ρ) -> g ('R (ℓ :-> τ ': ρ)))
+            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> h τ -> g ('R ρ) -> g ('R (ℓ :-> τ ': ρ)))
+               -- ^ The fold
+            -> f r  -- ^ The input structure
+            -> g r
+
+  -- | A metamorphism is an unfold followed by a fold.  This one is for
+  -- sum-like row-types (e.g. Var).
+  metamorph' :: forall (f :: Row * -> *) (g :: Row * -> *) (h :: * -> *).
+               Proxy h
+            -> (f Empty -> g Empty)
+               -- ^ The way to transform the empty element
+            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> f ('R (ℓ :-> τ ': ρ)) -> Either (h τ) (f ('R ρ)))
+               -- ^ The unfold
+            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> Either (h τ) (g ('R ρ)) -> g ('R (ℓ :-> τ ': ρ)))
                -- ^ The fold
             -> f r  -- ^ The input structure
             -> g r
 
 instance Forall (R '[]) c where
-  metamorph empty _ _ = empty
+  metamorph _ empty _ _ = empty
+  metamorph' _ empty _ _ = empty
 
 instance (KnownSymbol ℓ, c τ, Forall ('R ρ) c) => Forall ('R (ℓ :-> τ ': ρ)) c where
-  metamorph empty uncons cons r = cons t $ metamorph @('R ρ) @c empty uncons cons r'
-    where (t, r') = uncons r
+  metamorph :: forall (f :: Row * -> *) (g :: Row * -> *) (h :: * -> *).
+               Proxy h
+            -> (f Empty -> g Empty)
+               -- ^ The way to transform the empty element
+            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> f ('R (ℓ :-> τ ': ρ)) -> (h τ, f ('R ρ)))
+               -- ^ The unfold
+            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> h τ -> g ('R ρ) -> g ('R (ℓ :-> τ ': ρ)))
+               -- ^ The fold
+            -> f ('R (ℓ :-> τ ': ρ))  -- ^ The input structure
+            -> g ('R (ℓ :-> τ ': ρ))
+  metamorph _ empty uncons cons r = cons Label t $ metamorph @('R ρ) @c @_ @_ @h Proxy empty uncons cons r'
+    where (t, r') = uncons Label r
+  metamorph' :: forall (f :: Row * -> *) (g :: Row * -> *) (h :: * -> *).
+               Proxy h
+            -> (f Empty -> g Empty)
+               -- ^ The way to transform the empty element
+            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> f ('R (ℓ :-> τ ': ρ)) -> Either (h τ) (f ('R ρ)))
+               -- ^ The unfold
+            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> Either (h τ) (g ('R ρ)) -> g ('R (ℓ :-> τ ': ρ)))
+               -- ^ The fold
+            -> f ('R (ℓ :-> τ ': ρ))  -- ^ The input structure
+            -> g ('R (ℓ :-> τ ': ρ))
+  metamorph' _ empty uncons cons r = cons Label $ metamorph' @('R ρ) @c @_ @_ @h Proxy empty uncons cons <$> uncons Label r
 
 -- | Any structure over two rows in which every element of both rows satisfies the
 --   given constraint can be metamorphized into another structure over both of the
@@ -198,23 +229,26 @@ instance (KnownSymbol ℓ, c τ, Forall ('R ρ) c) => Forall ('R (ℓ :-> τ ': 
 --  in practice.
 class Forall2 (r1 :: Row *) (r2 :: Row *) (c :: * -> Constraint) where
   -- | A metamorphism is a fold followed by an unfold.  Here, we fold both of the inputs.
-  metamorph2 :: forall (f :: Row * -> *) (g :: Row * -> *) (h :: Row * -> Row * -> *).
-                (f Empty -> g Empty -> h Empty Empty)
+  metamorph2 :: forall (f :: Row * -> *) (g :: Row * -> *) (h :: Row * -> Row * -> *)
+                       (f' :: * -> *) (g' :: * -> *).
+                Proxy f' -> Proxy g'
+             -> (f Empty -> g Empty -> h Empty Empty)
              -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1, c τ2)
-                 => f ('R (ℓ :-> τ1 ': ρ1))
+                 => Label ℓ
+                 -> f ('R (ℓ :-> τ1 ': ρ1))
                  -> g ('R (ℓ :-> τ2 ': ρ2))
-                 -> ((ValOf f τ1, f ('R ρ1)), (ValOf g τ2, g ('R ρ2))))
+                 -> ((f' τ1, f ('R ρ1)), (g' τ2, g ('R ρ2))))
              -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1, c τ2)
-                 => ValOf f τ1 -> ValOf g τ2 -> h ('R ρ1) ('R ρ2) -> h ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)))
+                 => Label ℓ -> f' τ1 -> g' τ2 -> h ('R ρ1) ('R ρ2) -> h ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)))
              -> f r1 -> g r2 -> h r1 r2
 
 instance Forall2 (R '[]) (R '[]) c where
-  metamorph2 empty _ _ = empty
+  metamorph2 _ _ empty _ _ = empty
 
 instance (KnownSymbol ℓ, c τ1, c τ2, Forall2 ('R ρ1) ('R ρ2) c)
       => Forall2 ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)) c where
-  metamorph2 empty uncons cons r1 r2 = cons t1 t2 $ metamorph2 @('R ρ1) @('R ρ2) @c empty uncons cons r1' r2'
-    where ((t1, r1'), (t2, r2')) = uncons r1 r2
+  metamorph2 f g empty uncons cons r1 r2 = cons (Label @ℓ) t1 t2 $ metamorph2 @('R ρ1) @('R ρ2) @c f g empty uncons cons r1' r2'
+    where ((t1, r1'), (t2, r2')) = uncons (Label @ℓ) r1 r2
 
 -- | A null constraint
 class Unconstrained1 a
@@ -227,17 +261,9 @@ type family Labels (r :: Row a) where
 
 -- | Return a list of the labels in a record type.
 labels :: forall ρ c s. (IsString s, Forall ρ c) => [s]
-labels = getConst $ metamorph @ρ @c @(Const ()) @(Const [s]) (const $ Const []) doUncons doCons (Const ())
-  where doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Const () ('R (ℓ :-> τ ': ρ)) -> ((), Const () ('R ρ))
-        doUncons _ = ((), Const ())
-        doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
-               => () -> Const [s] ('R ρ) -> Const [s] ('R (ℓ :-> τ ': ρ))
-        doCons _ (Const c) = Const $ show' (Label @ℓ) : c
-
-
--- | A newtype for a pair of rows --- useful for functions involving 'metamorph'.
-newtype RowPair (f :: Row * -> *) (ρ :: Row *) = RowPair { unRowPair :: (f ρ, f ρ) }
-type instance ValOf (RowPair f) τ = (ValOf f τ, ValOf f τ)
+labels = getConst $ metamorph @ρ @c @(Const ()) @(Const [s]) @(Const ()) Proxy (const $ Const []) doUncons doCons (Const ())
+  where doUncons _ _ = (Const (), Const ())
+        doCons l _ (Const c) = Const $ show' l : c
 
 
 
