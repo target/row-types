@@ -13,7 +13,6 @@ Library
   Build-Depends: base >= 2 && < 6,
                  containers,
                  hashable >= 1.2,
-                 mtl >= 1.0,
                  unordered-containers >= 0.2
   Exposed-modules: Data.Row.Internal,
                    Data.Row.Records,
