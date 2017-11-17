@@ -52,10 +52,10 @@ module Data.Row.Records
 where
 
 import Control.Arrow (first, second)
-import Control.Monad.Identity
 
 import Data.Functor.Compose
 import Data.Functor.Const
+import Data.Functor.Identity
 import Data.Functor.Product
 import Data.Hashable
 import Data.HashMap.Lazy (HashMap)
