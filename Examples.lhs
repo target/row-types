@@ -33,8 +33,9 @@ We will use the OverloadedLabels notation in these examples.
   LENS
 --------------------------------------------------------------------------------
 
-Records and variants play nicely with the lens library.  Each overloaded label
-is also a Lens for a record and a Traversal for variants.  Thus, .! can be
+Records and variants play nicely with the lens library if we additionally import
+Data.Row.Lens from the row-types-lens "orphan instance" library.  Each overloaded
+label is also a Lens for a record and a Traversal for variants.  Thus, .! can be
 replaced with ^. and trial can be made infix with ^?.  Additionally, update
 can be made infix:
 
@@ -133,7 +134,6 @@ write a function to move the points we have:
 
 Here, we're using the update operator to update the value at the label x by
 adding dx to it, and then we do the same for y.
-TODO: Use lens-like notation to make this nicer.
 We can see it work in practice:
 
 λ> move origin 3 4
@@ -142,6 +142,11 @@ We can see it work in practice:
 5.0
 λ> distance (move (named "2D" origin3D) 5 12)
 13.0
+
+Note that if we were using row-types-lens and the lens library, we could write
+move as:
+
+move p dx dy = p & #x +~ dx & #y +~ dy
 
 So far, we created an origin point in 2d and then one in 3d, but what if we are
 adventurous mathematicians who want to have points in a space with some arbitrary

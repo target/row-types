@@ -269,7 +269,7 @@ rinitAWithLabel mk = getCompose $ metamorph @ρ @c @(Const ()) @(Compose f Rec) 
         doUncons _ _ = (Const (), Const ())
         doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
                => Label ℓ -> Const () τ -> Compose f Rec ('R ρ) -> Compose f Rec ('R (ℓ :-> τ ': ρ))
-        doCons l _ (Compose r) = Compose $ unsafeInjectFront l <$> mk @ℓ @τ l <*> r
+        doCons l _ (Compose r) = Compose $ unsafeInjectFront l <$> mk l <*> r
 
 -- | Initialize a record with a default value at each label; works over an 'Applicative'.
 rinitA :: forall c f ρ. (Applicative f, Forall ρ c, AllUniqueLabels ρ)

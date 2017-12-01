@@ -1,7 +1,7 @@
 {-# LANGUAGE CPP #-}
 -----------------------------------------------------------------------------
 -- |
--- Module      :  Data.OpenRecords.Internal.Row
+-- Module      :  Data.Row.Internal
 --
 -- This module implements the internals of open records and variants.
 --
@@ -73,16 +73,6 @@ instance x ~ y => IsLabel x (Label y) where
 #else
   fromLabel _ = Label
 #endif
-
-instance ( FRequires t f, KnownSymbol l, Focusable t
-         , a' ~ (r .! l -> f a), b' ~ (t r -> f (t (Modify l a r))))
-      => IsLabel l (a' -> b') where
-#if __GLASGOW_HASKELL__ >= 802
-  fromLabel = focus @t (Label @l)
-#else
-  fromLabel _ = focus @t (Label @l)
-#endif
-
 
 -- | A helper function for showing labels
 show' :: (IsString s, Show a) => a -> s
