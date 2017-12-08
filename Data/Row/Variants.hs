@@ -45,6 +45,7 @@ import Data.Functor.Product
 import Data.Maybe (fromMaybe)
 import Data.Proxy
 import Data.String (IsString)
+import Data.Text (Text)
 
 import GHC.TypeLits
 
@@ -58,7 +59,7 @@ import Data.Row.Internal
 
 -- | The variant type.
 data Var (r :: Row *) where
-  OneOf :: String -> HideType -> Var r
+  OneOf :: Text -> HideType -> Var r
 
 instance Forall r Show => Show (Var r) where
   show v = (\ (x, y) -> "{" ++ x ++ "=" ++ y ++ "}") $ eraseWithLabels (Proxy @Show) show v
@@ -86,7 +87,7 @@ instance (Eq (Var r), Forall r Ord) => Ord (Var r) where
 -- | An unsafe way to make a Variant.  This function does not guarantee that
 -- the labels are all unique.
 unsafeMakeVar :: forall r l. KnownSymbol l => Label l -> r .! l -> Var r
-unsafeMakeVar (show -> l) = OneOf l . HideType
+unsafeMakeVar (toKey -> l) = OneOf l . HideType
 
 -- | A Variant with no options is uninhabited.
 impossible :: Var Empty -> a
@@ -113,22 +114,22 @@ diversify = unsafeCoerce -- (OneOf l x) = OneOf l x
 instance Updatable Var where
   -- | If the variant exists at the given label, update it to the given value.
   -- Otherwise, do nothing.
-  update (show -> l') a (OneOf l x) = OneOf l $ if l == l' then HideType a else x
+  update (toKey -> l') a (OneOf l x) = OneOf l $ if l == l' then HideType a else x
 
 instance Focusable Var where
   type FRequires Var = Applicative
   -- | If the variant exists at the given label, focus on the value associated with it.
   -- Otherwise, do nothing.
-  focus (show -> l') f (OneOf l (HideType x)) = if l == l' then (OneOf l . HideType) <$> f (unsafeCoerce x) else pure (OneOf l (HideType x))
+  focus (toKey -> l') f (OneOf l (HideType x)) = if l == l' then (OneOf l . HideType) <$> f (unsafeCoerce x) else pure (OneOf l (HideType x))
 
 instance Renamable Var where
   -- | Rename the given label.
-  rename (show -> l1) (show -> l2) (OneOf l x) = OneOf (if l == l1 then l2 else l) x
+  rename (toKey -> l1) (toKey -> l2) (OneOf l x) = OneOf (if l == l1 then l2 else l) x
 
 -- | Convert a variant into either the value at the given label or a variant without
 -- that label.  This is the basic variant destructor.
 trial :: KnownSymbol l => Var r -> Label l -> Either (r .! l) (Var (r .- l))
-trial (OneOf l (HideType x)) (show -> l') = if l == l' then Left (unsafeCoerce x) else Right (OneOf l (HideType x))
+trial (OneOf l (HideType x)) (toKey -> l') = if l == l' then Left (unsafeCoerce x) else Right (OneOf l (HideType x))
 
 -- | A version of 'trial' that ignores the leftover variant.
 trial' :: KnownSymbol l => Var r -> Label l -> Maybe (r .! l)

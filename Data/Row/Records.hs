@@ -63,6 +63,7 @@ import qualified Data.HashMap.Lazy as M
 import Data.List
 import Data.Proxy
 import Data.String (IsString)
+import Data.Text (Text)
 
 import GHC.TypeLits
 
@@ -79,7 +80,7 @@ import Data.Row.Internal
 --------------------------------------------------------------------}
 -- | A record with row r.
 data Rec (r :: Row *) where
-  OR :: HashMap String HideType -> Rec r
+  OR :: HashMap Text HideType -> Rec r
 
 instance Forall r Show => Show (Rec r) where
   show r = "{ " ++ intercalate ", " binds ++ " }"
@@ -117,34 +118,34 @@ instance Extendable Rec where
   -- | Record extension. The row may already contain the label,
   --   in which case the origin value can be obtained after restriction ('.-') with
   --   the label.
-  extend (show -> l) a (OR m) = OR $ M.insert l (HideType a) m
+  extend (toKey -> l) a (OR m) = OR $ M.insert l (HideType a) m
 
 
 instance Updatable Rec where
   -- | Update the value associated with the label.
-  update (show -> l) a (OR m) = OR $ M.adjust f l m where f = const (HideType a)
+  update (toKey -> l) a (OR m) = OR $ M.adjust f l m where f = const (HideType a)
 
 
 instance Focusable Rec where
   type FRequires Rec = Functor
   -- | Focus on the value associated with the label.
-  focus (show -> l) f (OR m) = case m M.! l of
+  focus (toKey -> l) f (OR m) = case m M.! l of
     HideType x -> OR . flip (M.insert l) m . HideType <$> f (unsafeCoerce x)
 
 
 instance Renamable Rec where
   -- | Rename a label.
-  rename (show -> l) (show -> l') (OR m) = OR $ M.insert l' (m M.! l) $ M.delete l m
+  rename (toKey -> l) (toKey -> l') (OR m) = OR $ M.insert l' (m M.! l) $ M.delete l m
 
 -- | Record selection
 (.!) :: KnownSymbol l => Rec r -> Label l -> r .! l
-OR m .! (show -> a) = case m M.! a of
+OR m .! (toKey -> a) = case m M.! a of
   HideType x -> unsafeCoerce x
 
 infix  8 .-
 -- | Record restriction. Delete the label l from the record.
 (.-) :: KnownSymbol l =>  Rec r -> Label l -> Rec (r .- l)
-OR m .- (show -> a) = OR $ M.delete a m
+OR m .- (toKey -> a) = OR $ M.delete a m
 
 -- | Record disjoint union (commutative)
 infixr 6 .+
@@ -253,7 +254,7 @@ rzip r1 r2 = unRZipPair $ metamorph2 @r1 @r2 @Unconstrained1 @Rec @Rec @RZipPair
 
 -- | A helper function for unsafely adding an element to the front of a record
 unsafeInjectFront :: KnownSymbol l => Label l -> a -> Rec (R r) -> Rec (R (l :-> a ': r))
-unsafeInjectFront (show -> a) b (OR m) = OR $ M.insert a (HideType b) m
+unsafeInjectFront (toKey -> a) b (OR m) = OR $ M.insert a (HideType b) m
 
 
 {--------------------------------------------------------------------
