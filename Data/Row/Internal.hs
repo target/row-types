@@ -34,12 +34,16 @@ module Data.Row.Internal
   -- * Helper functions
   , show'
   , LacksL, Unique(..), AllUniqueLabels, RZip, Map, Subset
+
+  , toKey
   )
 where
 
 import Data.Functor.Const
 import Data.Proxy
 import Data.String (IsString (fromString))
+import Data.Text (Text)
+import qualified Data.Text as Text
 import Data.Type.Equality (type (==))
 
 import GHC.Exts -- needed for constraints kinds
@@ -66,6 +70,9 @@ data Label (s :: Symbol) = Label
 
 instance KnownSymbol s => Show (Label s) where
   show = symbolVal
+
+toKey :: forall s. KnownSymbol s => Label s -> Text
+toKey = Text.pack . symbolVal
 
 instance x ~ y => IsLabel x (Label y) where
 #if __GLASGOW_HASKELL__ >= 802

@@ -12,7 +12,8 @@ Category:            Data, Data Structures
 Library
   Build-Depends: base >= 2 && < 6,
                  hashable >= 1.2,
-                 unordered-containers >= 0.2
+                 unordered-containers >= 0.2,
+                 text
   Exposed-modules: Data.Row.Internal,
                    Data.Row.Records,
                    Data.Row.Variants,
