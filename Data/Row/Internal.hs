@@ -33,7 +33,7 @@ module Data.Row.Internal
   , Erasable(..)
   -- * Helper functions
   , show'
-  , LacksL, Unique(..), AllUniqueLabels, RZip, Map, Subset
+  , LacksL, AllUniqueLabels, RZip, Map, Subset
 
   , toKey
   )
@@ -49,6 +49,7 @@ import Data.Type.Equality (type (==))
 import GHC.Exts -- needed for constraints kinds
 import GHC.OverloadedLabels
 import GHC.TypeLits
+import qualified GHC.TypeLits as TL
 
 
 
@@ -100,7 +101,7 @@ data HideType where
 --------------------------------------------------------------------}
 
 -- | Does the row lack (i.e. it does not have) the specified label?
-type r .\ l = (LacksP l r ~ LabelUnique l)
+type r .\ l = LacksP l r
 
 -- | Type level Row extension
 type family Extend (l :: Symbol) (a :: *) (r :: Row *) :: Row * where
@@ -143,7 +144,7 @@ type family (l :: Row *) .\\ (r :: Row *) :: Row * where
 --------------------------------------------------------------------}
 -- | Alias for ':\'. It is a class rather than an alias, so that
 -- it can be partially applied.
-class (r .\ l) => Lacks (l :: Symbol) (r :: Row *)
+class Lacks (l :: Symbol) (r :: Row *)
 instance (r .\ l) => Lacks l r
 
 
@@ -165,7 +166,7 @@ type (l :: Symbol) .== (a :: *) = Extend l a Empty
 -- in a metamorph fold, i.e. it's not in the list yet and, when sorted,
 -- will be placed at the head.
 type FoldStep ℓ τ ρ = ( (Inject (ℓ :-> τ) ρ) ~ (ℓ :-> τ ': ρ)
-                      , LacksR ℓ ρ ~ LabelUnique ℓ
+                      , LacksR ℓ ρ
                       )
 
 -- | Any structure over a row in which every element is similarly constrained can
@@ -320,9 +321,6 @@ class Erasable (t :: Row * -> *) where
   Convenient type families and classes
 --------------------------------------------------------------------}
 
--- | A kind to give nicer error messages than Bool
-data Unique = LabelUnique Symbol | LabelNotUnique Symbol
-
 -- | Are all of the labels in this Row unique?
 class AllUniqueLabels r
 instance AllUniqueLabels (R '[])
@@ -369,10 +367,8 @@ type family Ifte (c :: Bool) (t :: k) (f :: k)   where
   Ifte True  t f = t
   Ifte False t f = f
 
-data NoSuchField (s :: Symbol)
-
 type family Get (l :: Symbol) (r :: [LT *]) where
-  Get l '[] = NoSuchField l
+  Get l '[] = TypeError (TL.Text "No such field: " :<>: ShowType l)
   Get l (l :-> t ': x) = t
   Get l (l' :-> t ': x) = Get l x
 
@@ -380,18 +376,18 @@ type family Remove (l :: Symbol) (r :: [LT *]) where
   Remove l (l :-> t ': x) = x
   Remove l (l' :-> t ': x) = l' :-> t ': Remove l x
 
-type family LacksP (l :: Symbol) (r :: Row *) where
+type family LacksP (l :: Symbol) (r :: Row *) :: Constraint where
   LacksP l (R r) = LacksR l r
 
-type family LacksR (l :: Symbol) (r :: [LT *]) where
-  LacksR l '[] = LabelUnique l
-  LacksR l (l :-> t ': x) = LabelNotUnique l
+type family LacksR (l :: Symbol) (r :: [LT *]) :: Constraint where
+  LacksR l '[] = Unconstrained1 l
+  LacksR l (l :-> t ': x) = TypeError (TL.Text "The label " :<>: ShowType l :<>: TL.Text " is not unique.")
   LacksR l (p ': x) = LacksR l x
 
 -- | Useful for checking if a symbol is *not* in the symbol list.
 type family LacksL (l :: Symbol) (ls :: [Symbol]) where
-  LacksL l '[] = LabelUnique l
-  LacksL l (l ': x) = LabelNotUnique l
+  LacksL l '[] = Unconstrained1 l
+  LacksL l (l ': x) = TypeError (TL.Text "The label " :<>: ShowType l :<>: TL.Text " is not unique.")
   LacksL l (p ': x) = LacksL l x
 
 type family Merge (l :: [LT *]) (r :: [LT *]) where
