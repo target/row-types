@@ -166,7 +166,7 @@ type (l :: Symbol) .== (a :: *) = Extend l a Empty
 -- in a metamorph fold, i.e. it's not in the list yet and, when sorted,
 -- will be placed at the head.
 type FoldStep ℓ τ ρ = ( (Inject (ℓ :-> τ) ρ) ~ (ℓ :-> τ ': ρ)
-                      , LacksR ℓ ρ
+                      , LacksR ℓ ρ ρ
                       )
 
 -- | Any structure over a row in which every element is similarly constrained can
@@ -256,6 +256,10 @@ instance (KnownSymbol ℓ, c τ1, c τ2, Forall2 ('R ρ1) ('R ρ2) c)
     where ((t1, r1'), (t2, r2')) = uncons (Label @ℓ) r1 r2
 
 -- | A null constraint
+class Unconstrained
+instance Unconstrained
+
+-- | A null constraint of one argument
 class Unconstrained1 a
 instance Unconstrained1 a
 
@@ -355,6 +359,7 @@ type family ZipR (r1 :: [LT *]) (r2 :: [LT *]) where
   ZipR '[] '[] = '[]
   ZipR (l :-> t1 ': r1) (l :-> t2 ': r2) =
     l :-> (t1, t2) ': ZipR r1 r2
+  ZipR _ _ = TypeError (TL.Text "Row types of different length cannot be zipped")
 
 type family Inject (l :: LT *) (r :: [LT *]) where
   Inject (l :-> t) '[] = (l :-> t ': '[])
@@ -373,22 +378,33 @@ type family Get (l :: Symbol) (r :: [LT *]) where
   Get l (l' :-> t ': x) = Get l x
 
 type family Remove (l :: Symbol) (r :: [LT *]) where
-  Remove l (l :-> t ': x) = x
-  Remove l (l' :-> t ': x) = l' :-> t ': Remove l x
+  Remove l r = RemoveT l r r
+
+type family RemoveT (l :: Symbol) (r :: [LT *]) (r_orig :: [LT *]) where
+  RemoveT l (l :-> t ': x) _ = x
+  RemoveT l (l' :-> t ': x) r = l' :-> t ': RemoveT l x r
+  RemoveT l '[] r = TypeError (TL.Text "Cannot remove a label that does not occur in the row type."
+                          :$$: TL.Text "The label " :<>: ShowType l :<>: TL.Text " is not in "
+                          :<>: ShowType r)
 
 type family LacksP (l :: Symbol) (r :: Row *) :: Constraint where
-  LacksP l (R r) = LacksR l r
+  LacksP l (R r) = LacksR l r r
 
-type family LacksR (l :: Symbol) (r :: [LT *]) :: Constraint where
-  LacksR l '[] = Unconstrained1 l
-  LacksR l (l :-> t ': x) = TypeError (TL.Text "The label " :<>: ShowType l :<>: TL.Text " is not unique.")
-  LacksR l (p ': x) = LacksR l x
+type family LacksR (l :: Symbol) (r :: [LT *]) (r_orig :: [LT *]) :: Constraint where
+  LacksR l '[] r = Unconstrained
+  LacksR l (l :-> t ': x) r = TypeError (TL.Text "The label " :<>: ShowType l :<>: TL.Text " is not unique."
+                                    :$$: TL.Text "It was found in " :<>: ShowType r)
+  LacksR l (p ': x) r = LacksR l x r
 
 -- | Useful for checking if a symbol is *not* in the symbol list.
 type family LacksL (l :: Symbol) (ls :: [Symbol]) where
-  LacksL l '[] = Unconstrained1 l
-  LacksL l (l ': x) = TypeError (TL.Text "The label " :<>: ShowType l :<>: TL.Text " is not unique.")
-  LacksL l (p ': x) = LacksL l x
+  LacksL l ls = LacksLT l ls ls
+
+type family LacksLT (l :: Symbol) (ls :: [Symbol]) (ls_orig :: [Symbol]) where
+  LacksLT l '[] ls = Unconstrained
+  LacksLT l (l ': x) ls = TypeError (TL.Text "The label " :<>: ShowType l :<>: TL.Text " is not unique."
+                                :$$: TL.Text "It was found in " :<>: ShowType ls)
+  LacksLT l (p ': x) ls = LacksLT l x ls
 
 type family Merge (l :: [LT *]) (r :: [LT *]) where
   Merge '[] r = r
