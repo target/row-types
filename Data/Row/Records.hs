@@ -24,6 +24,8 @@ module Data.Row.Records
   -- * Construction
   , empty
   , type (.==), (.==)
+  , defaultRecord, defaultRecordA
+  , recordFromLabels, recordFromLabelsA
   , rinit, rinitA, rinitAWithLabel
   -- ** Extension
   , Extendable(..), Extend, Lacks, type (.\)
@@ -261,6 +263,36 @@ unsafeInjectFront (toKey -> a) b (OR m) = OR $ M.insert a (HideType b) m
   Record initialization
 --------------------------------------------------------------------}
 
+-- | Initialize a record with a default value at each label.
+defaultRecord :: forall c ρ. (Forall ρ c, AllUniqueLabels ρ) => (forall a. c a => a) -> Rec ρ
+defaultRecord v = runIdentity $ defaultRecordA @c $ pure v
+
+-- | Initialize a record with a default value at each label; works over an 'Applicative'.
+defaultRecordA :: forall c f ρ. (Applicative f, Forall ρ c, AllUniqueLabels ρ)
+       => (forall a. c a => f a) -> f (Rec ρ)
+defaultRecordA v = recordFromLabelsA @c $ pure v
+
+-- | Initialize a record, where each value is determined by the given function over
+-- the label at that value.
+recordFromLabels :: forall c ρ. (Forall ρ c, AllUniqueLabels ρ)
+                 => (forall l a. (KnownSymbol l, c a) => Label l -> a) -> Rec ρ
+recordFromLabels f = runIdentity $ recordFromLabelsA @c $ (pure .) f
+
+-- | Initialize a record, where each value is determined by the given function over
+-- the label at that value.  This function works over an 'Applicative'.
+recordFromLabelsA :: forall c f ρ. (Applicative f, Forall ρ c, AllUniqueLabels ρ)
+                  => (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Rec ρ)
+recordFromLabelsA mk = getCompose $ metamorph @ρ @c @(Const ()) @(Compose f Rec) @(Const ()) Proxy doNil doUncons doCons (Const ())
+  where doNil _ = Compose $ pure empty
+        doUncons _ _ = (Const (), Const ())
+        doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
+               => Label ℓ -> Const () τ -> Compose f Rec ('R ρ) -> Compose f Rec ('R (ℓ :-> τ ': ρ))
+        doCons l _ (Compose r) = Compose $ unsafeInjectFront l <$> mk l <*> r
+
+
+
+{-# DEPRECATED rinitAWithLabel "Use recordFromLabels or recordFromLabelsA instead" #-}
+{-# DEPRECATED rinit, rinitA "Use defaultRecord or defaultRecordA instead" #-}
 -- | Initialize a record, where each value is determined by the given function over
 -- the label at that value.  This function works over an 'Applicative'.
 rinitAWithLabel :: forall c f ρ. (Applicative f, Forall ρ c, AllUniqueLabels ρ)
