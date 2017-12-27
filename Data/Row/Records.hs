@@ -54,6 +54,7 @@ module Data.Row.Records
 where
 
 import Control.Arrow (first, second)
+import Control.DeepSeq (NFData(..), deepseq)
 
 import Data.Functor.Compose
 import Data.Functor.Const
@@ -98,8 +99,14 @@ instance (Eq (Rec r), Forall r Ord) => Ord (Rec r) where
                   where l' = dropWhile (== EQ) l
 
 instance (Forall r Bounded, AllUniqueLabels r) => Bounded (Rec r) where
-  minBound = rinit @Bounded minBound
-  maxBound = rinit @Bounded maxBound
+  minBound = defaultRecord @Bounded minBound
+  maxBound = defaultRecord @Bounded maxBound
+
+instance Forall r NFData => NFData (Rec r) where
+  rnf r = getConst $ metamorph @r @NFData @Rec @(Const ()) @Identity Proxy empty doUncons doCons r
+    where empty = const $ Const ()
+          doUncons l = first Identity . remove l
+          doCons _ x r = deepseq x $ deepseq r $ Const ()
 
 -- | The empty record
 empty :: Rec Empty
