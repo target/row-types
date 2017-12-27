@@ -18,7 +18,7 @@ module Data.Row.Internal
   , Empty
   , HideType(..)
   -- * Row Operations
-  , Disjoint, Extend, Modify, Rename
+  , Extend, Modify, Rename
   , type (.\), type (.!), type (.-), type (.+), type (.\\), type (.==)
   , Lacks, HasType
   -- * Row Classes
