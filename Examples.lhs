@@ -128,7 +128,8 @@ already.  We could make new records representing new points, but instead, let's
 write a function to move the points we have:
 
 > move :: (Num (r .! "x"), Num (r .! "y"))
->      => Rec r -> r .! "x" -> r .! "y" -> Rec r
+>      => Rec r -> r .! "x" -> r .! "y"
+>      -> Rec (Modify "x" (r .! "x") (Modify "y" (r .! "y") r))
 > move p dx dy = update #x (p .! #x + dx) $
 >                update #y (p .! #y + dy) p
 

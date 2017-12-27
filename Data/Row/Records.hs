@@ -38,7 +38,7 @@ module Data.Row.Records
   , HasType, type (.!), (.!)
   -- * Combine
   -- ** Disjoint union
-  , Disjoint, type (.+), (.+)
+  , type (.+), (.+)
   -- * Row operations
   -- ** Map
   , Map, rmapc, rmap, rxformc, rxform
@@ -151,7 +151,7 @@ OR m .- (toKey -> a) = OR $ M.delete a m
 
 -- | Record disjoint union (commutative)
 infixr 6 .+
-(.+) :: Disjoint l r => Rec l -> Rec r -> Rec (l .+ r)
+(.+) :: Rec l -> Rec r -> Rec (l .+ r)
 OR l .+ OR r = OR $ M.unionWith (error "Impossible") l r
 
 -- | Arbitrary record restriction.  Turn a record into a subset of itself.
