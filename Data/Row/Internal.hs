@@ -33,9 +33,8 @@ module Data.Row.Internal
   , Erasable(..)
   -- * Helper functions
   , show'
-  , LacksL, AllUniqueLabels, RZip, Map, Subset
-
   , toKey
+  , LacksL, AllUniqueLabels, RZip, Map, Subset
   )
 where
 
@@ -72,9 +71,6 @@ data Label (s :: Symbol) = Label
 instance KnownSymbol s => Show (Label s) where
   show = symbolVal
 
-toKey :: forall s. KnownSymbol s => Label s -> Text
-toKey = Text.pack . symbolVal
-
 instance x ~ y => IsLabel x (Label y) where
 #if __GLASGOW_HASKELL__ >= 802
   fromLabel = Label
@@ -86,9 +82,12 @@ instance x ~ y => IsLabel x (Label y) where
 show' :: (IsString s, Show a) => a -> s
 show' = fromString . show
 
--- | Type level variant of 'empty'
-type family Empty :: Row * where
-  Empty = R '[]
+-- | A helper function to turn a Label directly into 'Text'.
+toKey :: forall s. KnownSymbol s => Label s -> Text
+toKey = Text.pack . symbolVal
+
+-- | Type level version of 'empty'
+type Empty = R '[]
 
 -- | Elements stored in a Row type are usually hidden.
 data HideType where

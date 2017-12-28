@@ -15,6 +15,7 @@ module Data.Row.Variants
   , Var, Row, Empty
   -- * Construction
   , HasType, just, just'
+  , variantFromLabel
   , vinitAWithLabel
   -- ** Extension
   , Extendable(..), Extend, type (.\), Lacks, diversify, type (.+)
@@ -26,9 +27,9 @@ module Data.Row.Variants
   , type (.!), type (.-), type (.\\), type (.==)
   -- * Row operations
   -- ** Map
-  , Map, vmapc, vmap, vxformc, vxform
+  , Map, vmap, vmapc, vxform, vxformc
   -- ** Fold
-  , Forall(..), Erasable(..), Unconstrained1
+  , Forall, Erasable(..), Unconstrained1
   -- ** Sequence
   , vsequence
   -- ** labels
@@ -84,8 +85,7 @@ instance Forall r NFData => NFData (Var r) where
   rnf r = getConst $ metamorph' @r @NFData @Var @(Const ()) @Identity Proxy empty doUncons doCons r
     where empty = const $ Const ()
           doUncons l = left Identity . flip trial l
-          doCons _ (Left x)  = deepseq x $ Const ()
-          doCons _ (Right v) = deepseq v $ Const ()
+          doCons _ x = deepseq x $ Const ()
 
 
 {--------------------------------------------------------------------
@@ -193,8 +193,24 @@ instance Erasable Var where
 unsafeInjectFront :: forall l a r. KnownSymbol l => Var (R r) -> Var (R (l :-> a ': r))
 unsafeInjectFront = unsafeCoerce
 
+-- | Initialize a variant from a producer function that accepts labels.  If this
+-- function returns more than one possibility, then one is chosen arbitrarily to
+-- be the value in the variant.
+variantFromLabel :: forall c f ρ. (Alternative f, Forall ρ c, AllUniqueLabels ρ)
+                 => (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Var ρ)
+variantFromLabel mk = getCompose $ metamorph @ρ @c @(Const ()) @(Compose f Var) @(Const ())
+                                             Proxy doNil doUncons doCons (Const ())
+  where doNil _ = Compose $ empty
+        doUncons _ _ = (Const (), Const ())
+        doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
+               => Label ℓ -> Const () τ -> Compose f Var ('R ρ) -> Compose f Var ('R (ℓ :-> τ ': ρ))
+        doCons l _ (Compose v) = Compose $
+          unsafeMakeVar l <$> mk l <|> unsafeInjectFront <$> v
+
+
 -- | Initialize a variant from a producer function over labels.
 --   This function works over an 'Alternative'.
+{-# DEPRECATED vinitAWithLabel "Use variantFromLabel instead" #-}
 vinitAWithLabel :: forall c f ρ. (Alternative f, Forall ρ c, AllUniqueLabels ρ)
                 => (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Var ρ)
 vinitAWithLabel mk = getCompose $ metamorph @ρ @c @(Const ()) @(Compose f Var) @(Const ()) Proxy doNil doUncons doCons (Const ())

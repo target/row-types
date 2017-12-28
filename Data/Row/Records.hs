@@ -42,14 +42,14 @@ module Data.Row.Records
   , type (.+), (.+)
   -- * Row operations
   -- ** Map
-  , Map, rmapc, rmap, rxformc, rxform
+  , Map, rmap, rmapc, rxform, rxformc
   -- ** Fold
-  , Forall(..), Erasable(..), eraseToHashMap, Unconstrained1
+  , Forall, Erasable(..), eraseToHashMap, Unconstrained1
   -- ** Zip
   , RZip, rzip
   -- ** Sequence
   , rsequence
-  -- ** labels
+  -- ** Labels
   , labels
   )
 where
@@ -235,7 +235,8 @@ rmapc f = unRMap . metamorph @r @c @Rec @(RMap f) @Identity Proxy doNil doUncons
 rmap :: forall f r. Forall r Unconstrained1 => (forall a. a -> f a) -> Rec r -> Rec (Map f r)
 rmap = rmapc @Unconstrained1
 
--- | A mapping function specifically to convert @f a@ values to @g a@ values.
+-- | A record transformer to convert a record of @f a@ values to a record of @g a@ values
+-- where the mapping function can use a constraint.
 rxformc :: forall r c f g. Forall r c => (forall a. c a => f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
 rxformc f = unRMap . metamorph @r @c @(RMap f) @(RMap g) @f Proxy doNil doUncons doCons . RMap
   where
@@ -245,7 +246,7 @@ rxformc f = unRMap . metamorph @r @c @(RMap f) @(RMap g) @f Proxy doNil doUncons
            => Label ℓ -> f τ -> RMap g ('R ρ) -> RMap g ('R (ℓ :-> τ ': ρ))
     doCons l v (RMap r) = RMap (unsafeInjectFront l (f v) r)
 
--- | A form of @rxformc@ that doesn't have a constraint on @a@
+-- | A record transformer to convert a record of @f a@ values to a record of @g a@ values.
 rxform :: forall r f g . Forall r Unconstrained1 => (forall a. f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
 rxform = rxformc @r @Unconstrained1
 
