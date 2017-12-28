@@ -104,7 +104,7 @@ already.  Overlapping labels within a single record/variant is strictly forbidde
 Let's say we want to get the values out of the record.  Simple selection is achieved
 with the .! operator, like so:
 
-λ> origin .! x
+λ> origin .! #x
 0.0
 
 and we can use this to write whatever we want.  Here is a function for calculating
@@ -128,7 +128,8 @@ already.  We could make new records representing new points, but instead, let's
 write a function to move the points we have:
 
 > move :: (Num (r .! "x"), Num (r .! "y"))
->      => Rec r -> r .! "x" -> r .! "y" -> Rec r
+>      => Rec r -> r .! "x" -> r .! "y"
+>      -> Rec (Modify "x" (r .! "x") (Modify "y" (r .! "y") r))
 > move p dx dy = update #x (p .! #x + dx) $
 >                update #y (p .! #y + dy) p
 
@@ -154,7 +155,7 @@ number of dimensions.  We could write out each of the 0s necessary, but there's
 an easier way to initialize a record:
 
 > origin4 :: Rec ("x" .== Double .+ "y" .== Double .+ "z" .== Double .+ "w" .== Double)
-> origin4 = rinit @Num 0
+> origin4 = defaultRecord @Num 0
 
 Finally, we have come to a case where GHC cannot infer the type signature, and how
 could it!  The type is providing crucial information about the shape of the record.

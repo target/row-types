@@ -38,6 +38,7 @@ where
 
 import Control.Applicative
 import Control.Arrow (left, right)
+import Control.DeepSeq (NFData(..), deepseq)
 
 import Data.Functor.Compose
 import Data.Functor.Identity
@@ -78,6 +79,13 @@ instance (Eq (Var r), Forall r Ord) => Ord (Var r) where
             (Right x, Right y) -> Right $ Pair x y
           doCons _ (Left (Const c)) = Const c
           doCons _ (Right (Const c)) = Const c
+
+instance Forall r NFData => NFData (Var r) where
+  rnf r = getConst $ metamorph' @r @NFData @Var @(Const ()) @Identity Proxy empty doUncons doCons r
+    where empty = const $ Const ()
+          doUncons l = left Identity . flip trial l
+          doCons _ (Left x)  = deepseq x $ Const ()
+          doCons _ (Right v) = deepseq v $ Const ()
 
 
 {--------------------------------------------------------------------

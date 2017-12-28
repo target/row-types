@@ -18,7 +18,7 @@ module Data.Row.Internal
   , Empty
   , HideType(..)
   -- * Row Operations
-  , Disjoint, Extend, Modify, Rename
+  , Extend, Modify, Rename
   , type (.\), type (.!), type (.-), type (.+), type (.\\), type (.==)
   , Lacks, HasType
   -- * Row Classes
@@ -33,7 +33,7 @@ module Data.Row.Internal
   , Erasable(..)
   -- * Helper functions
   , show'
-  , LacksL, Unique(..), AllUniqueLabels, RZip, Map, Subset
+  , LacksL, AllUniqueLabels, RZip, Map, Subset
 
   , toKey
   )
@@ -49,6 +49,7 @@ import Data.Type.Equality (type (==))
 import GHC.Exts -- needed for constraints kinds
 import GHC.OverloadedLabels
 import GHC.TypeLits
+import qualified GHC.TypeLits as TL
 
 
 
@@ -100,7 +101,8 @@ data HideType where
 --------------------------------------------------------------------}
 
 -- | Does the row lack (i.e. it does not have) the specified label?
-type r .\ l = (LacksP l r ~ LabelUnique l)
+type family (r :: Row *) .\ (l :: Symbol) :: Constraint where
+  R r .\ l = LacksR l r r
 
 -- | Type level Row extension
 type family Extend (l :: Symbol) (a :: *) (r :: Row *) :: Row * where
@@ -109,11 +111,6 @@ type family Extend (l :: Symbol) (a :: *) (r :: Row *) :: Row * where
 -- | Type level Row modification
 type family Modify (l :: Symbol) (a :: *) (r :: Row *) :: Row * where
   Modify l a (R ρ) = R (ModifyR l a ρ)
-
--- | Type level Row modification helper
-type family ModifyR (l :: Symbol) (a :: *) (ρ :: [LT *]) :: [LT *] where
-  ModifyR l a (l :-> a' ': ρ) = l :-> a ': ρ
-  ModifyR l a (l' :-> a' ': ρ) = l' :-> a' ': ModifyR l a ρ
 
 -- | Type level row renaming
 type family Rename (l :: Symbol) (l' :: Symbol) (r :: Row *) :: Row * where
@@ -141,9 +138,9 @@ type family (l :: Row *) .\\ (r :: Row *) :: Row * where
 {--------------------------------------------------------------------
   Syntactic sugar for record operations
 --------------------------------------------------------------------}
--- | Alias for ':\'. It is a class rather than an alias, so that
+-- | Alias for '.\'. It is a class rather than an alias, so that
 -- it can be partially applied.
-class (r .\ l) => Lacks (l :: Symbol) (r :: Row *)
+class Lacks (l :: Symbol) (r :: Row *)
 instance (r .\ l) => Lacks l r
 
 
@@ -165,7 +162,7 @@ type (l :: Symbol) .== (a :: *) = Extend l a Empty
 -- in a metamorph fold, i.e. it's not in the list yet and, when sorted,
 -- will be placed at the head.
 type FoldStep ℓ τ ρ = ( (Inject (ℓ :-> τ) ρ) ~ (ℓ :-> τ ': ρ)
-                      , LacksR ℓ ρ ~ LabelUnique ℓ
+                      , R ρ .\ ℓ
                       )
 
 -- | Any structure over a row in which every element is similarly constrained can
@@ -255,6 +252,10 @@ instance (KnownSymbol ℓ, c τ1, c τ2, Forall2 ('R ρ1) ('R ρ2) c)
     where ((t1, r1'), (t2, r2')) = uncons (Label @ℓ) r1 r2
 
 -- | A null constraint
+class Unconstrained
+instance Unconstrained
+
+-- | A null constraint of one argument
 class Unconstrained1 a
 instance Unconstrained1 a
 
@@ -278,12 +279,12 @@ labels = getConst $ metamorph @ρ @c @(Const ()) @(Const [s]) @(Const ()) Proxy 
 class Extendable (t :: Row * -> *) where
   type Inp t a
   -- | Record extension. The row must not already contain the label.
-  extend  :: forall a l r. (KnownSymbol l,r .\ l) => Label l -> Inp t a -> t r -> t (Extend l a r)
+  extend  :: forall a l r. KnownSymbol l => Label l -> Inp t a -> t r -> t (Extend l a r)
 
 -- | Updatable row types support changing the value at a label in the row.
 class Updatable (t :: Row * -> *) where
   -- Update the value in the Row at the given label by providing a new one.
-  update :: KnownSymbol l => Label l -> r .! l -> t r -> t r
+  update :: KnownSymbol l => Label l -> a -> t r -> t (Modify l a r)
 
 -- | Focusable row types support modifying the value at a label in the row,
 -- and doing it in a lens-y way
@@ -295,7 +296,7 @@ class Focusable (t :: Row * -> *) where
 -- | Renamable row types support renaming labels in the row.
 class Renamable (t :: Row * -> *) where
   -- Rename a label in the row.
-  rename :: (KnownSymbol l, KnownSymbol l', r .\ l') => Label l -> Label l' -> t r -> t (Rename l l' r)
+  rename :: (KnownSymbol l, KnownSymbol l') => Label l -> Label l' -> t r -> t (Rename l l' r)
 
 -- | Eraseable row types can be folded up.  Really, this should be called RowFoldable
 --   or something, and the inner functions should be
@@ -320,25 +321,38 @@ class Erasable (t :: Row * -> *) where
   Convenient type families and classes
 --------------------------------------------------------------------}
 
--- | A kind to give nicer error messages than Bool
-data Unique = LabelUnique Symbol | LabelNotUnique Symbol
-
 -- | Are all of the labels in this Row unique?
-class AllUniqueLabels r
-instance AllUniqueLabels (R '[])
-instance ((R r) .\ l, AllUniqueLabels (R r)) => AllUniqueLabels (R (l :-> a ': r))
+type family AllUniqueLabels (r :: Row *) :: Constraint where
+  AllUniqueLabels (R r) = AllUniqueLabelsR r
 
--- | Are the two rows disjoint? (i.e. their sets of labels are disjoint)
-class Disjoint x y
-instance {-# INCOHERENT #-} Disjoint (R '[]) y
-instance {-# INCOHERENT #-} Disjoint x (R '[])
-instance {-# INCOHERENT #-} (Disjoint (R x) y, y .\ l) => Disjoint (R (l :-> a ': x)) y
-instance {-# INCOHERENT #-} (Disjoint x (R y), x .\ l) => Disjoint x (R (l :-> a ': y))
+type family AllUniqueLabelsR (r :: [LT *]) :: Constraint where
+  AllUniqueLabelsR '[] = Unconstrained
+  AllUniqueLabelsR '[l :-> a] = Unconstrained
+  AllUniqueLabelsR (l :-> a ': l :-> b ': _) = TypeError
+    (TL.Text "The label " :<>: ShowType l :<>: TL.Text " is not unique."
+    :$$: TL.Text "It is assigned to both " :<>: ShowType a :<>: TL.Text " and " :<>: ShowType b)
+  AllUniqueLabelsR (l :-> a ': l' :-> b ': r) = AllUniqueLabelsR (l' :-> b ': r)
 
 -- | Is the first row a subset of the second?
-class Subset x y
-instance Subset (R '[]) y
-instance (HasType l a y, Subset (R x) y) => Subset (R (l :-> a ': x)) y
+type family Subset (r1 :: Row *) (r2 :: Row *) :: Constraint where
+  Subset (R r1) (R r2) = SubsetR r1 r2
+
+type family SubsetR (r1 :: [LT *]) (r2 :: [LT *]) :: Constraint where
+  SubsetR '[] _ = Unconstrained
+  SubsetR x '[] = TypeError (TL.Text "One row-type is not a subset of the other."
+        :$$: TL.Text "The first contains the bindings " :<>: ShowType x
+        :<>: TL.Text " while the second does not.")
+  SubsetR (l :-> a ': x) (l :-> a ': y) = SubsetR x y
+  SubsetR (l :-> a ': x) (l :-> b ': y) =
+    TypeError (TL.Text "One row-type is not a subset of the other."
+          :$$: TL.Text "The first assigns the label " :<>: ShowType l :<>: TL.Text " to "
+          :<>: ShowType a :<>: TL.Text " while the second assigns it to " :<>: ShowType b)
+  SubsetR (hl :-> al ': tl) (hr :-> ar ': tr) =
+      Ifte (hl <=.? hr)
+      (TypeError (TL.Text "One row-type is not a subset of the other."
+             :$$: TL.Text "The first assigns the label " :<>: ShowType hl :<>: TL.Text " to "
+             :<>: ShowType al :<>: TL.Text " while the second has no assignment for it."))
+      (SubsetR (hl :-> al ': tl) tr)
 
 -- | Map a type level function over a Row.
 type family Map (f :: a -> b) (r :: Row a) :: Row b where
@@ -357,48 +371,72 @@ type family ZipR (r1 :: [LT *]) (r2 :: [LT *]) where
   ZipR '[] '[] = '[]
   ZipR (l :-> t1 ': r1) (l :-> t2 ': r2) =
     l :-> (t1, t2) ': ZipR r1 r2
+  ZipR (l :-> t1 ': r1) _ = TypeError (TL.Text "Row types with different label sets cannot be zipped"
+                                  :$$: TL.Text "For one, the label " :<>: ShowType l :<>: TL.Text " is not in both lists.")
+  ZipR '[] (l :-> t ': r) = TypeError (TL.Text "Row types with different label sets cannot be zipped"
+                                  :$$: TL.Text "For one, the label " :<>: ShowType l :<>: TL.Text " is not in both lists.")
 
 type family Inject (l :: LT *) (r :: [LT *]) where
   Inject (l :-> t) '[] = (l :-> t ': '[])
+  Inject (l :-> t) (l :-> t' ': x) = TypeError (TL.Text "Cannot inject a label into a row type that already has that label"
+                                  :$$: TL.Text "The label " :<>: ShowType l :<>: TL.Text " was already assigned the type "
+                                  :<>: ShowType t' :<>: TL.Text " and is now trying to be assigned the type "
+                                  :<>: ShowType t :<>: TL.Text ".")
   Inject (l :-> t) (l' :-> t' ': x) =
       Ifte (l <=.? l')
       (l :-> t   ': l' :-> t' ': x)
       (l' :-> t' ': Inject (l :-> t)  x)
 
+-- | Type level Row modification helper
+type family ModifyR (l :: Symbol) (a :: *) (ρ :: [LT *]) :: [LT *] where
+  ModifyR l a (l :-> a' ': ρ) = l :-> a ': ρ
+  ModifyR l a (l' :-> a' ': ρ) = l' :-> a' ': ModifyR l a ρ
+  ModifyR l a '[] = TypeError (TL.Text "Tried to modify the label " :<>: ShowType l
+                          :<>: TL.Text ", but it does not appear in the row-type.")
+
 type family Ifte (c :: Bool) (t :: k) (f :: k)   where
   Ifte True  t f = t
   Ifte False t f = f
 
-data NoSuchField (s :: Symbol)
-
 type family Get (l :: Symbol) (r :: [LT *]) where
-  Get l '[] = NoSuchField l
+  Get l '[] = TypeError (TL.Text "No such field: " :<>: ShowType l)
   Get l (l :-> t ': x) = t
   Get l (l' :-> t ': x) = Get l x
 
 type family Remove (l :: Symbol) (r :: [LT *]) where
-  Remove l (l :-> t ': x) = x
-  Remove l (l' :-> t ': x) = l' :-> t ': Remove l x
+  Remove l r = RemoveT l r r
 
-type family LacksP (l :: Symbol) (r :: Row *) where
-  LacksP l (R r) = LacksR l r
+type family RemoveT (l :: Symbol) (r :: [LT *]) (r_orig :: [LT *]) where
+  RemoveT l (l :-> t ': x) _ = x
+  RemoveT l (l' :-> t ': x) r = l' :-> t ': RemoveT l x r
+  RemoveT l '[] r = TypeError (TL.Text "Cannot remove a label that does not occur in the row type."
+                          :$$: TL.Text "The label " :<>: ShowType l :<>: TL.Text " is not in "
+                          :<>: ShowType r)
 
-type family LacksR (l :: Symbol) (r :: [LT *]) where
-  LacksR l '[] = LabelUnique l
-  LacksR l (l :-> t ': x) = LabelNotUnique l
-  LacksR l (p ': x) = LacksR l x
+type family LacksR (l :: Symbol) (r :: [LT *]) (r_orig :: [LT *]) :: Constraint where
+  LacksR l '[] r = Unconstrained
+  LacksR l (l :-> t ': x) r = TypeError (TL.Text "The label " :<>: ShowType l
+                                    :<>: TL.Text " already exists in " :<>: ShowType r)
+  LacksR l (p ': x) r = LacksR l x r
 
 -- | Useful for checking if a symbol is *not* in the symbol list.
 type family LacksL (l :: Symbol) (ls :: [Symbol]) where
-  LacksL l '[] = LabelUnique l
-  LacksL l (l ': x) = LabelNotUnique l
-  LacksL l (p ': x) = LacksL l x
+  LacksL l ls = LacksLT l ls ls
+
+type family LacksLT (l :: Symbol) (ls :: [Symbol]) (ls_orig :: [Symbol]) where
+  LacksLT l '[] ls = Unconstrained
+  LacksLT l (l ': x) ls = TypeError (TL.Text "The label " :<>: ShowType l
+                                    :<>: TL.Text " already exists in " :<>: ShowType ls)
+  LacksLT l (p ': x) ls = LacksLT l x ls
 
 type family Merge (l :: [LT *]) (r :: [LT *]) where
   Merge '[] r = r
   Merge l '[] = l
   Merge (h :-> a ': tl)   (h :-> a ': tr) =
       (h :-> a ': Merge tl tr)
+  Merge (h :-> a ': tl)   (h :-> b ': tr) =
+    TypeError (TL.Text "The label " :<>: ShowType h :<>: TL.Text " has conflicting assignments."
+          :$$: TL.Text "Its type is both " :<>: ShowType a :<>: TL.Text " and " :<>: ShowType b :<>: TL.Text ".")
   Merge (hl :-> al ': tl) (hr :-> ar ': tr) =
       Ifte (hl <=.? hr)
       (hl :-> al ': Merge tl (hr :-> ar ': tr))
