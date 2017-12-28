@@ -195,7 +195,9 @@ class Forall (r :: Row *) (c :: * -> Constraint) where
             -> g r
 
 instance Forall (R '[]) c where
+  {-# INLINE metamorph #-}
   metamorph _ empty _ _ = empty
+  {-# INLINE metamorph' #-}
   metamorph' _ empty _ _ = empty
 
 instance (KnownSymbol ℓ, c τ, FoldStep ℓ τ ρ, Forall ('R ρ) c) => Forall ('R (ℓ :-> τ ': ρ)) c where
@@ -209,6 +211,7 @@ instance (KnownSymbol ℓ, c τ, FoldStep ℓ τ ρ, Forall ('R ρ) c) => Forall
                -- ^ The fold
             -> f ('R (ℓ :-> τ ': ρ))  -- ^ The input structure
             -> g ('R (ℓ :-> τ ': ρ))
+  {-# INLINE metamorph #-}
   metamorph _ empty uncons cons r = cons Label t $ metamorph @('R ρ) @c @_ @_ @h Proxy empty uncons cons r'
     where (t, r') = uncons Label r
   metamorph' :: forall (f :: Row * -> *) (g :: Row * -> *) (h :: * -> *).
@@ -221,6 +224,7 @@ instance (KnownSymbol ℓ, c τ, FoldStep ℓ τ ρ, Forall ('R ρ) c) => Forall
                -- ^ The fold
             -> f ('R (ℓ :-> τ ': ρ))  -- ^ The input structure
             -> g ('R (ℓ :-> τ ': ρ))
+  {-# INLINE metamorph' #-}
   metamorph' _ empty uncons cons r = cons Label $ metamorph' @('R ρ) @c @_ @_ @h Proxy empty uncons cons <$> uncons Label r
 
 -- | Any structure over two rows in which every element of both rows satisfies the
@@ -244,10 +248,12 @@ class Forall2 (r1 :: Row *) (r2 :: Row *) (c :: * -> Constraint) where
              -> f r1 -> g r2 -> h r1 r2
 
 instance Forall2 (R '[]) (R '[]) c where
+  {-# INLINE metamorph2 #-}
   metamorph2 _ _ empty _ _ = empty
 
 instance (KnownSymbol ℓ, c τ1, c τ2, Forall2 ('R ρ1) ('R ρ2) c)
       => Forall2 ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)) c where
+  {-# INLINE metamorph2 #-}
   metamorph2 f g empty uncons cons r1 r2 = cons (Label @ℓ) t1 t2 $ metamorph2 @('R ρ1) @('R ρ2) @c f g empty uncons cons r1' r2'
     where ((t1, r1'), (t2, r2')) = uncons (Label @ℓ) r1 r2
 

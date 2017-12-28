@@ -32,6 +32,7 @@ module Data.Row.Records
   -- ** Restriction
   , type (.-), (.-)
   , restrict
+  , deleteField
   -- ** Modification
   , Updatable(..), Focusable(..), Modify, Renamable(..), Rename
   -- * Query
@@ -152,9 +153,15 @@ OR m .! (toKey -> a) = case m M.! a of
   HideType x -> unsafeCoerce x
 
 infix  8 .-
--- | Record restriction. Delete the label l from the record.
-(.-) :: KnownSymbol l =>  Rec r -> Label l -> Rec (r .- l)
-OR m .- (toKey -> a) = OR $ M.delete a m
+-- | Record restriction. Remove the label l from the record.
+(.-) :: KnownSymbol l => Rec r -> Label l -> Rec (r .- l)
+OR m .- _ = OR m
+
+-- | Record restriction.  Remove the label l from the record and remove the
+-- underlying value in the record.  This is usually unnecessary, but it may be
+-- helpful in certain situations to prevent space leaks.
+deleteField :: KnownSymbol l => Label l -> Rec r -> Rec (r .- l)
+deleteField (toKey -> a) (OR m) = OR $ M.delete a m
 
 -- | Record disjoint union (commutative)
 infixr 6 .+
