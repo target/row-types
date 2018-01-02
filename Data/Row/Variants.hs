@@ -27,7 +27,7 @@ module Data.Row.Variants
   , type (.!), type (.-), type (.\\), type (.==)
   -- * Row operations
   -- ** Map
-  , Map, vmap, vmapc, vxform, vxformc
+  , Map, vmap, vmapc, vLiftNT, vxform, vxformc
   -- ** Fold
   , Forall, Erasable(..), Unconstrained1
   -- ** Sequence
@@ -239,6 +239,21 @@ vmapc f = unVMap . metamorph' @r @c @Var @(VMap f) @Identity Proxy doNil doUncon
 vmap :: forall f r. Forall r Unconstrained1 => (forall a. a -> f a) -> Var r -> Var (Map f r)
 vmap = vmapc @Unconstrained1
 
+-- | Lifts a natrual transformation over a variant.  In other words, it acts as a
+-- variant transformer to convert a variant of @f a@ values to a variant of @g a@
+-- values.  If no constraint is needed, instantiate the first type argument with
+-- 'Unconstrained1'.
+vLiftNT :: forall c r f g. Forall r c => (forall a. c a => f a -> g a) -> Var (Map f r) -> Var (Map g r)
+vLiftNT f = unVMap . metamorph' @r @c @(VMap f) @(VMap g) @f Proxy doNil doUncons doCons . VMap
+  where
+    doNil = impossible . unVMap
+    doUncons l = right VMap . flip trial l . unVMap
+    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
+           => Label ℓ -> Either (f τ) (VMap g ('R ρ)) -> VMap g ('R (ℓ :-> τ ': ρ))
+    doCons l (Left x) = VMap $ unsafeMakeVar l $ f x
+    doCons _ (Right (VMap v)) = VMap $ unsafeInjectFront v
+
+{-# DEPRECATED vxform, vxformc "Use vLiftNT instead" #-}
 -- | A mapping function specifically to convert @f a@ values to @g a@ values.
 vxformc :: forall r c f g. Forall r c => (forall a. c a => f a -> g a) -> Var (Map f r) -> Var (Map g r)
 vxformc f = unVMap . metamorph' @r @c @(VMap f) @(VMap g) @f Proxy doNil doUncons doCons . VMap
