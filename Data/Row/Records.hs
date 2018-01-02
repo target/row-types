@@ -41,7 +41,8 @@ module Data.Row.Records
   , type (.+), (.+)
   -- * Row operations
   -- ** Map
-  , Map, rmap, rmapc, rxform, rxformc
+  , Map, rmap, rmapc, liftNT
+  , rxform, rxformc
   -- ** Fold
   , Forall, Erasable(..), eraseToHashMap, Unconstrained1
   -- ** Zip
