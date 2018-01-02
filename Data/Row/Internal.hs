@@ -447,6 +447,7 @@ type family Merge (l :: [LT *]) (r :: [LT *]) where
       (hl :-> al ': Merge tl (hr :-> ar ': tr))
       (hr :-> ar ': Merge (hl :-> al ': tl) tr)
 
+-- | Returns the left list with all of the elements from the right list removed.
 type family Diff (l :: [LT *]) (r :: [LT *]) where
   Diff '[] r = '[]
   Diff l '[] = l
