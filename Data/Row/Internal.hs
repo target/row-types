@@ -289,7 +289,7 @@ class Extendable (t :: Row * -> *) where
 -- | Updatable row types support changing the value at a label in the row.
 class Updatable (t :: Row * -> *) where
   -- Update the value in the Row at the given label by providing a new one.
-  update :: KnownSymbol l => Label l -> a -> t r -> t (Modify l a r)
+  update :: KnownSymbol l => Label l -> a -> t r -> t r
 
 -- | Focusable row types support modifying the value at a label in the row,
 -- and doing it in a lens-y way
