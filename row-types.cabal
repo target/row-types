@@ -33,6 +33,7 @@ Library
               MultiParamTypeClasses,
               OverloadedLabels,
               PatternGuards,
+              PatternSynonyms,
               PolyKinds,
               RankNTypes,
               ScopedTypeVariables,

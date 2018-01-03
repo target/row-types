@@ -34,7 +34,7 @@ module Data.Row.Internal
   -- * Helper functions
   , show'
   , toKey
-  , LacksL, AllUniqueLabels, RZip, Map, Subset
+  , LacksL, AllUniqueLabels, RZip, Map, Subset, Disjoint
   )
 where
 
@@ -358,6 +358,16 @@ type family SubsetR (r1 :: [LT *]) (r2 :: [LT *]) :: Constraint where
              :$$: TL.Text "The first assigns the label " :<>: ShowType hl :<>: TL.Text " to "
              :<>: ShowType al :<>: TL.Text " while the second has no assignment for it."))
       (SubsetR (hl :-> al ': tl) tr)
+
+-- | A type synonym for disjointness.
+type Disjoint l r = ( Forall l Unconstrained1
+                    , Forall r Unconstrained1
+                    , AllUniqueLabels l
+                    , AllUniqueLabels r
+                    , Subset l (l .+ r)
+                    , Subset r (l .+ r)
+                    , (l .+ r) .\\ l ~ r
+                    , (l .+ r) .\\ r ~ l)
 
 -- | Map a type level function over a Row.
 type family Map (f :: a -> b) (r :: Row a) :: Row b where

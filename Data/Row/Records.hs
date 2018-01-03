@@ -23,7 +23,7 @@ module Data.Row.Records
   , Rec, Row, Empty
   -- * Construction
   , empty
-  , type (.==), (.==)
+  , type (.==), (.==), pattern (:==), unSingleton
   , defaultRecord, defaultRecordA
   , recordFromLabels, recordFromLabelsA
   , rinit, rinitA, rinitAWithLabel
@@ -38,7 +38,7 @@ module Data.Row.Records
   , HasType, type (.!), (.!)
   -- * Combine
   -- ** Disjoint union
-  , type (.+), (.+)
+  , type (.+), (.+), Disjoint, pattern (:+)
   -- * Row operations
   -- ** Map
   , Map, rmap, rmapc, liftNT
@@ -117,6 +117,15 @@ infixr 7 .==
 (.==) :: KnownSymbol l => Label l -> a -> Rec (l .== a)
 l .== a = extend l a empty
 
+infixr 7 :==
+pattern (:==) :: forall l a. KnownSymbol l => Label l -> a -> Rec (l .== a)
+pattern l :== a <- (unSingleton @l @a -> (l, a)) where
+        (:==) l a = l .== a
+
+-- | Turns a singleton record into a pair of the label and value.
+unSingleton :: forall l a. KnownSymbol l => Rec (l .== a) -> (Label l, a)
+unSingleton r = (l, r .! l) where l = Label @l
+
 {--------------------------------------------------------------------
   Basic record operations
 --------------------------------------------------------------------}
@@ -161,6 +170,13 @@ OR m .- (toKey -> a) = OR $ M.delete a m
 infixr 6 .+
 (.+) :: Rec l -> Rec r -> Rec (l .+ r)
 OR l .+ OR r = OR $ M.unionWith (error "Impossible") l r
+
+
+-- | A pattern version of record union, for use in pattern matching.
+infixr 6 :+
+pattern (:+) :: forall l r. Disjoint l r => Rec l -> Rec r -> Rec (l .+ r)
+pattern l :+ r <- (recSplit @l -> (l, r)) where
+        (:+) l r = l .+ r
 
 -- | Split a record into two sub-records.
 recSplit :: forall s r. (Forall s Unconstrained1, Subset s r)

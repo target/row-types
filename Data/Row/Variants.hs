@@ -24,7 +24,7 @@ module Data.Row.Variants
   -- * Destruction
   , impossible, trial, trial', multiTrial, viewV
   -- ** Types for destruction
-  , type (.!), type (.-), type (.\\), type (.==)
+  , type (.!), type (.-), type (.\\), type (.==), pattern IsJust
   -- * Row operations
   -- ** Map
   , Map, vmap, vmapc, vLiftNT, vxform, vxformc
@@ -109,6 +109,14 @@ just = unsafeMakeVar
 -- | A version of 'just' that creates the variant of only one type.
 just' :: KnownSymbol l => Label l -> a -> Var (l .== a)
 just' = just
+
+
+pattern IsJust :: forall l r. (AllUniqueLabels r, KnownSymbol l) => Label l -> r .! l -> Var r
+pattern IsJust l a <- (unSingleton @l -> (l, Just a)) where
+        IsJust l a = just l a
+
+unSingleton :: forall l r. KnownSymbol l => Var r -> (Label l, Maybe (r .! l))
+unSingleton v = (l, viewV l v) where l = Label @l
 
 instance Extendable Var where
   type Inp Var a = Proxy a

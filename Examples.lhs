@@ -164,6 +164,44 @@ Regardless, with the type provided, it works exactly as expected:
 λ> origin4
 { w=0.0, x=0.0, y=0.0, z=0.0 }
 
+While we have added names or further fields, we can also choose to forget
+information in a record.  To remove a particular label, one can use the .-
+operator, like so:
+
+> unName :: HasType "name" a r => Rec r -> Rec (r .- "name")
+> unName r = r .- #name
+
+For larger changes, it is easier to use the restrict function.  The following
+function will take a record that contains both an x and y coordinate and remove
+the rest of the fields from it.
+
+> get2D :: Disjoint ("x" .== Double .+ "y" .== Double) rest
+>       => Rec (("x" .== Double .+ "y" .== Double) .+ rest)
+>       -> Rec  ("x" .== Double .+ "y" .== Double)
+> get2D r = restrict r
+
+GHC is a little finicky about the type operators and constraints -- indeed, this
+type signature will fail to type check if the parentheses around
+  "x" .== Double .+ "y" .== Double
+in the argument are missing.  Of course, a type signature is not necessary when
+using type applications, and the function can instead be written as:
+
+> get2D' r = restrict @("x" .== Double .+ "y" .== Double) r
+
+with no trouble.  Yet another altnerative is to match directly on the values desired
+using the :== and :+ record patterns:
+
+> get2D'' :: Disjoint ("x" .== Double .+ "y" .== Double) rest
+>         => Rec (("x" .== Double .+ "y" .== Double) .+ rest)
+>         -> Rec  ("x" .== Double .+ "y" .== Double)
+> get2D'' (((Label :: Label "x") :== n1 :+ (Label :: Label "y") :== n2) :+ _) = #x .== n1 .+ #y .== n2
+> get2D'' _ = error "impossible"
+
+(Note that overloaded labels cannot be used in the patterns, so the notation is
+unfortunately bloated by types, and the same parentheses needed in the type are
+required in the pattern.)
+
+All three of the get2D functions behave the same.
 
 --------------------------------------------------------------------------------
   VARIANTS
@@ -265,7 +303,7 @@ For ease of use in view patterns, Variants also exposes the viewV function.
 (If using lens, this can be replaced with preview.)  With it, we can write a
 function like this:
 
-> myShow :: ((r .! "y") ~ String, Show (r .! "x")) => Var r -> String
+> myShow :: (HasType "y" String r, Show (r .! "x")) => Var r -> String
 > myShow (viewV #x -> Just n) = "Int of "++show n
 > myShow (viewV #y -> Just s) = "String of "++s
 > myShow _ = "Unknown"
@@ -277,7 +315,14 @@ function like this:
 λ> myShow (just #z 3 :: Var ("y" .== String .+ "x" .== Integer .+ "z" .== Double))
 "Unknown"
 
-Once again, the type signature is totally derivable.
+This can also be achieved with the IsJust pattern synonym in much the same way:
+
+> myShow' :: (AllUniqueLabels r, HasType "y" String r, Show (r .! "x")) => Var r -> String
+> myShow' (IsJust (Label :: Label "x") n) = "Int of "++show n
+> myShow' (IsJust (Label :: Label "y") s) = "String of "++s
+> myShow' _ = "Unknown"
+
+In either case, the type signature is once again totally derivable.
 
 There are two minor annoyances with this.  First, it's fairly common to want to define
 a function like myShow to be exhaustive in the variant's cases, but to do this,
@@ -291,6 +336,7 @@ you must manually provide a type signature:
 The second blemish can be seen in this restricted version of myShow.  Even though
 we know from the type that we've covered all the posibilities of the variant, GHC
 will generate a "non-exhaustive pattern match" warning without the final line.
+(This is true for the pattern synonym version too.)
 
 One way to avoid this problem is to use switch.  The switch operator takes a variant
 and a record such that for each label that the variant has, the record has a function
@@ -339,7 +385,7 @@ from one where "x" is an Integer to one where it's a Double).
 Here are two functions you can define over variants.  The type constraints are a little
 ugly (the type equalities are necessary but annoying).
 
-> also :: (Forall ys Unconstrained1, AllUniqueLabels xs, ys ~ ((xs .+ ys) .\\ xs))
+> also :: Disjoint xs ys
 >      => (Var xs -> a)
 >      -> (Var ys -> a)
 >      -> Var (xs .+ ys) -> a
@@ -347,5 +393,6 @@ ugly (the type equalities are necessary but annoying).
 >   Left  e' -> f1 e'
 >   Right e' -> f2 e'
 
-> joinVarLists :: forall x y. (AllUniqueLabels (x .+ y), (x .+ y) ~ (y .+ x)) => [Var x] -> [Var y] -> [Var (x .+ y)]
+> joinVarLists :: forall x y. (AllUniqueLabels (x .+ y), (x .+ y) ~ (y .+ x))
+>              => [Var x] -> [Var y] -> [Var (x .+ y)]
 > joinVarLists xs ys = map (diversify @y) xs ++ map (diversify @x) ys
