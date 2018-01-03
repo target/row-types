@@ -34,7 +34,7 @@ module Data.Row.Internal
   -- * Helper functions
   , show'
   , toKey
-  , LacksL, AllUniqueLabels, RZip, Map, Subset
+  , LacksL, AllUniqueLabels, RZip, Map, Subset, Disjoint
   )
 where
 
@@ -461,4 +461,6 @@ type family Diff (l :: [LT *]) (r :: [LT *]) where
 -- so here it is in terms of other ghc-7.8 type functions
 type a <=.? b = (CmpSymbol a b == 'LT)
 
+{-# DEPRECATED Disjoint "This constraint should no longer be necessary" #-}
+type Disjoint l r = Unconstrained
 

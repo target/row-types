@@ -38,7 +38,7 @@ module Data.Row.Records
   , HasType, type (.!), (.!)
   -- * Combine
   -- ** Disjoint union
-  , type (.+), (.+)
+  , type (.+), (.+), Disjoint
   -- * Row operations
   -- ** Map
   , Map, rmap, rmapc, liftNT
