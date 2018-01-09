@@ -4,8 +4,8 @@ Synopsis:	           Open records and variants.
 Description:         Open records and variants.
 License:             MIT
 License-file:        LICENSE
-Author:              Daniel Winograd-Cort
-Maintainer:          daniel.winograd-cort@target.com
+Author:              Daniel Winograd-Cort, Matthew Farkas-Dyck
+Maintainer:          daniel.winograd-cort@target.com, matthew.farkas-dyck@target.com
 Build-Type:          Simple
 Cabal-Version:       >=1.8
 Category:            Data, Data Structures
