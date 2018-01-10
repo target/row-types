@@ -15,6 +15,7 @@ module Data.Row.Variants
   , Var, Row, Empty
   -- * Construction
   , HasType, just, just'
+  , variantFromLabel
   , vinitAWithLabel
   -- ** Extension
   , Extendable(..), Extend, type (.\), Lacks, diversify, type (.+)
@@ -26,9 +27,9 @@ module Data.Row.Variants
   , type (.!), type (.-), type (.\\), type (.==)
   -- * Row operations
   -- ** Map
-  , Map, vmapc, vmap, vxformc, vxform
+  , Map, vmap, vmapc, vLiftNT, vxform, vxformc
   -- ** Fold
-  , Forall(..), Erasable(..), Unconstrained1
+  , Forall, Erasable(..), Unconstrained1
   -- ** Sequence
   , vsequence
   -- ** labels
@@ -84,8 +85,7 @@ instance Forall r NFData => NFData (Var r) where
   rnf r = getConst $ metamorph' @r @NFData @Var @(Const ()) @Identity Proxy empty doUncons doCons r
     where empty = const $ Const ()
           doUncons l = left Identity . flip trial l
-          doCons _ (Left x)  = deepseq x $ Const ()
-          doCons _ (Right v) = deepseq v $ Const ()
+          doCons _ x = deepseq x $ Const ()
 
 
 {--------------------------------------------------------------------
@@ -193,8 +193,25 @@ instance Erasable Var where
 unsafeInjectFront :: forall l a r. KnownSymbol l => Var (R r) -> Var (R (l :-> a ': r))
 unsafeInjectFront = unsafeCoerce
 
+-- | Initialize a variant from a producer function that accepts labels.  If this
+-- function returns more than one possibility, then one is chosen arbitrarily to
+-- be the value in the variant.
+variantFromLabel :: forall c ρ f. (Alternative f, Forall ρ c, AllUniqueLabels ρ)
+                 => (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Var ρ)
+variantFromLabel mk = getCompose $ metamorph' @ρ @c @(Const ()) @(Compose f Var) @(Const ())
+                                              Proxy doNil doUncons doCons (Const ())
+  where doNil _ = Compose $ empty
+        doUncons _ _ = Right $ Const ()
+        doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
+               => Label ℓ -> Either (Const () τ) (Compose f Var ('R ρ)) -> Compose f Var ('R (ℓ :-> τ ': ρ))
+        doCons l (Left _) = Compose $ unsafeMakeVar l <$> mk l --This case should be impossible
+        doCons l (Right (Compose v)) = Compose $
+          unsafeMakeVar l <$> mk l <|> unsafeInjectFront <$> v
+
+
 -- | Initialize a variant from a producer function over labels.
 --   This function works over an 'Alternative'.
+{-# DEPRECATED vinitAWithLabel "Use variantFromLabel instead" #-}
 vinitAWithLabel :: forall c f ρ. (Alternative f, Forall ρ c, AllUniqueLabels ρ)
                 => (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Var ρ)
 vinitAWithLabel mk = getCompose $ metamorph @ρ @c @(Const ()) @(Compose f Var) @(Const ()) Proxy doNil doUncons doCons (Const ())
@@ -223,6 +240,21 @@ vmapc f = unVMap . metamorph' @r @c @Var @(VMap f) @Identity Proxy doNil doUncon
 vmap :: forall f r. Forall r Unconstrained1 => (forall a. a -> f a) -> Var r -> Var (Map f r)
 vmap = vmapc @Unconstrained1
 
+-- | Lifts a natrual transformation over a variant.  In other words, it acts as a
+-- variant transformer to convert a variant of @f a@ values to a variant of @g a@
+-- values.  If no constraint is needed, instantiate the first type argument with
+-- 'Unconstrained1'.
+vLiftNT :: forall c r f g. Forall r c => (forall a. c a => f a -> g a) -> Var (Map f r) -> Var (Map g r)
+vLiftNT f = unVMap . metamorph' @r @c @(VMap f) @(VMap g) @f Proxy doNil doUncons doCons . VMap
+  where
+    doNil = impossible . unVMap
+    doUncons l = right VMap . flip trial l . unVMap
+    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
+           => Label ℓ -> Either (f τ) (VMap g ('R ρ)) -> VMap g ('R (ℓ :-> τ ': ρ))
+    doCons l (Left x) = VMap $ unsafeMakeVar l $ f x
+    doCons _ (Right (VMap v)) = VMap $ unsafeInjectFront v
+
+{-# DEPRECATED vxform, vxformc "Use vLiftNT instead" #-}
 -- | A mapping function specifically to convert @f a@ values to @g a@ values.
 vxformc :: forall r c f g. Forall r c => (forall a. c a => f a -> g a) -> Var (Map f r) -> Var (Map g r)
 vxformc f = unVMap . metamorph' @r @c @(VMap f) @(VMap g) @f Proxy doNil doUncons doCons . VMap

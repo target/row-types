@@ -18,7 +18,9 @@ main =
         , bench "simple 10" $ nf id $ #a .== () .+ #b .== () .+ #c .== () .+ #d .== () .+ #e .== ()
                                    .+ #f .== () .+ #g .== () .+ #h .== () .+ #i .== () .+ #j .== ()
         , bench "reverse 5" $ nf id $ #e .== () .+ #d .== () .+ #c .== () .+ #b .== () .+ #a .== ()
-        , bench "append 3 3" $ nf (uncurry (.+)) (#a .== () .+ #b .== () .+ #c .== (), #d .== () .+ #e .== () .+ #f .== ())
+        , bench "append 3 3" $ nf (uncurry (.+)) (#a .== () .+ #b .== () .+ #c .== (),   #d .== () .+ #e .== () .+ #f .== ())
+        , bench "append 5 1" $ nf (uncurry (.+)) (#a .== () .+ #b .== () .+ #c .== () .+ #d .== () .+ #e .== (),   #f .== ())
+        , bench "append 1 5" $ nf (uncurry (.+)) (#a .== (),   #b .== () .+ #c .== () .+ #d .== () .+ #e .== () .+ #f .== ())
         , bench "default 5" $ nf id $ defaultRecord @Num @(FiveRecord Double) 0
         , bench "recordFromLabels 5" $ nf id $ recordFromLabels @IsString @(FiveRecord String) (fromString . show)
         ]

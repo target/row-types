@@ -33,9 +33,8 @@ module Data.Row.Internal
   , Erasable(..)
   -- * Helper functions
   , show'
-  , LacksL, AllUniqueLabels, RZip, Map, Subset
-
   , toKey
+  , LacksL, AllUniqueLabels, RZip, Map, Subset, Disjoint
   )
 where
 
@@ -72,9 +71,6 @@ data Label (s :: Symbol) = Label
 instance KnownSymbol s => Show (Label s) where
   show = symbolVal
 
-toKey :: forall s. KnownSymbol s => Label s -> Text
-toKey = Text.pack . symbolVal
-
 instance x ~ y => IsLabel x (Label y) where
 #if __GLASGOW_HASKELL__ >= 802
   fromLabel = Label
@@ -86,9 +82,12 @@ instance x ~ y => IsLabel x (Label y) where
 show' :: (IsString s, Show a) => a -> s
 show' = fromString . show
 
--- | Type level variant of 'empty'
-type family Empty :: Row * where
-  Empty = R '[]
+-- | A helper function to turn a Label directly into 'Text'.
+toKey :: forall s. KnownSymbol s => Label s -> Text
+toKey = Text.pack . symbolVal
+
+-- | Type level version of 'empty'
+type Empty = R '[]
 
 -- | Elements stored in a Row type are usually hidden.
 data HideType where
@@ -195,7 +194,9 @@ class Forall (r :: Row *) (c :: * -> Constraint) where
             -> g r
 
 instance Forall (R '[]) c where
+  {-# INLINE metamorph #-}
   metamorph _ empty _ _ = empty
+  {-# INLINE metamorph' #-}
   metamorph' _ empty _ _ = empty
 
 instance (KnownSymbol ℓ, c τ, FoldStep ℓ τ ρ, Forall ('R ρ) c) => Forall ('R (ℓ :-> τ ': ρ)) c where
@@ -209,6 +210,7 @@ instance (KnownSymbol ℓ, c τ, FoldStep ℓ τ ρ, Forall ('R ρ) c) => Forall
                -- ^ The fold
             -> f ('R (ℓ :-> τ ': ρ))  -- ^ The input structure
             -> g ('R (ℓ :-> τ ': ρ))
+  {-# INLINE metamorph #-}
   metamorph _ empty uncons cons r = cons Label t $ metamorph @('R ρ) @c @_ @_ @h Proxy empty uncons cons r'
     where (t, r') = uncons Label r
   metamorph' :: forall (f :: Row * -> *) (g :: Row * -> *) (h :: * -> *).
@@ -221,6 +223,7 @@ instance (KnownSymbol ℓ, c τ, FoldStep ℓ τ ρ, Forall ('R ρ) c) => Forall
                -- ^ The fold
             -> f ('R (ℓ :-> τ ': ρ))  -- ^ The input structure
             -> g ('R (ℓ :-> τ ': ρ))
+  {-# INLINE metamorph' #-}
   metamorph' _ empty uncons cons r = cons Label $ metamorph' @('R ρ) @c @_ @_ @h Proxy empty uncons cons <$> uncons Label r
 
 -- | Any structure over two rows in which every element of both rows satisfies the
@@ -244,10 +247,12 @@ class Forall2 (r1 :: Row *) (r2 :: Row *) (c :: * -> Constraint) where
              -> f r1 -> g r2 -> h r1 r2
 
 instance Forall2 (R '[]) (R '[]) c where
+  {-# INLINE metamorph2 #-}
   metamorph2 _ _ empty _ _ = empty
 
 instance (KnownSymbol ℓ, c τ1, c τ2, Forall2 ('R ρ1) ('R ρ2) c)
       => Forall2 ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)) c where
+  {-# INLINE metamorph2 #-}
   metamorph2 f g empty uncons cons r1 r2 = cons (Label @ℓ) t1 t2 $ metamorph2 @('R ρ1) @('R ρ2) @c f g empty uncons cons r1' r2'
     where ((t1, r1'), (t2, r2')) = uncons (Label @ℓ) r1 r2
 
@@ -284,7 +289,7 @@ class Extendable (t :: Row * -> *) where
 -- | Updatable row types support changing the value at a label in the row.
 class Updatable (t :: Row * -> *) where
   -- Update the value in the Row at the given label by providing a new one.
-  update :: KnownSymbol l => Label l -> a -> t r -> t (Modify l a r)
+  update :: KnownSymbol l => Label l -> a -> t r -> t r
 
 -- | Focusable row types support modifying the value at a label in the row,
 -- and doing it in a lens-y way
@@ -442,6 +447,7 @@ type family Merge (l :: [LT *]) (r :: [LT *]) where
       (hl :-> al ': Merge tl (hr :-> ar ': tr))
       (hr :-> ar ': Merge (hl :-> al ': tl) tr)
 
+-- | Returns the left list with all of the elements from the right list removed.
 type family Diff (l :: [LT *]) (r :: [LT *]) where
   Diff '[] r = '[]
   Diff l '[] = l
@@ -455,4 +461,6 @@ type family Diff (l :: [LT *]) (r :: [LT *]) where
 -- so here it is in terms of other ghc-7.8 type functions
 type a <=.? b = (CmpSymbol a b == 'LT)
 
+{-# DEPRECATED Disjoint "This constraint should no longer be necessary" #-}
+type Disjoint l r = Unconstrained
 

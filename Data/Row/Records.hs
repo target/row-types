@@ -31,29 +31,29 @@ module Data.Row.Records
   , Extendable(..), Extend, Lacks, type (.\)
   -- ** Restriction
   , type (.-), (.-)
-  , restrict
+  , restrict, recSplit
   -- ** Modification
   , Updatable(..), Focusable(..), Modify, Renamable(..), Rename
   -- * Query
   , HasType, type (.!), (.!)
   -- * Combine
   -- ** Disjoint union
-  , type (.+), (.+)
+  , type (.+), (.+), Disjoint
   -- * Row operations
   -- ** Map
-  , Map, rmapc, rmap, rxformc, rxform
+  , Map, rmap, rmapc, liftNT
+  , rxform, rxformc
   -- ** Fold
-  , Forall(..), Erasable(..), eraseToHashMap, Unconstrained1
+  , Forall, Erasable(..), eraseToHashMap, Unconstrained1
   -- ** Zip
   , RZip, rzip
   -- ** Sequence
   , rsequence
-  -- ** labels
+  -- ** Labels
   , labels
   )
 where
 
-import Control.Arrow (first, second)
 import Control.DeepSeq (NFData(..), deepseq)
 
 import Data.Functor.Compose
@@ -105,7 +105,7 @@ instance (Forall r Bounded, AllUniqueLabels r) => Bounded (Rec r) where
 instance Forall r NFData => NFData (Rec r) where
   rnf r = getConst $ metamorph @r @NFData @Rec @(Const ()) @Identity Proxy empty doUncons doCons r
     where empty = const $ Const ()
-          doUncons l = first Identity . remove l
+          doUncons l r = (Identity $ r .! l, unsafeRemove l r)
           doCons _ x r = deepseq x $ deepseq r $ Const ()
 
 -- | The empty record
@@ -152,8 +152,9 @@ OR m .! (toKey -> a) = case m M.! a of
   HideType x -> unsafeCoerce x
 
 infix  8 .-
--- | Record restriction. Delete the label l from the record.
-(.-) :: KnownSymbol l =>  Rec r -> Label l -> Rec (r .- l)
+-- | Record restriction. Remove the label l from the record.
+(.-) :: KnownSymbol l => Rec r -> Label l -> Rec (r .- l)
+-- OR m .- _ = OR m
 OR m .- (toKey -> a) = OR $ M.delete a m
 
 -- | Record disjoint union (commutative)
@@ -161,14 +162,27 @@ infixr 6 .+
 (.+) :: Rec l -> Rec r -> Rec (l .+ r)
 OR l .+ OR r = OR $ M.unionWith (error "Impossible") l r
 
--- | Arbitrary record restriction.  Turn a record into a subset of itself.
-restrict :: forall r r'. Subset r r' => Rec r' -> Rec r
-restrict (OR m) = OR m
+-- | Split a record into two sub-records.
+recSplit :: forall s r. (Forall s Unconstrained1, Subset s r)
+         => Rec r -> (Rec s, Rec (r .\\ s))
+recSplit (OR m) = (OR $ M.intersection m labelMap, OR $ M.difference m labelMap)
+  where labelMap = M.fromList $ zip (labels @s @Unconstrained1) (repeat ())
 
--- | Removes a label from the record, returning the value at that label along
--- with the updated record.
-remove :: KnownSymbol l => Label l -> Rec r -> (r .! l, Rec (r .- l))
-remove l r = (r .! l, r .- l)
+-- | Arbitrary record restriction.  Turn a record into a subset of itself.
+restrict :: forall r r'. (Forall r Unconstrained1, Subset r r') => Rec r' -> Rec r
+restrict = fst . recSplit
+
+-- | Removes a label from the record but does not remove the underlying value.
+--
+-- This is faster than regular record removal ('.-') but should only be used when
+-- either: the record will never be merged with another record again, or a new
+-- value will soon be placed into the record at this label (as in, an 'update'
+-- that is split over two commands).
+--
+-- If the resulting record is then merged (with '.+') with another record that
+-- contains a value at that label, an "Impossible" error will occur.
+unsafeRemove :: KnownSymbol l => Label l -> Rec r -> Rec (r .- l)
+unsafeRemove _ (OR m) = OR m
 
 
 {--------------------------------------------------------------------
@@ -193,14 +207,16 @@ instance Erasable Rec where
   eraseWithLabels :: forall s ρ c b. (Forall ρ c, IsString s) => Proxy c -> (forall a. c a => a -> b) -> Rec ρ -> [(s,b)]
   eraseWithLabels _ f = getConst . metamorph @ρ @c @Rec @(Const [(s,b)]) @Identity Proxy doNil doUncons doCons
     where doNil _ = Const []
-          doUncons l = first Identity . remove l
+          doUncons l r = (Identity $ r .! l, unsafeRemove l r)
           doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
                  => Label ℓ -> Identity τ -> Const [(s,b)] ('R ρ) -> Const [(s,b)] ('R (ℓ :-> τ ': ρ))
           doCons l (Identity x) (Const c) = Const $ (show' l, f x) : c
 
   eraseZip :: forall ρ c b. Forall ρ c => Proxy c -> (forall a. c a => a -> a -> b) -> Rec ρ -> Rec ρ -> [b]
   eraseZip _ f x y = getConst $ metamorph @ρ @c @(Product Rec Rec) @(Const [b]) @IPair Proxy (const $ Const []) doUncons doCons (Pair x y)
-    where doUncons l (Pair r1 r2) = (iPair (r1 .! l) (r2 .! l), Pair (r1 .- l) (r2 .- l))
+    where doUncons l (Pair r1 r2) = (iPair a b, Pair r1' r2')
+            where (a, r1') = (r1 .! l, unsafeRemove l r1)
+                  (b, r2') = (r2 .! l, unsafeRemove l r2)
           doCons :: forall ℓ τ ρ. c τ
                  => Label ℓ -> IPair τ -> Const [b] ('R ρ) -> Const [b] ('R (ℓ :-> τ ': ρ))
           doCons _ (unIPair -> x) (Const c) = Const $ uncurry f x : c
@@ -219,7 +235,7 @@ rmapc :: forall c f r. Forall r c => (forall a. c a => a -> f a) -> Rec r -> Rec
 rmapc f = unRMap . metamorph @r @c @Rec @(RMap f) @Identity Proxy doNil doUncons doCons
   where
     doNil _ = RMap empty
-    doUncons l = first Identity . remove l
+    doUncons l r = (Identity $ r .! l, unsafeRemove l r)
     doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
            => Label ℓ -> Identity τ -> RMap f ('R ρ) -> RMap f ('R (ℓ :-> τ ': ρ))
     doCons l (Identity v) (RMap r) = RMap (unsafeInjectFront l (f v) r)
@@ -228,17 +244,32 @@ rmapc f = unRMap . metamorph @r @c @Rec @(RMap f) @Identity Proxy doNil doUncons
 rmap :: forall f r. Forall r Unconstrained1 => (forall a. a -> f a) -> Rec r -> Rec (Map f r)
 rmap = rmapc @Unconstrained1
 
--- | A mapping function specifically to convert @f a@ values to @g a@ values.
-rxformc :: forall r c f g. Forall r c => (forall a. c a => f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
-rxformc f = unRMap . metamorph @r @c @(RMap f) @(RMap g) @f Proxy doNil doUncons doCons . RMap
+-- | Lifts a natrual transformation over a record.  In other words, it acts as a
+-- record transformer to convert a record of @f a@ values to a record of @g a@
+-- values.  If no constraint is needed, instantiate the first type argument with
+-- 'Unconstrained1'.
+liftNT :: forall c r f g. Forall r c => (forall a. c a => f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
+liftNT f = unRMap . metamorph @r @c @(RMap f) @(RMap g) @f Proxy doNil doUncons doCons . RMap
   where
     doNil _ = RMap empty
-    doUncons l (RMap r) = (r .! l, RMap $ r .- l)
+    doUncons l (RMap r) = (r .! l, RMap $ unsafeRemove l r)
     doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
            => Label ℓ -> f τ -> RMap g ('R ρ) -> RMap g ('R (ℓ :-> τ ': ρ))
     doCons l v (RMap r) = RMap (unsafeInjectFront l (f v) r)
 
--- | A form of @rxformc@ that doesn't have a constraint on @a@
+{-# DEPRECATED rxform, rxformc "Use liftNT instead" #-}
+-- | A record transformer to convert a record of @f a@ values to a record of @g a@ values
+-- where the mapping function can use a constraint.
+rxformc :: forall r c f g. Forall r c => (forall a. c a => f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
+rxformc f = unRMap . metamorph @r @c @(RMap f) @(RMap g) @f Proxy doNil doUncons doCons . RMap
+  where
+    doNil _ = RMap empty
+    doUncons l (RMap r) = (r .! l, RMap $ unsafeRemove l r)
+    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
+           => Label ℓ -> f τ -> RMap g ('R ρ) -> RMap g ('R (ℓ :-> τ ': ρ))
+    doCons l v (RMap r) = RMap (unsafeInjectFront l (f v) r)
+
+-- | A record transformer to convert a record of @f a@ values to a record of @g a@ values.
 rxform :: forall r f g . Forall r Unconstrained1 => (forall a. f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
 rxform = rxformc @r @Unconstrained1
 
@@ -247,7 +278,7 @@ rsequence :: forall f r. (Forall r Unconstrained1, Applicative f) => Rec (Map f 
 rsequence = getCompose . metamorph @r @Unconstrained1 @(RMap f) @(Compose f Rec) @f Proxy doNil doUncons doCons . RMap
   where
     doNil _ = Compose (pure empty)
-    doUncons l (RMap r) = second RMap $ remove l r
+    doUncons l (RMap r) = (r .! l, RMap $ unsafeRemove l r)
     doCons l fv (Compose fr) = Compose $ unsafeInjectFront l <$> fv <*> fr
 
 -- | RZipPair is used internally as a type level lambda for zipping records.
@@ -258,7 +289,7 @@ rzip :: forall r1 r2. Forall2 r1 r2 Unconstrained1 => Rec r1 -> Rec r2 -> Rec (R
 rzip r1 r2 = unRZipPair $ metamorph2 @r1 @r2 @Unconstrained1 @Rec @Rec @RZipPair @Identity @Identity Proxy Proxy doNil doUncons doCons r1 r2
   where
     doNil _ _ = RZipPair empty
-    doUncons l r1 r2 = (first Identity $ remove l r1, first Identity $ remove l r2)
+    doUncons l r1 r2 = ((Identity $ r1 .! l, unsafeRemove l r1), (Identity $ r2 .! l, unsafeRemove l r2))
     doCons l (Identity v1) (Identity v2) (RZipPair r) = RZipPair $ unsafeInjectFront l (v1, v2) r
 
 -- | A helper function for unsafely adding an element to the front of a record
