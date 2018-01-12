@@ -28,7 +28,7 @@ module Data.Row.Internal
   -- * Helper functions
   , show'
   , toKey
-  , LacksL, WellBehaved, AllUniqueLabels, RowZip, RowMap, Subset, Disjoint
+  , LacksL, WellBehaved, AllUniqueLabels, Zip, Map, Subset, Disjoint
   )
 where
 
@@ -321,8 +321,8 @@ type Disjoint l r = ( WellBehaved l
                     , (l .+ r) .\\ r ~ l)
 
 -- | Map a type level function over a Row.
-type family RowMap (f :: a -> b) (r :: Row a) :: Row b where
-  RowMap f (R r) = R (MapR f r)
+type family Map (f :: a -> b) (r :: Row a) :: Row b where
+  Map f (R r) = R (MapR f r)
 
 type family MapR (f :: a -> b) (r :: [LT a]) :: [LT b] where
   MapR f '[] = '[]
@@ -330,8 +330,8 @@ type family MapR (f :: a -> b) (r :: [LT a]) :: [LT b] where
 
 -- | Zips two rows together to create a Row of the pairs.
 --   The two rows must have the same set of labels.
-type family RowZip (r1 :: Row *) (r2 :: Row *) where
-  RowZip (R r1) (R r2) = R (ZipR r1 r2)
+type family Zip (r1 :: Row *) (r2 :: Row *) where
+  Zip (R r1) (R r2) = R (ZipR r1 r2)
 
 type family ZipR (r1 :: [LT *]) (r2 :: [LT *]) where
   ZipR '[] '[] = '[]

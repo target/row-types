@@ -26,7 +26,7 @@ module Data.Row.Variants
   , type (.!), type (.-), type (.\\), type (.==), pattern IsJust
   -- * Row operations
   -- ** Map
-  , RowMap, map, map', transform, transform'
+  , Map, map, map', transform, transform'
   -- ** Fold
   , Forall, erase, eraseWithLabels, eraseZip
   -- ** Sequence
@@ -217,10 +217,10 @@ fromLabel mk = getCompose $ metamorph' @ρ @c @(Const ()) @(Compose f Var) @(Con
 
 
 -- | VMap is used internally as a type level lambda for defining variant maps.
-newtype VMap (f :: * -> *) (ρ :: Row *) = VMap { unVMap :: Var (RowMap f ρ) }
+newtype VMap (f :: * -> *) (ρ :: Row *) = VMap { unVMap :: Var (Map f ρ) }
 
 -- | A function to map over a variant given a constraint.
-map :: forall c f r. Forall r c => (forall a. c a => a -> f a) -> Var r -> Var (RowMap f r)
+map :: forall c f r. Forall r c => (forall a. c a => a -> f a) -> Var r -> Var (Map f r)
 map f = unVMap . metamorph' @r @c @Var @(VMap f) @Identity Proxy doNil doUncons doCons
   where
     doNil = impossible
@@ -231,14 +231,14 @@ map f = unVMap . metamorph' @r @c @Var @(VMap f) @Identity Proxy doNil doUncons 
     doCons _ (Right (VMap v)) = VMap $ unsafeInjectFront v
 
 -- | A function to map over a variant given no constraint.
-map' :: forall f r. Forall r Unconstrained1 => (forall a. a -> f a) -> Var r -> Var (RowMap f r)
+map' :: forall f r. Forall r Unconstrained1 => (forall a. a -> f a) -> Var r -> Var (Map f r)
 map' = map @Unconstrained1
 
 -- | Lifts a natrual transformation over a variant.  In other words, it acts as a
 -- variant transformer to convert a variant of @f a@ values to a variant of @g a@
 -- values.  If no constraint is needed, instantiate the first type argument with
 -- 'Unconstrained1'.
-transform :: forall r c f g. Forall r c => (forall a. c a => f a -> g a) -> Var (RowMap f r) -> Var (RowMap g r)
+transform :: forall r c f g. Forall r c => (forall a. c a => f a -> g a) -> Var (Map f r) -> Var (Map g r)
 transform f = unVMap . metamorph' @r @c @(VMap f) @(VMap g) @f Proxy doNil doUncons doCons . VMap
   where
     doNil = impossible . unVMap
@@ -249,11 +249,11 @@ transform f = unVMap . metamorph' @r @c @(VMap f) @(VMap g) @f Proxy doNil doUnc
     doCons _ (Right (VMap v)) = VMap $ unsafeInjectFront v
 
 -- | A form of @transformC@ that doesn't have a constraint on @a@
-transform' :: forall r f g . Forall r Unconstrained1 => (forall a. f a -> g a) -> Var (RowMap f r) -> Var (RowMap g r)
+transform' :: forall r f g . Forall r Unconstrained1 => (forall a. f a -> g a) -> Var (Map f r) -> Var (Map g r)
 transform' = transform @r @Unconstrained1
 
 -- | Applicative sequencing over a variant
-sequence :: forall f r. (Forall r Unconstrained1, Applicative f) => Var (RowMap f r) -> f (Var r)
+sequence :: forall f r. (Forall r Unconstrained1, Applicative f) => Var (Map f r) -> f (Var r)
 sequence = getCompose . metamorph' @r @Unconstrained1 @(VMap f) @(Compose f Var) @f Proxy doNil doUncons doCons . VMap
   where
     doNil (VMap x) = impossible x

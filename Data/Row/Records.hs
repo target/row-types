@@ -40,12 +40,12 @@ module Data.Row.Records
   , type (.+), (.+), Disjoint, pattern (:+)
   -- * Row operations
   -- ** Map
-  , RowMap, map, map'
+  , Map, map, map'
   , transform, transform'
   -- ** Fold
   , Forall, erase, eraseWithLabels, eraseZip, eraseToHashMap
   -- ** Zip
-  , RowZip, zip
+  , Zip, zip
   -- ** Sequence
   , sequence
   -- ** Labels
@@ -243,10 +243,10 @@ eraseToHashMap :: (IsString s, Eq s, Hashable s, Forall r c) =>
 eraseToHashMap p f r = M.fromList $ eraseWithLabels p f r
 
 -- | RMap is used internally as a type level lambda for defining record maps.
-newtype RMap (f :: * -> *) (ρ :: Row *) = RMap { unRMap :: Rec (RowMap f ρ) }
+newtype RMap (f :: * -> *) (ρ :: Row *) = RMap { unRMap :: Rec (Map f ρ) }
 
 -- | A function to map over a record given a constraint.
-map :: forall c f r. Forall r c => (forall a. c a => a -> f a) -> Rec r -> Rec (RowMap f r)
+map :: forall c f r. Forall r c => (forall a. c a => a -> f a) -> Rec r -> Rec (Map f r)
 map f = unRMap . metamorph @r @c @Rec @(RMap f) @Identity Proxy doNil doUncons doCons
   where
     doNil _ = RMap empty
@@ -256,14 +256,14 @@ map f = unRMap . metamorph @r @c @Rec @(RMap f) @Identity Proxy doNil doUncons d
     doCons l (Identity v) (RMap r) = RMap (unsafeInjectFront l (f v) r)
 
 -- | A function to map over a record given no constraint.
-map' :: forall f r. Forall r Unconstrained1 => (forall a. a -> f a) -> Rec r -> Rec (RowMap f r)
+map' :: forall f r. Forall r Unconstrained1 => (forall a. a -> f a) -> Rec r -> Rec (Map f r)
 map' = map @Unconstrained1
 
 -- | Lifts a natrual transformation over a record.  In other words, it acts as a
 -- record transformer to convert a record of @f a@ values to a record of @g a@
 -- values.  If no constraint is needed, instantiate the first type argument with
 -- 'Unconstrained1'.
-transform :: forall c r f g. Forall r c => (forall a. c a => f a -> g a) -> Rec (RowMap f r) -> Rec (RowMap g r)
+transform :: forall c r f g. Forall r c => (forall a. c a => f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
 transform f = unRMap . metamorph @r @c @(RMap f) @(RMap g) @f Proxy doNil doUncons doCons . RMap
   where
     doNil _ = RMap empty
@@ -272,11 +272,11 @@ transform f = unRMap . metamorph @r @c @(RMap f) @(RMap g) @f Proxy doNil doUnco
            => Label ℓ -> f τ -> RMap g ('R ρ) -> RMap g ('R (ℓ :-> τ ': ρ))
     doCons l v (RMap r) = RMap (unsafeInjectFront l (f v) r)
 
-transform' :: forall r f g. Forall r Unconstrained1 => (forall a. f a -> g a) -> Rec (RowMap f r) -> Rec (RowMap g r)
+transform' :: forall r f g. Forall r Unconstrained1 => (forall a. f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
 transform' = transform @Unconstrained1 @r
 
 -- | Applicative sequencing over a record
-sequence :: forall f r. (Forall r Unconstrained1, Applicative f) => Rec (RowMap f r) -> f (Rec r)
+sequence :: forall f r. (Forall r Unconstrained1, Applicative f) => Rec (Map f r) -> f (Rec r)
 sequence = getCompose . metamorph @r @Unconstrained1 @(RMap f) @(Compose f Rec) @f Proxy doNil doUncons doCons . RMap
   where
     doNil _ = Compose (pure empty)
@@ -284,10 +284,10 @@ sequence = getCompose . metamorph @r @Unconstrained1 @(RMap f) @(Compose f Rec) 
     doCons l fv (Compose fr) = Compose $ unsafeInjectFront l <$> fv <*> fr
 
 -- | RZipPair is used internally as a type level lambda for zipping records.
-newtype RZipPair (ρ1 :: Row *) (ρ2 :: Row *) = RZipPair { unRZipPair :: Rec (RowZip ρ1 ρ2) }
+newtype RZipPair (ρ1 :: Row *) (ρ2 :: Row *) = RZipPair { unRZipPair :: Rec (Zip ρ1 ρ2) }
 
 -- | Zips together two records that have the same set of labels.
-zip :: forall r1 r2. Forall2 r1 r2 Unconstrained1 => Rec r1 -> Rec r2 -> Rec (RowZip r1 r2)
+zip :: forall r1 r2. Forall2 r1 r2 Unconstrained1 => Rec r1 -> Rec r2 -> Rec (Zip r1 r2)
 zip r1 r2 = unRZipPair $ metamorph2 @r1 @r2 @Unconstrained1 @Rec @Rec @RZipPair @Identity @Identity Proxy Proxy doNil doUncons doCons r1 r2
   where
     doNil _ _ = RZipPair empty
