@@ -28,7 +28,7 @@ module Data.Row.Internal
   -- * Helper functions
   , show'
   , toKey
-  , LacksL, WellBehaved, AllUniqueLabels, Zip, Map, Subset, Disjoint
+  , WellBehaved, AllUniqueLabels, Zip, Map, Subset, Disjoint
   )
 where
 
@@ -384,16 +384,6 @@ type family LacksR (l :: Symbol) (r :: [LT *]) (r_orig :: [LT *]) :: Constraint 
   LacksR l (l :-> t ': x) r = TypeError (TL.Text "The label " :<>: ShowType l
                                     :<>: TL.Text " already exists in " :<>: ShowType r)
   LacksR l (p ': x) r = LacksR l x r
-
--- | Useful for checking if a symbol is *not* in the symbol list.
-type family LacksL (l :: Symbol) (ls :: [Symbol]) where
-  LacksL l ls = LacksLT l ls ls
-
-type family LacksLT (l :: Symbol) (ls :: [Symbol]) (ls_orig :: [Symbol]) where
-  LacksLT l '[] ls = Unconstrained
-  LacksLT l (l ': x) ls = TypeError (TL.Text "The label " :<>: ShowType l
-                                    :<>: TL.Text " already exists in " :<>: ShowType ls)
-  LacksLT l (p ': x) ls = LacksLT l x ls
 
 type family Merge (l :: [LT *]) (r :: [LT *]) where
   Merge '[] r = r
