@@ -25,7 +25,7 @@ module Data.Row.Records
   , empty
   , type (.==), (.==), pattern (:==), unSingleton
   , defaultRecord, defaultRecordA
-  , recordFromLabels, recordFromLabelsA
+  , fromLabels, fromLabelsA
   -- ** Extension
   , extend, Extend, Lacks, type (.\)
   -- ** Restriction
@@ -312,20 +312,20 @@ defaultRecord v = runIdentity $ defaultRecordA @c $ pure v
 
 -- | Initialize a record with a default value at each label; works over an 'Applicative'.
 defaultRecordA :: forall c f ρ. (Applicative f, Forall ρ c, AllUniqueLabels ρ)
-       => (forall a. c a => f a) -> f (Rec ρ)
-defaultRecordA v = recordFromLabelsA @c $ pure v
+               => (forall a. c a => f a) -> f (Rec ρ)
+defaultRecordA v = fromLabelsA @c $ pure v
 
 -- | Initialize a record, where each value is determined by the given function over
 -- the label at that value.
-recordFromLabels :: forall c ρ. (Forall ρ c, AllUniqueLabels ρ)
-                 => (forall l a. (KnownSymbol l, c a) => Label l -> a) -> Rec ρ
-recordFromLabels f = runIdentity $ recordFromLabelsA @c $ (pure .) f
+fromLabels :: forall c ρ. (Forall ρ c, AllUniqueLabels ρ)
+           => (forall l a. (KnownSymbol l, c a) => Label l -> a) -> Rec ρ
+fromLabels f = runIdentity $ fromLabelsA @c $ (pure .) f
 
 -- | Initialize a record, where each value is determined by the given function over
 -- the label at that value.  This function works over an 'Applicative'.
-recordFromLabelsA :: forall c f ρ. (Applicative f, Forall ρ c, AllUniqueLabels ρ)
-                  => (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Rec ρ)
-recordFromLabelsA mk = getCompose $ metamorph @ρ @c @(Const ()) @(Compose f Rec) @(Const ()) Proxy doNil doUncons doCons (Const ())
+fromLabelsA :: forall c f ρ. (Applicative f, Forall ρ c, AllUniqueLabels ρ)
+            => (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Rec ρ)
+fromLabelsA mk = getCompose $ metamorph @ρ @c @(Const ()) @(Compose f Rec) @(Const ()) Proxy doNil doUncons doCons (Const ())
   where doNil _ = Compose $ pure empty
         doUncons _ _ = (Const (), Const ())
         doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)

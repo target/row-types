@@ -15,7 +15,7 @@ module Data.Row.Variants
   , Var, Row, Empty
   -- * Construction
   , HasType, just, just'
-  , variantFromLabel
+  , fromLabel
   -- ** Extension
   , type (.\), Lacks, diversify, type (.+)
   -- ** Modification
@@ -203,9 +203,9 @@ unsafeInjectFront = unsafeCoerce
 -- | Initialize a variant from a producer function that accepts labels.  If this
 -- function returns more than one possibility, then one is chosen arbitrarily to
 -- be the value in the variant.
-variantFromLabel :: forall c ρ f. (Alternative f, Forall ρ c, AllUniqueLabels ρ)
-                 => (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Var ρ)
-variantFromLabel mk = getCompose $ metamorph' @ρ @c @(Const ()) @(Compose f Var) @(Const ())
+fromLabel :: forall c ρ f. (Alternative f, Forall ρ c, AllUniqueLabels ρ)
+          => (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Var ρ)
+fromLabel mk = getCompose $ metamorph' @ρ @c @(Const ()) @(Compose f Var) @(Const ())
                                               Proxy doNil doUncons doCons (Const ())
   where doNil _ = Compose $ empty
         doUncons _ _ = Right $ Const ()
