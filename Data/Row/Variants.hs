@@ -203,15 +203,16 @@ unsafeInjectFront = unsafeCoerce
 -- | Initialize a variant from a producer function that accepts labels.  If this
 -- function returns more than one possibility, then one is chosen arbitrarily to
 -- be the value in the variant.
-variantFromLabel :: forall c f ρ. (Alternative f, Forall ρ c, AllUniqueLabels ρ)
+variantFromLabel :: forall c ρ f. (Alternative f, Forall ρ c, AllUniqueLabels ρ)
                  => (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Var ρ)
-variantFromLabel mk = getCompose $ metamorph @ρ @c @(Const ()) @(Compose f Var) @(Const ())
-                                             Proxy doNil doUncons doCons (Const ())
+variantFromLabel mk = getCompose $ metamorph' @ρ @c @(Const ()) @(Compose f Var) @(Const ())
+                                              Proxy doNil doUncons doCons (Const ())
   where doNil _ = Compose $ empty
-        doUncons _ _ = (Const (), Const ())
+        doUncons _ _ = Right $ Const ()
         doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
-               => Label ℓ -> Const () τ -> Compose f Var ('R ρ) -> Compose f Var ('R (ℓ :-> τ ': ρ))
-        doCons l _ (Compose v) = Compose $
+               => Label ℓ -> Either (Const () τ) (Compose f Var ('R ρ)) -> Compose f Var ('R (ℓ :-> τ ': ρ))
+        doCons l (Left _) = Compose $ unsafeMakeVar l <$> mk l --This case should be impossible
+        doCons l (Right (Compose v)) = Compose $
           unsafeMakeVar l <$> mk l <|> unsafeInjectFront <$> v
 
 
