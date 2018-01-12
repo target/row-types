@@ -25,16 +25,10 @@ module Data.Row.Internal
   , Labels, labels
   , Forall(..), Forall2(..)
   , Unconstrained1
-  -- * Common operations on types over rows
-  , Extendable(..)
-  , Updatable(..)
-  , Focusable(..)
-  , Renamable(..)
-  , Erasable(..)
   -- * Helper functions
   , show'
   , toKey
-  , LacksL, AllUniqueLabels, RZip, Map, Subset, Disjoint
+  , LacksL, WellBehaved, AllUniqueLabels, RowZip, RowMap, Subset, Disjoint
   )
 where
 
@@ -115,21 +109,23 @@ type family Modify (l :: Symbol) (a :: *) (r :: Row *) :: Row * where
 type family Rename (l :: Symbol) (l' :: Symbol) (r :: Row *) :: Row * where
   Rename l l' r = Extend  l' (r .! l) (r .- l)
 
-infixl 6 .!
+infixl 9 .!
 -- | Type level label fetching
 type family (r :: Row *) .! (t :: Symbol) :: * where
   R r .! l = Get l r
 
+infixl 9 .-
 -- | Type level Row element removal
 type family (r :: Row *) .- (s :: Symbol) :: Row * where
   R r .- l = R (Remove l r)
 
-infixr 6 .+
+infixl 8 .+
 -- | Type level Row append
 type family (l :: Row *) .+ (r :: Row *) :: Row * where
   R l .+ R r = R (Merge l r)
 
--- | Type level Row difference.  That is, @l :// r@ is the row remaining after
+infixl 9 .\\ {- This comment needed to appease CPP -}
+-- | Type level Row difference.  That is, @l .\\ r@ is the row remaining after
 -- removing any matching elements of @r@ from @l@.
 type family (l :: Row *) .\\ (r :: Row *) :: Row * where
   R l .\\ R r = R (Diff l r)
@@ -149,7 +145,7 @@ class ((r .! l) ~ a) => HasType l a r
 instance ((r .! l) ~ a) => HasType l a r
 
 -- | A type level way to create a singleton Row.
-infixr 7 .==
+infix 9 .==
 type (l :: Symbol) .== (a :: *) = Extend l a Empty
 
 
@@ -276,55 +272,12 @@ labels = getConst $ metamorph @ρ @c @(Const ()) @(Const [s]) @(Const ()) Proxy 
         doCons l _ (Const c) = Const $ show' l : c
 
 
-
-{--------------------------------------------------------------------
-  Common operations on types over rows
---------------------------------------------------------------------}
--- | Extendable row types support adding labels to the row.
-class Extendable (t :: Row * -> *) where
-  type Inp t a
-  -- | Record extension. The row must not already contain the label.
-  extend  :: forall a l r. KnownSymbol l => Label l -> Inp t a -> t r -> t (Extend l a r)
-
--- | Updatable row types support changing the value at a label in the row.
-class Updatable (t :: Row * -> *) where
-  -- Update the value in the Row at the given label by providing a new one.
-  update :: KnownSymbol l => Label l -> a -> t r -> t (Modify l a r)
-
--- | Focusable row types support modifying the value at a label in the row,
--- and doing it in a lens-y way
-class Focusable (t :: Row * -> *) where
-  type FRequires t :: (* -> *) -> Constraint
-  -- Apply the given function to the value in the Row at the given label.
-  focus :: (FRequires t f, KnownSymbol l) => Label l -> (r .! l -> f a) -> t r -> f (t (Modify l a r))
-
--- | Renamable row types support renaming labels in the row.
-class Renamable (t :: Row * -> *) where
-  -- Rename a label in the row.
-  rename :: (KnownSymbol l, KnownSymbol l') => Label l -> Label l' -> t r -> t (Rename l l' r)
-
--- | Eraseable row types can be folded up.  Really, this should be called RowFoldable
---   or something, and the inner functions should be
---   @forall a. c a => a -> Output t b -> Output t b@
---   with a base case value of @Output t b@ provided, and then 'erase' can be derived
---   from that.
-class Erasable (t :: Row * -> *) where
-  -- | The output structure of the fold
-  type Output t a
-  -- | The output structure of the zip fold
-  type OutputZip t a
-  -- | A standard fold
-  erase :: Forall r c => Proxy c -> (forall a. c a => a -> b) -> t r -> Output t b
-  -- A fold with labels
-  eraseWithLabels :: (Forall r c, IsString s) => Proxy c -> (forall a. c a => a -> b) -> t r -> Output t (s, b)
-  -- | A fold over two row type structures at once
-  eraseZip :: Forall r c => Proxy c -> (forall a. c a => a -> a -> b) -> t r -> t r -> OutputZip t b
-
-
-
 {--------------------------------------------------------------------
   Convenient type families and classes
 --------------------------------------------------------------------}
+
+-- | A convenient way to provide common, easy constraints
+type WellBehaved ρ = (Forall ρ Unconstrained1, AllUniqueLabels ρ)
 
 -- | Are all of the labels in this Row unique?
 type family AllUniqueLabels (r :: Row *) :: Constraint where
@@ -360,18 +313,16 @@ type family SubsetR (r1 :: [LT *]) (r2 :: [LT *]) :: Constraint where
       (SubsetR (hl :-> al ': tl) tr)
 
 -- | A type synonym for disjointness.
-type Disjoint l r = ( Forall l Unconstrained1
-                    , Forall r Unconstrained1
-                    , AllUniqueLabels l
-                    , AllUniqueLabels r
+type Disjoint l r = ( WellBehaved l
+                    , WellBehaved r
                     , Subset l (l .+ r)
                     , Subset r (l .+ r)
                     , (l .+ r) .\\ l ~ r
                     , (l .+ r) .\\ r ~ l)
 
 -- | Map a type level function over a Row.
-type family Map (f :: a -> b) (r :: Row a) :: Row b where
-  Map f (R r) = R (MapR f r)
+type family RowMap (f :: a -> b) (r :: Row a) :: Row b where
+  RowMap f (R r) = R (MapR f r)
 
 type family MapR (f :: a -> b) (r :: [LT a]) :: [LT b] where
   MapR f '[] = '[]
@@ -379,8 +330,8 @@ type family MapR (f :: a -> b) (r :: [LT a]) :: [LT b] where
 
 -- | Zips two rows together to create a Row of the pairs.
 --   The two rows must have the same set of labels.
-type family RZip (r1 :: Row *) (r2 :: Row *) where
-  RZip (R r1) (R r2) = R (ZipR r1 r2)
+type family RowZip (r1 :: Row *) (r2 :: Row *) where
+  RowZip (R r1) (R r2) = R (ZipR r1 r2)
 
 type family ZipR (r1 :: [LT *]) (r2 :: [LT *]) where
   ZipR '[] '[] = '[]

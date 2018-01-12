@@ -1,10 +1,9 @@
 > {-# LANGUAGE OverloadedLabels #-}
 > module Examples where
 >
-> import Data.Row.Records
-> import Data.Row.Variants
+> import Data.Row.Records hiding (map)
+> import Data.Row.Variants hiding (map, update)
 > import Data.Row.Switch
-> import Data.Proxy
 
 In this example file, we will explore how to create and use records and variants.
 
@@ -129,7 +128,7 @@ write a function to move the points we have:
 
 > move :: (Num (r .! "x"), Num (r .! "y"))
 >      => Rec r -> r .! "x" -> r .! "y"
->      -> Rec (Modify "x" (r .! "x") (Modify "y" (r .! "y") r))
+>      -> Rec r
 > move p dx dy = update #x (p .! #x + dx) $
 >                update #y (p .! #y + dy) p
 
@@ -175,9 +174,9 @@ For larger changes, it is easier to use the restrict function.  The following
 function will take a record that contains both an x and y coordinate and remove
 the rest of the fields from it.
 
-> get2D :: Disjoint ("x" .== Double .+ "y" .== Double) rest
->       => Rec (("x" .== Double .+ "y" .== Double) .+ rest)
->       -> Rec  ("x" .== Double .+ "y" .== Double)
+> get2D :: (r ~ ("x" .== Double .+ "y" .== Double), Disjoint r rest)
+>       => Rec (r .+ rest)
+>       -> Rec r
 > get2D r = restrict r
 
 GHC is a little finicky about the type operators and constraints -- indeed, this
@@ -191,15 +190,13 @@ using type applications, and the function can instead be written as:
 with no trouble.  Yet another altnerative is to match directly on the values desired
 using the :== and :+ record patterns:
 
-> get2D'' :: Disjoint ("x" .== Double .+ "y" .== Double) rest
->         => Rec (("x" .== Double .+ "y" .== Double) .+ rest)
->         -> Rec  ("x" .== Double .+ "y" .== Double)
-> get2D'' (((Label :: Label "x") :== n1 :+ (Label :: Label "y") :== n2) :+ _) = #x .== n1 .+ #y .== n2
+> get2D'' ((Label :: Label "x") :== n1 :+ (Label :: Label "y") :== n2 :+ _)
+>           = #x .== n1 .+ #y .== n2
 > get2D'' _ = error "impossible"
 
 (Note that overloaded labels cannot be used in the patterns, so the notation is
-unfortunately bloated by types, and the same parentheses needed in the type are
-required in the pattern.)
+unfortunately bloated by types.  Also, the type operators are left associated,
+so the "_" must go on the right.)
 
 All three of the get2D functions behave the same.
 
@@ -234,21 +231,15 @@ records:
 λ> v2
 {x=1}
 
-Once created, a variant can be expanded by using the same extend function that
-can be used on records, except that instead of providing a value for the new
-label being added, one merely needs to provide a Proxy of the value.
+Once created, a variant can be expanded by using type applications and the
+diversify function.
 
-> v3 = extend #y (Proxy @String) v2
-
-Rather than having to use proxies to extend a variant component by component, we
-can do the same thing with type applications and the diversify function.
-
-> v3' = diversify @("y" .== String) v2
+> v3 = diversify @("y" .== String) v2
 > v4 = diversify @("y" .== String .+ "z" .== Double) v2
 
 λ> :t v4
 v4 :: Var ('R '["x" ':-> Integer, "y" ':-> String, "z" ':-> Double])
-λ> v3 == v3'
+λ> v == v3
 True
 
 Doing the above equality test does raise the question of how equality works on
@@ -261,7 +252,7 @@ check whether they're equal:
 error:
     • Couldn't match type ‘'["y" ':-> [Char]]’ with ‘'[]’
       Expected type: Var ('R '["x" ':-> Integer])
-        Actual type: Var (Extend "y" String ('R '["x" ':-> Integer]))
+        Actual type: Var ('R '["x" ':-> Integer] .+ ("y" .== String))
     • In the second argument of ‘(==)’, namely ‘v3’
       In the expression: v2 == v3
       In an equation for ‘it’: it = v2 == v3
@@ -299,13 +290,13 @@ If trialing at a label l succeeds, then it provides a Left value of the value at
 If not, it provides a Right value of the variant with this label removed---since the
 trial failed, we now can be sure that the value is not from l.
 
-For ease of use in view patterns, Variants also exposes the viewV function.
+For ease of use in view patterns, Variants also exposes the view function.
 (If using lens, this can be replaced with preview.)  With it, we can write a
 function like this:
 
-> myShow :: (HasType "y" String r, Show (r .! "x")) => Var r -> String
-> myShow (viewV #x -> Just n) = "Int of "++show n
-> myShow (viewV #y -> Just s) = "String of "++s
+> myShow :: ((r .! "y") ~ String, Show (r .! "x")) => Var r -> String
+> myShow (view #x -> Just n) = "Int of "++show n
+> myShow (view #y -> Just s) = "String of "++s
 > myShow _ = "Unknown"
 
 λ> myShow v
@@ -317,7 +308,7 @@ function like this:
 
 This can also be achieved with the IsJust pattern synonym in much the same way:
 
-> myShow' :: (AllUniqueLabels r, HasType "y" String r, Show (r .! "x")) => Var r -> String
+> myShow' :: (WellBehaved r, (r .! "y") ~ String, Show (r .! "x")) => Var r -> String
 > myShow' (IsJust (Label :: Label "x") n) = "Int of "++show n
 > myShow' (IsJust (Label :: Label "y") s) = "String of "++s
 > myShow' _ = "Unknown"
@@ -329,8 +320,8 @@ a function like myShow to be exhaustive in the variant's cases, but to do this,
 you must manually provide a type signature:
 
 > myShowRestricted :: Var ("y" .== String .+ "x" .== Integer) -> String
-> myShowRestricted (viewV #x -> Just n) = "Int of "++show n
-> myShowRestricted (viewV #y -> Just s) = "String of "++s
+> myShowRestricted (view #x -> Just n) = "Int of "++show n
+> myShowRestricted (view #y -> Just s) = "String of "++s
 > myShowRestricted _ = error "Unreachable"
 
 The second blemish can be seen in this restricted version of myShow.  Even though
@@ -393,6 +384,6 @@ ugly (the type equalities are necessary but annoying).
 >   Left  e' -> f1 e'
 >   Right e' -> f2 e'
 
-> joinVarLists :: forall x y. (AllUniqueLabels (x .+ y), (x .+ y) ~ (y .+ x))
+> joinVarLists :: forall x y. (WellBehaved (x .+ y), (x .+ y) ~ (y .+ x))
 >              => [Var x] -> [Var y] -> [Var (x .+ y)]
 > joinVarLists xs ys = map (diversify @y) xs ++ map (diversify @x) ys
