@@ -1,0 +1,60 @@
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  Data.Row
+--
+-- This module includes a set of common functions for Records and Variants.
+-- It includes:
+--
+-- * Common constructors, destructors, and querying functions
+--
+-- It specifically excludes:
+--
+-- * Functions that have the same name for Records and Variants (e.g. 'focus',
+--   'update', 'fromLabel', etc.)
+--
+-- * Common clashes with the standard Prelude or other modules (e.g. 'map',
+--   'sequence', 'Map')
+--
+-- If these particular functions are needed, they should be brought in qualified
+-- from one of the Data.Row.*** modules directly.
+--
+-----------------------------------------------------------------------------
+
+
+module Data.Row
+  (
+  -- * Types and constraints
+    Label(..)
+  , KnownSymbol, AllUniqueLabels, WellBehaved
+  , Var, Rec, Row, Empty
+  , HasType, Lacks, type (.\), type (.+)
+  , Forall, Switch(..)
+  -- * Record Construction
+  , empty
+  , type (.==), (.==), pattern (:==), unSingleton
+  , defaultRecord, defaultRecordA
+  -- ** Restriction
+  , type (.-), (.-)
+  , restrict
+  -- ** Query
+  , type (.!), (.!)
+  -- ** Disjoint union
+  , (.+), Disjoint, pattern (:+)
+  -- * Variant construction
+  , just, just'
+  -- ** Restriction
+  , diversify
+  -- ** Destruction
+  , impossible, trial, trial', multiTrial, view
+  , type (.\\), pattern IsJust
+  -- * Labels
+  , labels
+  )
+where
+
+import Data.Row.Records
+import Data.Row.Variants
+import Data.Row.Switch
+
+
+

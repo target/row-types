@@ -1,9 +1,8 @@
 > {-# LANGUAGE OverloadedLabels #-}
 > module Examples where
 >
-> import Data.Row.Records hiding (map)
-> import Data.Row.Variants hiding (map, update)
-> import Data.Row.Switch
+> import Data.Row
+> import qualified Data.Row.Records as Rec
 
 In this example file, we will explore how to create and use records and variants.
 
@@ -128,10 +127,10 @@ write a function to move the points we have:
 
 > move :: (Num (r .! "x"), Num (r .! "y"))
 >      => Rec r -> r .! "x" -> r .! "y" -> Rec r
-> move p dx dy = update #x (p .! #x + dx) $
->                update #y (p .! #y + dy) p
+> move p dx dy = Rec.update #x (p .! #x + dx) $
+>                Rec.update #y (p .! #y + dy) p
 
-Here, we're using the update operator to update the value at the label x by
+Here, we're using the Rec.update operator to update the value at the label x by
 adding dx to it, and then we do the same for y.
 We can see it work in practice:
 

@@ -15,10 +15,11 @@ Library
                  hashable >= 1.2,
                  unordered-containers >= 0.2,
                  text
-  Exposed-modules: Data.Row.Internal,
-                   Data.Row.Records,
-                   Data.Row.Variants,
-                   Data.Row.Switch
+  Exposed-modules: Data.Row
+                 , Data.Row.Internal
+                 , Data.Row.Records
+                 , Data.Row.Variants
+                 , Data.Row.Switch
   ghc-options: -W
   other-modules:
   Extensions: AllowAmbiguousTypes,
