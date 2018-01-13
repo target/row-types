@@ -65,10 +65,10 @@ data Var (r :: Row *) where
   OneOf :: Text -> HideType -> Var r
 
 instance Forall r Show => Show (Var r) where
-  show v = (\ (x, y) -> "{" ++ x ++ "=" ++ y ++ "}") $ eraseWithLabels (Proxy @Show) show v
+  show v = (\ (x, y) -> "{" ++ x ++ "=" ++ y ++ "}") $ eraseWithLabels @Show show v
 
 instance Forall r Eq => Eq (Var r) where
-  r == r' = fromMaybe False $ eraseZip (Proxy @Eq) (==) r r'
+  r == r' = fromMaybe False $ eraseZip @Eq (==) r r'
 
 instance (Forall r Eq, Forall r Ord) => Ord (Var r) where
   compare :: Var r -> Var r -> Ordering
@@ -167,12 +167,12 @@ view = flip trial'
 --------------------------------------------------------------------}
 
 -- | A standard fold
-erase :: Forall r c => Proxy c -> (forall a. c a => a -> b) -> Var r -> b
-erase p f = snd @String . eraseWithLabels p f
+erase :: forall c ρ b. Forall ρ c => (forall a. c a => a -> b) -> Var ρ -> b
+erase f = snd @String . eraseWithLabels @c f
 
 -- | A fold with labels
-eraseWithLabels :: forall s ρ c b. (Forall ρ c, IsString s) => Proxy c -> (forall a. c a => a -> b) -> Var ρ -> (s,b)
-eraseWithLabels _ f = getConst . metamorph' @ρ @c @Var @(Const (s,b)) @Identity Proxy impossible doUncons doCons
+eraseWithLabels :: forall c ρ s b. (Forall ρ c, IsString s) => (forall a. c a => a -> b) -> Var ρ -> (s,b)
+eraseWithLabels f = getConst . metamorph' @ρ @c @Var @(Const (s,b)) @Identity Proxy impossible doUncons doCons
   where doUncons l = left Identity . flip trial l
         doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
                => Label ℓ -> Either (Identity τ) (Const (s,b) ('R ρ)) -> Const (s,b) ('R (ℓ :-> τ ': ρ))
@@ -180,8 +180,8 @@ eraseWithLabels _ f = getConst . metamorph' @ρ @c @Var @(Const (s,b)) @Identity
         doCons _ (Right (Const c)) = Const c
 
 -- | A fold over two row type structures at once
-eraseZip :: forall ρ c b. Forall ρ c => Proxy c -> (forall a. c a => a -> a -> b) -> Var ρ -> Var ρ -> Maybe b
-eraseZip _ f x y = getConst $ metamorph' @ρ @c @(Product Var Var) @(Const (Maybe b)) @(Const (Maybe b)) Proxy doNil doUncons doCons (Pair x y)
+eraseZip :: forall c ρ b. Forall ρ c => (forall a. c a => a -> a -> b) -> Var ρ -> Var ρ -> Maybe b
+eraseZip f x y = getConst $ metamorph' @ρ @c @(Product Var Var) @(Const (Maybe b)) @(Const (Maybe b)) Proxy doNil doUncons doCons (Pair x y)
   where doNil _ = Const Nothing
         doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
                  => Label ℓ -> Product Var Var ('R (ℓ :-> τ ': ρ)) -> Either (Const (Maybe b) τ) (Product Var Var ('R ρ))

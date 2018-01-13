@@ -88,13 +88,13 @@ data Rec (r :: Row *) where
 
 instance Forall r Show => Show (Rec r) where
   show r = "{ " ++ intercalate ", " binds ++ " }"
-    where binds = (\ (x, y) -> x ++ "=" ++ y) <$> eraseWithLabels (Proxy @Show) show r
+    where binds = (\ (x, y) -> x ++ "=" ++ y) <$> eraseWithLabels @Show show r
 
 instance Forall r Eq => Eq (Rec r) where
-  r == r' = and $ eraseZip (Proxy @Eq) (==) r r'
+  r == r' = and $ eraseZip @Eq (==) r r'
 
 instance (Forall r Eq, Forall r Ord) => Ord (Rec r) where
-  compare m m' = cmp $ eraseZip (Proxy @Ord) compare m m'
+  compare m m' = cmp $ eraseZip @Ord compare m m'
       where cmp l | [] <- l' = EQ
                   | a : _ <- l' = a
                   where l' = dropWhile (== EQ) l
@@ -216,12 +216,12 @@ unIPair (Pair (Identity x) (Identity y)) = (x,y)
 
 
 -- | A standard fold
-erase :: Forall r c => Proxy c -> (forall a. c a => a -> b) -> Rec r -> [b]
-erase p f = fmap (snd @String) . eraseWithLabels p f
+erase :: forall c ρ b. Forall ρ c => (forall a. c a => a -> b) -> Rec ρ -> [b]
+erase f = fmap (snd @String) . eraseWithLabels @c f
 
 -- | A fold with labels
-eraseWithLabels :: forall s ρ c b. (Forall ρ c, IsString s) => Proxy c -> (forall a. c a => a -> b) -> Rec ρ -> [(s,b)]
-eraseWithLabels _ f = getConst . metamorph @ρ @c @Rec @(Const [(s,b)]) @Identity Proxy doNil doUncons doCons
+eraseWithLabels :: forall c ρ s b. (Forall ρ c, IsString s) => (forall a. c a => a -> b) -> Rec ρ -> [(s,b)]
+eraseWithLabels f = getConst . metamorph @ρ @c @Rec @(Const [(s,b)]) @Identity Proxy doNil doUncons doCons
   where doNil _ = Const []
         doUncons l r = (Identity $ r .! l, unsafeRemove l r)
         doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
@@ -229,8 +229,8 @@ eraseWithLabels _ f = getConst . metamorph @ρ @c @Rec @(Const [(s,b)]) @Identit
         doCons l (Identity x) (Const c) = Const $ (show' l, f x) : c
 
 -- | A fold over two row type structures at once
-eraseZip :: forall ρ c b. Forall ρ c => Proxy c -> (forall a. c a => a -> a -> b) -> Rec ρ -> Rec ρ -> [b]
-eraseZip _ f x y = getConst $ metamorph @ρ @c @(Product Rec Rec) @(Const [b]) @IPair Proxy (const $ Const []) doUncons doCons (Pair x y)
+eraseZip :: forall c ρ b. Forall ρ c => (forall a. c a => a -> a -> b) -> Rec ρ -> Rec ρ -> [b]
+eraseZip f x y = getConst $ metamorph @ρ @c @(Product Rec Rec) @(Const [b]) @IPair Proxy (const $ Const []) doUncons doCons (Pair x y)
   where doUncons l (Pair r1 r2) = (iPair a b, Pair r1' r2')
           where (a, r1') = (r1 .! l, unsafeRemove l r1)
                 (b, r2') = (r2 .! l, unsafeRemove l r2)
@@ -240,9 +240,9 @@ eraseZip _ f x y = getConst $ metamorph @ρ @c @(Product Rec Rec) @(Const [b]) @
 
 -- | Turns a record into a 'HashMap' from values representing the labels to
 --   the values of the record.
-eraseToHashMap :: (IsString s, Eq s, Hashable s, Forall r c) =>
-                  Proxy c -> (forall a . c a => a -> b) -> Rec r -> HashMap s b
-eraseToHashMap p f r = M.fromList $ eraseWithLabels p f r
+eraseToHashMap :: forall c r s b. (IsString s, Eq s, Hashable s, Forall r c) =>
+                  (forall a . c a => a -> b) -> Rec r -> HashMap s b
+eraseToHashMap f r = M.fromList $ eraseWithLabels @c f r
 
 -- | RMap is used internally as a type level lambda for defining record maps.
 newtype RMap (f :: * -> *) (ρ :: Row *) = RMap { unRMap :: Rec (Map f ρ) }
