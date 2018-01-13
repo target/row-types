@@ -15,7 +15,7 @@ module Data.Row.Variants
   , Var, Row, Empty
   -- * Construction
   , HasType, just, just'
-  , fromLabel
+  , fromLabels
   -- ** Extension
   , type (.\), Lacks, diversify, type (.+)
   -- ** Modification
@@ -111,7 +111,8 @@ just = unsafeMakeVar
 just' :: KnownSymbol l => Label l -> a -> Var (l .== a)
 just' = just
 
-
+-- | A pattern for variants; can be used to both destruct a variant
+-- when in a pattern position or construct one in an expression position.
 pattern IsJust :: forall l r. (AllUniqueLabels r, KnownSymbol l) => Label l -> r .! l -> Var r
 pattern IsJust l a <- (unSingleton @l -> (l, Just a)) where
         IsJust l a = just l a
@@ -169,7 +170,7 @@ view = flip trial'
 erase :: Forall r c => Proxy c -> (forall a. c a => a -> b) -> Var r -> b
 erase p f = snd @String . eraseWithLabels p f
 
--- A fold with labels
+-- | A fold with labels
 eraseWithLabels :: forall s ρ c b. (Forall ρ c, IsString s) => Proxy c -> (forall a. c a => a -> b) -> Var ρ -> (s,b)
 eraseWithLabels _ f = getConst . metamorph' @ρ @c @Var @(Const (s,b)) @Identity Proxy impossible doUncons doCons
   where doUncons l = left Identity . flip trial l
@@ -203,10 +204,10 @@ unsafeInjectFront = unsafeCoerce
 -- | Initialize a variant from a producer function that accepts labels.  If this
 -- function returns more than one possibility, then one is chosen arbitrarily to
 -- be the value in the variant.
-fromLabel :: forall c ρ f. (Alternative f, Forall ρ c, AllUniqueLabels ρ)
-          => (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Var ρ)
-fromLabel mk = getCompose $ metamorph' @ρ @c @(Const ()) @(Compose f Var) @(Const ())
-                                              Proxy doNil doUncons doCons (Const ())
+fromLabels :: forall c ρ f. (Alternative f, Forall ρ c, AllUniqueLabels ρ)
+           => (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Var ρ)
+fromLabels mk = getCompose $ metamorph' @ρ @c @(Const ()) @(Compose f Var) @(Const ())
+                                        Proxy doNil doUncons doCons (Const ())
   where doNil _ = Compose $ empty
         doUncons _ _ = Right $ Const ()
         doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)

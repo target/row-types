@@ -10,10 +10,10 @@
 -- It specifically excludes:
 --
 -- * Functions that have the same name for Records and Variants (e.g. 'focus',
---   'update', 'fromLabel', etc.)
+--   'update', 'fromLabels', etc.)
 --
 -- * Common clashes with the standard Prelude or other modules (e.g. 'map',
---   'sequence', 'Map')
+--   'sequence', 'zip', 'Map', etc.)
 --
 -- If these particular functions are needed, they should be brought in qualified
 -- from one of the Data.Row.*** modules directly.
@@ -52,8 +52,8 @@ module Data.Row
   )
 where
 
-import Data.Row.Records
 import Data.Row.Variants
+import Data.Row.Records
 import Data.Row.Switch
 
 

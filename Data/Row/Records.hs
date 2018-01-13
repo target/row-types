@@ -118,6 +118,8 @@ infix 7 .==
 (.==) :: KnownSymbol l => Label l -> a -> Rec (l .== a)
 l .== a = extend l a empty
 
+-- | A pattern for the singleton record; can be used to both destruct a record
+-- when in a pattern position or construct one in an expression position.
 infix 7 :==
 pattern (:==) :: forall l a. KnownSymbol l => Label l -> a -> Rec (l .== a)
 pattern l :== a <- (unSingleton @l @a -> (l, a)) where
@@ -217,7 +219,7 @@ unIPair (Pair (Identity x) (Identity y)) = (x,y)
 erase :: Forall r c => Proxy c -> (forall a. c a => a -> b) -> Rec r -> [b]
 erase p f = fmap (snd @String) . eraseWithLabels p f
 
--- A fold with labels
+-- | A fold with labels
 eraseWithLabels :: forall s ρ c b. (Forall ρ c, IsString s) => Proxy c -> (forall a. c a => a -> b) -> Rec ρ -> [(s,b)]
 eraseWithLabels _ f = getConst . metamorph @ρ @c @Rec @(Const [(s,b)]) @Identity Proxy doNil doUncons doCons
   where doNil _ = Const []
@@ -262,7 +264,7 @@ map' = map @Unconstrained1
 -- | Lifts a natrual transformation over a record.  In other words, it acts as a
 -- record transformer to convert a record of @f a@ values to a record of @g a@
 -- values.  If no constraint is needed, instantiate the first type argument with
--- 'Unconstrained1'.
+-- 'Unconstrained1' or use 'transform''.
 transform :: forall c r f g. Forall r c => (forall a. c a => f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
 transform f = unRMap . metamorph @r @c @(RMap f) @(RMap g) @f Proxy doNil doUncons doCons . RMap
   where
@@ -272,6 +274,7 @@ transform f = unRMap . metamorph @r @c @(RMap f) @(RMap g) @f Proxy doNil doUnco
            => Label ℓ -> f τ -> RMap g ('R ρ) -> RMap g ('R (ℓ :-> τ ': ρ))
     doCons l v (RMap r) = RMap (unsafeInjectFront l (f v) r)
 
+-- | A version of 'transform' for when there is no constraint.
 transform' :: forall r f g. Forall r Unconstrained1 => (forall a. f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
 transform' = transform @Unconstrained1 @r
 
