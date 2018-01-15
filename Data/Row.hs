@@ -32,7 +32,6 @@ module Data.Row
   -- * Record Construction
   , empty
   , type (.==), (.==), pattern (:==), unSingleton
-  , defaultRecord, defaultRecordA
   -- ** Restriction
   , type (.-), (.-)
   , restrict

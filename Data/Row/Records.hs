@@ -24,7 +24,7 @@ module Data.Row.Records
   -- * Construction
   , empty
   , type (.==), (.==), pattern (:==), unSingleton
-  , defaultRecord, defaultRecordA
+  , default', defaultA
   , fromLabels, fromLabelsA
   -- ** Extension
   , extend, Extend, Lacks, type (.\)
@@ -100,8 +100,8 @@ instance (Forall r Eq, Forall r Ord) => Ord (Rec r) where
                   where l' = dropWhile (== EQ) l
 
 instance (Forall r Bounded, AllUniqueLabels r) => Bounded (Rec r) where
-  minBound = defaultRecord @Bounded minBound
-  maxBound = defaultRecord @Bounded maxBound
+  minBound = default' @Bounded minBound
+  maxBound = default' @Bounded maxBound
 
 instance Forall r NFData => NFData (Rec r) where
   rnf r = getConst $ metamorph @r @NFData @Rec @(Const ()) @Identity Proxy empty doUncons doCons r
@@ -310,13 +310,13 @@ unsafeInjectFront (toKey -> a) b (OR m) = OR $ M.insert a (HideType b) m
 --------------------------------------------------------------------}
 
 -- | Initialize a record with a default value at each label.
-defaultRecord :: forall c ρ. (Forall ρ c, AllUniqueLabels ρ) => (forall a. c a => a) -> Rec ρ
-defaultRecord v = runIdentity $ defaultRecordA @c $ pure v
+default' :: forall c ρ. (Forall ρ c, AllUniqueLabels ρ) => (forall a. c a => a) -> Rec ρ
+default' v = runIdentity $ defaultA @c $ pure v
 
 -- | Initialize a record with a default value at each label; works over an 'Applicative'.
-defaultRecordA :: forall c f ρ. (Applicative f, Forall ρ c, AllUniqueLabels ρ)
-               => (forall a. c a => f a) -> f (Rec ρ)
-defaultRecordA v = fromLabelsA @c $ pure v
+defaultA :: forall c f ρ. (Applicative f, Forall ρ c, AllUniqueLabels ρ)
+         => (forall a. c a => f a) -> f (Rec ρ)
+defaultA v = fromLabelsA @c $ pure v
 
 -- | Initialize a record, where each value is determined by the given function over
 -- the label at that value.

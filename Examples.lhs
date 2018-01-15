@@ -153,7 +153,7 @@ number of dimensions.  We could write out each of the 0s necessary, but there's
 an easier way to initialize a record:
 
 > origin4 :: Rec ("x" .== Double .+ "y" .== Double .+ "z" .== Double .+ "w" .== Double)
-> origin4 = defaultRecord @Num 0
+> origin4 = Rec.default' @Num 0
 
 Finally, we have come to a case where GHC cannot infer the type signature, and how
 could it!  The type is providing crucial information about the shape of the record.
