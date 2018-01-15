@@ -3,6 +3,7 @@
 >
 > import Data.Row
 > import qualified Data.Row.Records as Rec
+> import qualified Data.Row.Variants as Var
 
 In this example file, we will explore how to create and use records and variants.
 
@@ -206,18 +207,18 @@ as might be expected given that variants are dual to records.  The types look
 almost the same, and some of the operators are shared as well.  However,
 construction and destruction are obviously different.
 
-Creating a variant can be done with just:
+Creating a variant can be done with IsJust:
 
 > v,v' :: Var ("y" .== String .+ "x" .== Integer)
-> v  = just #x 1
-> v' = just #y "Foo"
+> v  = IsJust #x 1
+> v' = IsJust #y "Foo"
 
 Here, the type is necessary to specify what concrete type the variant is (when
 using AllowAmbiguousTypes, the type is not always needed, but it would be needed
 to e.g. show the variant).  In the simple case of a variant of just one type,
-the simpler just' function can be used:
+the simpler singleton function can be used:
 
-> v2 = just' #x 1
+> v2 = Var.singleton #x 1
 
 Now, the type can be easily derived by GHC.  We can show variants as easily as
 records:
@@ -262,14 +263,14 @@ but since v3 now has the same labels as v1, that comparison is fine:
 
 λ> v == v3
 True
-λ> v == just #x 3
+λ> v == IsJust #x 3
 False
 λ> v == v'
 False
-λ> v == just #y "fail"
+λ> v == IsJust #y "fail"
 False
 
-(Also note here that using just without a type signature is fine because the correct
+(Also note here that using IsJust without a type signature is fine because the correct
 type can be easily inferred due to v's type.)
 
 What can you do with a variant?  The only way to really use one is to get the value

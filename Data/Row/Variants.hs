@@ -14,7 +14,7 @@ module Data.Row.Variants
   , KnownSymbol, AllUniqueLabels, WellBehaved
   , Var, Row, Empty
   -- * Construction
-  , HasType, just, just'
+  , HasType, pattern IsJust, singleton
   , fromLabels
   -- ** Extension
   , type (.\), Lacks, diversify, type (.+)
@@ -23,7 +23,7 @@ module Data.Row.Variants
   -- * Destruction
   , impossible, trial, trial', multiTrial, view
   -- ** Types for destruction
-  , type (.!), type (.-), type (.\\), type (.==), pattern IsJust
+  , type (.!), type (.-), type (.\\), type (.==)
   -- * Row operations
   -- ** Map
   , Map, map, map', transform, transform'
@@ -102,20 +102,15 @@ unsafeMakeVar (toKey -> l) = OneOf l . HideType
 impossible :: Var Empty -> a
 impossible _ = error "Impossible! Somehow, a variant of nothing was produced."
 
--- | Create a variant.  The first type argument is the set of types that the Variant
--- lives in.
-just :: forall r l. (AllUniqueLabels r, KnownSymbol l) => Label l -> r .! l -> Var r
-just = unsafeMakeVar
-
--- | A version of 'just' that creates the variant of only one type.
-just' :: KnownSymbol l => Label l -> a -> Var (l .== a)
-just' = just
+-- | A quick constructor to create a singleton variant.
+singleton :: KnownSymbol l => Label l -> a -> Var (l .== a)
+singleton = IsJust
 
 -- | A pattern for variants; can be used to both destruct a variant
 -- when in a pattern position or construct one in an expression position.
 pattern IsJust :: forall l r. (AllUniqueLabels r, KnownSymbol l) => Label l -> r .! l -> Var r
 pattern IsJust l a <- (unSingleton @l -> (l, Just a)) where
-        IsJust l a = just l a
+        IsJust l a = unsafeMakeVar l a
 
 unSingleton :: forall l r. KnownSymbol l => Var r -> (Label l, Maybe (r .! l))
 unSingleton v = (l, view l v) where l = Label @l

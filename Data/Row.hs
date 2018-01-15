@@ -41,12 +41,12 @@ module Data.Row
   -- ** Disjoint union
   , (.+), Disjoint, pattern (:+)
   -- * Variant construction
-  , just, just'
+  , pattern IsJust
   -- ** Restriction
   , diversify
   -- ** Destruction
   , impossible, trial, trial', multiTrial, view
-  , type (.\\), pattern IsJust
+  , type (.\\)
   -- * Labels
   , labels
   )
