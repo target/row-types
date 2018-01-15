@@ -28,6 +28,7 @@ module Data.Row.Internal
   -- * Helper functions
   , show'
   , toKey
+  , type (≈)
   , WellBehaved, AllUniqueLabels, Zip, Map, Subset, Disjoint
   )
 where
@@ -65,7 +66,7 @@ data Label (s :: Symbol) = Label
 instance KnownSymbol s => Show (Label s) where
   show = symbolVal
 
-instance x ~ y => IsLabel x (Label y) where
+instance x ≈ y => IsLabel x (Label y) where
 #if __GLASGOW_HASKELL__ >= 802
   fromLabel = Label
 #else
@@ -93,6 +94,7 @@ data HideType where
   Row operations
 --------------------------------------------------------------------}
 
+infixl 4 .\ {- This comment needed to appease CPP -}
 -- | Does the row lack (i.e. it does not have) the specified label?
 type family (r :: Row *) .\ (l :: Symbol) :: Constraint where
   R r .\ l = LacksR l r r
@@ -109,22 +111,22 @@ type family Modify (l :: Symbol) (a :: *) (r :: Row *) :: Row * where
 type family Rename (l :: Symbol) (l' :: Symbol) (r :: Row *) :: Row * where
   Rename l l' r = Extend  l' (r .! l) (r .- l)
 
-infixl 9 .!
+infixl 5 .!
 -- | Type level label fetching
 type family (r :: Row *) .! (t :: Symbol) :: * where
   R r .! l = Get l r
 
-infixl 9 .-
+infixl 6 .-
 -- | Type level Row element removal
 type family (r :: Row *) .- (s :: Symbol) :: Row * where
   R r .- l = R (Remove l r)
 
-infixl 8 .+
+infixl 6 .+
 -- | Type level Row append
 type family (l :: Row *) .+ (r :: Row *) :: Row * where
   R l .+ R r = R (Merge l r)
 
-infixl 9 .\\ {- This comment needed to appease CPP -}
+infixl 6 .\\ {- This comment needed to appease CPP -}
 -- | Type level Row difference.  That is, @l .\\ r@ is the row remaining after
 -- removing any matching elements of @r@ from @l@.
 type family (l :: Row *) .\\ (r :: Row *) :: Row * where
@@ -139,13 +141,13 @@ class Lacks (l :: Symbol) (r :: Row *)
 instance (r .\ l) => Lacks l r
 
 
--- | Alias for @(r .! l) ~ a@. It is a class rather than an alias, so that
+-- | Alias for @(r .! l) ≈ a@. It is a class rather than an alias, so that
 -- it can be partially applied.
-class ((r .! l) ~ a) => HasType l a r
-instance ((r .! l) ~ a) => HasType l a r
+class (r .! l ≈ a) => HasType l a r
+instance (r .! l ≈ a) => HasType l a r
 
 -- | A type level way to create a singleton Row.
-infix 9 .==
+infix 7 .==
 type (l :: Symbol) .== (a :: *) = Extend l a Empty
 
 
@@ -156,7 +158,7 @@ type (l :: Symbol) .== (a :: *) = Extend l a Empty
 -- | Proof that the given label is a valid candidate for the next step
 -- in a metamorph fold, i.e. it's not in the list yet and, when sorted,
 -- will be placed at the head.
-type FoldStep ℓ τ ρ = ( (Inject (ℓ :-> τ) ρ) ~ (ℓ :-> τ ': ρ)
+type FoldStep ℓ τ ρ = ( Inject (ℓ :-> τ) ρ ≈ ℓ :-> τ ': ρ
                       , R ρ .\ ℓ
                       )
 
@@ -317,8 +319,8 @@ type Disjoint l r = ( WellBehaved l
                     , WellBehaved r
                     , Subset l (l .+ r)
                     , Subset r (l .+ r)
-                    , (l .+ r) .\\ l ~ r
-                    , (l .+ r) .\\ r ~ l)
+                    , l .+ r .\\ l ≈ r
+                    , l .+ r .\\ r ≈ l)
 
 -- | Map a type level function over a Row.
 type family Map (f :: a -> b) (r :: Row a) :: Row b where
@@ -412,3 +414,6 @@ type family Diff (l :: [LT *]) (r :: [LT *]) where
 -- so here it is in terms of other ghc-7.8 type functions
 type a <=.? b = (CmpSymbol a b == 'LT)
 
+-- | A lower fixity operator for type equality
+infix 4 ≈
+type a ≈ b = a ~ b

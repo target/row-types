@@ -20,7 +20,7 @@ module Data.Row.Records
   -- * Types and constraints
     Label(..)
   , KnownSymbol, AllUniqueLabels, WellBehaved
-  , Rec, Row, Empty
+  , Rec, Row, Empty, type (≈)
   -- * Construction
   , empty
   , type (.==), (.==), pattern (:==), unSingleton
@@ -159,7 +159,7 @@ rename (toKey -> l) (toKey -> l') (OR m) = OR $ M.insert l' (m M.! l) $ M.delete
 OR m .! (toKey -> a) = case m M.! a of
   HideType x -> unsafeCoerce x
 
-infixl 8 .-
+infixl 6 .-
 -- | Record restriction. Remove the label l from the record.
 (.-) :: KnownSymbol l => Rec r -> Label l -> Rec (r .- l)
 -- OR m .- _ = OR m

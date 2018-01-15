@@ -12,7 +12,7 @@ module Data.Row.Variants
   -- * Types and constraints
     Label(..)
   , KnownSymbol, AllUniqueLabels, WellBehaved
-  , Var, Row, Empty
+  , Var, Row, Empty, type (≈)
   -- * Construction
   , HasType, pattern IsJust, singleton
   , fromLabels
@@ -188,30 +188,6 @@ eraseZip f x y = getConst $ metamorph' @ρ @c @(Product Var Var) @(Const (Maybe 
         doCons _ (Right (Const c)) = Const c
 
 
-{--------------------------------------------------------------------
-  Variant initialization
---------------------------------------------------------------------}
-
--- | A helper function for unsafely adding an element to the front of a variant
-unsafeInjectFront :: forall l a r. KnownSymbol l => Var (R r) -> Var (R (l :-> a ': r))
-unsafeInjectFront = unsafeCoerce
-
--- | Initialize a variant from a producer function that accepts labels.  If this
--- function returns more than one possibility, then one is chosen arbitrarily to
--- be the value in the variant.
-fromLabels :: forall c ρ f. (Alternative f, Forall ρ c, AllUniqueLabels ρ)
-           => (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Var ρ)
-fromLabels mk = getCompose $ metamorph' @ρ @c @(Const ()) @(Compose f Var) @(Const ())
-                                        Proxy doNil doUncons doCons (Const ())
-  where doNil _ = Compose $ empty
-        doUncons _ _ = Right $ Const ()
-        doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
-               => Label ℓ -> Either (Const () τ) (Compose f Var ('R ρ)) -> Compose f Var ('R (ℓ :-> τ ': ρ))
-        doCons l (Left _) = Compose $ unsafeMakeVar l <$> mk l --This case should be impossible
-        doCons l (Right (Compose v)) = Compose $
-          unsafeMakeVar l <$> mk l <|> unsafeInjectFront <$> v
-
-
 -- | VMap is used internally as a type level lambda for defining variant maps.
 newtype VMap (f :: * -> *) (ρ :: Row *) = VMap { unVMap :: Var (Map f ρ) }
 
@@ -256,4 +232,28 @@ sequence = getCompose . metamorph' @r @Unconstrained1 @(VMap f) @(Compose f Var)
     doUncons l = right VMap . flip trial l . unVMap
     doCons l (Left fx) = Compose $ unsafeMakeVar l <$> fx
     doCons _ (Right (Compose v)) = Compose $ unsafeInjectFront <$> v
+
+
+{--------------------------------------------------------------------
+  Variant initialization
+--------------------------------------------------------------------}
+
+-- | A helper function for unsafely adding an element to the front of a variant
+unsafeInjectFront :: forall l a r. KnownSymbol l => Var (R r) -> Var (R (l :-> a ': r))
+unsafeInjectFront = unsafeCoerce
+
+-- | Initialize a variant from a producer function that accepts labels.  If this
+-- function returns more than one possibility, then one is chosen arbitrarily to
+-- be the value in the variant.
+fromLabels :: forall c ρ f. (Alternative f, Forall ρ c, AllUniqueLabels ρ)
+           => (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Var ρ)
+fromLabels mk = getCompose $ metamorph' @ρ @c @(Const ()) @(Compose f Var) @(Const ())
+                                        Proxy doNil doUncons doCons (Const ())
+  where doNil _ = Compose $ empty
+        doUncons _ _ = Right $ Const ()
+        doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
+               => Label ℓ -> Either (Const () τ) (Compose f Var ('R ρ)) -> Compose f Var ('R (ℓ :-> τ ': ρ))
+        doCons l (Left _) = Compose $ unsafeMakeVar l <$> mk l --This case should be impossible
+        doCons l (Right (Compose v)) = Compose $
+          unsafeMakeVar l <$> mk l <|> unsafeInjectFront <$> v
 

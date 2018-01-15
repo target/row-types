@@ -26,7 +26,7 @@ module Data.Row
   -- * Types and constraints
     Label(..)
   , KnownSymbol, AllUniqueLabels, WellBehaved
-  , Var, Rec, Row, Empty
+  , Var, Rec, Row, Empty, type (≈)
   , HasType, Lacks, type (.\), type (.+)
   , Forall, Switch(..)
   -- * Record Construction

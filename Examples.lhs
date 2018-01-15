@@ -109,7 +109,7 @@ with the .! operator, like so:
 and we can use this to write whatever we want.  Here is a function for calculating
 Euclidean distance from the origin to a point:
 
-> distance :: (Floating t, (r .! "y") ~ t, (r .! "x") ~ t) => Rec r -> t
+> distance :: (Floating t, r .! "y" ≈ t, r .! "x" ≈ t) => Rec r -> t
 > distance p = sqrt $ p .! #x * p .! #x + p .! #y * p .! #y
 
 Once again, the type of distance is entirely inferrable, but we write it here for
@@ -173,7 +173,7 @@ For larger changes, it is easier to use the restrict function.  The following
 function will take a record that contains both an x and y coordinate and remove
 the rest of the fields from it.
 
-> get2D :: (r ~ ("x" .== Double .+ "y" .== Double), Disjoint r rest)
+> get2D :: (r ≈ "x" .== Double .+ "y" .== Double, Disjoint r rest)
 >       => Rec (r .+ rest)
 >       -> Rec r
 > get2D r = restrict r
@@ -293,7 +293,7 @@ For ease of use in view patterns, Variants also exposes the view function.
 (If using lens, this can be replaced with preview.)  With it, we can write a
 function like this:
 
-> myShow :: ((r .! "y") ~ String, Show (r .! "x")) => Var r -> String
+> myShow :: (r .! "y" ≈ String, Show (r .! "x")) => Var r -> String
 > myShow (view #x -> Just n) = "Int of "++show n
 > myShow (view #y -> Just s) = "String of "++s
 > myShow _ = "Unknown"
@@ -307,7 +307,7 @@ function like this:
 
 This can also be achieved with the IsJust pattern synonym in much the same way:
 
-> myShow' :: (WellBehaved r, (r .! "y") ~ String, Show (r .! "x")) => Var r -> String
+> myShow' :: (WellBehaved r, r .! "y" ≈ String, Show (r .! "x")) => Var r -> String
 > myShow' (IsJust (Label :: Label "x") n) = "Int of "++show n
 > myShow' (IsJust (Label :: Label "y") s) = "String of "++s
 > myShow' _ = "Unknown"
@@ -383,6 +383,6 @@ ugly (the type equalities are necessary but annoying).
 >   Left  e' -> f1 e'
 >   Right e' -> f2 e'
 
-> joinVarLists :: forall x y. (WellBehaved (x .+ y), (x .+ y) ~ (y .+ x))
+> joinVarLists :: forall x y. (WellBehaved (x .+ y), x .+ y ≈ y .+ x)
 >              => [Var x] -> [Var y] -> [Var (x .+ y)]
 > joinVarLists xs ys = map (diversify @y) xs ++ map (diversify @x) ys
