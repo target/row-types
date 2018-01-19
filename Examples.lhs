@@ -294,8 +294,8 @@ For ease of use in view patterns, Variants also exposes the view function.
 function like this:
 
 > myShow :: (r .! "y" ≈ String, Show (r .! "x")) => Var r -> String
-> myShow (view #x -> Just n) = "Int of "++show n
-> myShow (view #y -> Just s) = "String of "++s
+> myShow (Var.view #x -> Just n) = "Int of "++show n
+> myShow (Var.view #y -> Just s) = "String of "++s
 > myShow _ = "Unknown"
 
 λ> myShow v
@@ -319,8 +319,8 @@ a function like myShow to be exhaustive in the variant's cases, but to do this,
 you must manually provide a type signature:
 
 > myShowRestricted :: Var ("y" .== String .+ "x" .== Integer) -> String
-> myShowRestricted (view #x -> Just n) = "Int of "++show n
-> myShowRestricted (view #y -> Just s) = "String of "++s
+> myShowRestricted (Var.view #x -> Just n) = "Int of "++show n
+> myShowRestricted (Var.view #y -> Just s) = "String of "++s
 > myShowRestricted _ = error "Unreachable"
 
 The second blemish can be seen in this restricted version of myShow.  Even though

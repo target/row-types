@@ -44,7 +44,7 @@ module Data.Row
   -- ** Restriction
   , diversify
   -- ** Destruction
-  , impossible, trial, trial', multiTrial, view
+  , impossible, trial, trial', multiTrial
   , type (.\\)
   -- * Labels
   , labels
