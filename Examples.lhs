@@ -1,10 +1,9 @@
 > {-# LANGUAGE OverloadedLabels #-}
 > module Examples where
 >
-> import Data.Row.Records
-> import Data.Row.Variants
-> import Data.Row.Switch
-> import Data.Proxy
+> import Data.Row
+> import qualified Data.Row.Records as Rec
+> import qualified Data.Row.Variants as Var
 
 In this example file, we will explore how to create and use records and variants.
 
@@ -110,7 +109,7 @@ with the .! operator, like so:
 and we can use this to write whatever we want.  Here is a function for calculating
 Euclidean distance from the origin to a point:
 
-> distance :: (Floating t, (r .! "y") ~ t, (r .! "x") ~ t) => Rec r -> t
+> distance :: (Floating t, r .! "y" ≈ t, r .! "x" ≈ t) => Rec r -> t
 > distance p = sqrt $ p .! #x * p .! #x + p .! #y * p .! #y
 
 Once again, the type of distance is entirely inferrable, but we write it here for
@@ -129,10 +128,10 @@ write a function to move the points we have:
 
 > move :: (Num (r .! "x"), Num (r .! "y"))
 >      => Rec r -> r .! "x" -> r .! "y" -> Rec r
-> move p dx dy = update #x (p .! #x + dx) $
->                update #y (p .! #y + dy) p
+> move p dx dy = Rec.update #x (p .! #x + dx) $
+>                Rec.update #y (p .! #y + dy) p
 
-Here, we're using the update operator to update the value at the label x by
+Here, we're using the Rec.update operator to update the value at the label x by
 adding dx to it, and then we do the same for y.
 We can see it work in practice:
 
@@ -154,7 +153,7 @@ number of dimensions.  We could write out each of the 0s necessary, but there's
 an easier way to initialize a record:
 
 > origin4 :: Rec ("x" .== Double .+ "y" .== Double .+ "z" .== Double .+ "w" .== Double)
-> origin4 = defaultRecord @Num 0
+> origin4 = Rec.default' @Num 0
 
 Finally, we have come to a case where GHC cannot infer the type signature, and how
 could it!  The type is providing crucial information about the shape of the record.
@@ -163,6 +162,42 @@ Regardless, with the type provided, it works exactly as expected:
 λ> origin4
 { w=0.0, x=0.0, y=0.0, z=0.0 }
 
+While we have added names or further fields, we can also choose to forget
+information in a record.  To remove a particular label, one can use the .-
+operator, like so:
+
+> unName :: HasType "name" a r => Rec r -> Rec (r .- "name")
+> unName r = r .- #name
+
+For larger changes, it is easier to use the restrict function.  The following
+function will take a record that contains both an x and y coordinate and remove
+the rest of the fields from it.
+
+> get2D :: (r ≈ "x" .== Double .+ "y" .== Double, Disjoint r rest)
+>       => Rec (r .+ rest)
+>       -> Rec r
+> get2D r = restrict r
+
+GHC is a little finicky about the type operators and constraints -- indeed, this
+type signature will fail to type check if the parentheses around
+  "x" .== Double .+ "y" .== Double
+in the argument are missing.  Of course, a type signature is not necessary when
+using type applications, and the function can instead be written as:
+
+> get2D' r = restrict @("x" .== Double .+ "y" .== Double) r
+
+with no trouble.  Yet another altnerative is to match directly on the values desired
+using the :== and :+ record patterns:
+
+> get2D'' ((Label :: Label "x") :== n1 :+ (Label :: Label "y") :== n2 :+ _)
+>           = #x .== n1 .+ #y .== n2
+> get2D'' _ = error "impossible"
+
+(Note that overloaded labels cannot be used in the patterns, so the notation is
+unfortunately bloated by types.  Also, the type operators are left associated,
+so the "_" must go on the right.)
+
+All three of the get2D functions behave the same.
 
 --------------------------------------------------------------------------------
   VARIANTS
@@ -172,18 +207,18 @@ as might be expected given that variants are dual to records.  The types look
 almost the same, and some of the operators are shared as well.  However,
 construction and destruction are obviously different.
 
-Creating a variant can be done with just:
+Creating a variant can be done with IsJust:
 
 > v,v' :: Var ("y" .== String .+ "x" .== Integer)
-> v  = just #x 1
-> v' = just #y "Foo"
+> v  = IsJust #x 1
+> v' = IsJust #y "Foo"
 
 Here, the type is necessary to specify what concrete type the variant is (when
 using AllowAmbiguousTypes, the type is not always needed, but it would be needed
 to e.g. show the variant).  In the simple case of a variant of just one type,
-the simpler just' function can be used:
+the simpler singleton function can be used:
 
-> v2 = just' #x 1
+> v2 = Var.singleton #x 1
 
 Now, the type can be easily derived by GHC.  We can show variants as easily as
 records:
@@ -195,21 +230,15 @@ records:
 λ> v2
 {x=1}
 
-Once created, a variant can be expanded by using the same extend function that
-can be used on records, except that instead of providing a value for the new
-label being added, one merely needs to provide a Proxy of the value.
+Once created, a variant can be expanded by using type applications and the
+diversify function.
 
-> v3 = extend #y (Proxy @String) v2
-
-Rather than having to use proxies to extend a variant component by component, we
-can do the same thing with type applications and the diversify function.
-
-> v3' = diversify @("y" .== String) v2
+> v3 = diversify @("y" .== String) v2
 > v4 = diversify @("y" .== String .+ "z" .== Double) v2
 
 λ> :t v4
 v4 :: Var ('R '["x" ':-> Integer, "y" ':-> String, "z" ':-> Double])
-λ> v3 == v3'
+λ> v == v3
 True
 
 Doing the above equality test does raise the question of how equality works on
@@ -222,7 +251,7 @@ check whether they're equal:
 error:
     • Couldn't match type ‘'["y" ':-> [Char]]’ with ‘'[]’
       Expected type: Var ('R '["x" ':-> Integer])
-        Actual type: Var (Extend "y" String ('R '["x" ':-> Integer]))
+        Actual type: Var ('R '["x" ':-> Integer] .+ ("y" .== String))
     • In the second argument of ‘(==)’, namely ‘v3’
       In the expression: v2 == v3
       In an equation for ‘it’: it = v2 == v3
@@ -234,14 +263,14 @@ but since v3 now has the same labels as v1, that comparison is fine:
 
 λ> v == v3
 True
-λ> v == just #x 3
+λ> v == IsJust #x 3
 False
 λ> v == v'
 False
-λ> v == just #y "fail"
+λ> v == IsJust #y "fail"
 False
 
-(Also note here that using just without a type signature is fine because the correct
+(Also note here that using IsJust without a type signature is fine because the correct
 type can be easily inferred due to v's type.)
 
 What can you do with a variant?  The only way to really use one is to get the value
@@ -260,13 +289,13 @@ If trialing at a label l succeeds, then it provides a Left value of the value at
 If not, it provides a Right value of the variant with this label removed---since the
 trial failed, we now can be sure that the value is not from l.
 
-For ease of use in view patterns, Variants also exposes the viewV function.
+For ease of use in view patterns, Variants also exposes the view function.
 (If using lens, this can be replaced with preview.)  With it, we can write a
 function like this:
 
-> myShow :: ((r .! "y") ~ String, Show (r .! "x")) => Var r -> String
-> myShow (viewV #x -> Just n) = "Int of "++show n
-> myShow (viewV #y -> Just s) = "String of "++s
+> myShow :: (r .! "y" ≈ String, Show (r .! "x")) => Var r -> String
+> myShow (view #x -> Just n) = "Int of "++show n
+> myShow (view #y -> Just s) = "String of "++s
 > myShow _ = "Unknown"
 
 λ> myShow v
@@ -276,20 +305,28 @@ function like this:
 λ> myShow (just #z 3 :: Var ("y" .== String .+ "x" .== Integer .+ "z" .== Double))
 "Unknown"
 
-Once again, the type signature is totally derivable.
+This can also be achieved with the IsJust pattern synonym in much the same way:
+
+> myShow' :: (WellBehaved r, r .! "y" ≈ String, Show (r .! "x")) => Var r -> String
+> myShow' (IsJust (Label :: Label "x") n) = "Int of "++show n
+> myShow' (IsJust (Label :: Label "y") s) = "String of "++s
+> myShow' _ = "Unknown"
+
+In either case, the type signature is once again totally derivable.
 
 There are two minor annoyances with this.  First, it's fairly common to want to define
 a function like myShow to be exhaustive in the variant's cases, but to do this,
 you must manually provide a type signature:
 
 > myShowRestricted :: Var ("y" .== String .+ "x" .== Integer) -> String
-> myShowRestricted (viewV #x -> Just n) = "Int of "++show n
-> myShowRestricted (viewV #y -> Just s) = "String of "++s
+> myShowRestricted (view #x -> Just n) = "Int of "++show n
+> myShowRestricted (view #y -> Just s) = "String of "++s
 > myShowRestricted _ = error "Unreachable"
 
 The second blemish can be seen in this restricted version of myShow.  Even though
 we know from the type that we've covered all the posibilities of the variant, GHC
 will generate a "non-exhaustive pattern match" warning without the final line.
+(This is true for the pattern synonym version too.)
 
 One way to avoid this problem is to use switch.  The switch operator takes a variant
 and a record such that for each label that the variant has, the record has a function
@@ -338,7 +375,7 @@ from one where "x" is an Integer to one where it's a Double).
 Here are two functions you can define over variants.  The type constraints are a little
 ugly (the type equalities are necessary but annoying).
 
-> also :: (Forall ys Unconstrained1, AllUniqueLabels xs, ys ~ ((xs .+ ys) .\\ xs))
+> also :: Disjoint xs ys
 >      => (Var xs -> a)
 >      -> (Var ys -> a)
 >      -> Var (xs .+ ys) -> a
@@ -346,5 +383,6 @@ ugly (the type equalities are necessary but annoying).
 >   Left  e' -> f1 e'
 >   Right e' -> f2 e'
 
-> joinVarLists :: forall x y. (AllUniqueLabels (x .+ y), (x .+ y) ~ (y .+ x)) => [Var x] -> [Var y] -> [Var (x .+ y)]
+> joinVarLists :: forall x y. (WellBehaved (x .+ y), x .+ y ≈ y .+ x)
+>              => [Var x] -> [Var y] -> [Var (x .+ y)]
 > joinVarLists xs ys = map (diversify @y) xs ++ map (diversify @x) ys

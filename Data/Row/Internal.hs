@@ -25,16 +25,11 @@ module Data.Row.Internal
   , Labels, labels
   , Forall(..), Forall2(..)
   , Unconstrained1
-  -- * Common operations on types over rows
-  , Extendable(..)
-  , Updatable(..)
-  , Focusable(..)
-  , Renamable(..)
-  , Erasable(..)
   -- * Helper functions
   , show'
   , toKey
-  , LacksL, AllUniqueLabels, RZip, Map, Subset, Disjoint
+  , type (≈)
+  , WellBehaved, AllUniqueLabels, Zip, Map, Subset, Disjoint
   )
 where
 
@@ -71,7 +66,7 @@ data Label (s :: Symbol) = Label
 instance KnownSymbol s => Show (Label s) where
   show = symbolVal
 
-instance x ~ y => IsLabel x (Label y) where
+instance x ≈ y => IsLabel x (Label y) where
 #if __GLASGOW_HASKELL__ >= 802
   fromLabel = Label
 #else
@@ -99,6 +94,7 @@ data HideType where
   Row operations
 --------------------------------------------------------------------}
 
+infixl 4 .\ {- This comment needed to appease CPP -}
 -- | Does the row lack (i.e. it does not have) the specified label?
 type family (r :: Row *) .\ (l :: Symbol) :: Constraint where
   R r .\ l = LacksR l r r
@@ -115,21 +111,23 @@ type family Modify (l :: Symbol) (a :: *) (r :: Row *) :: Row * where
 type family Rename (l :: Symbol) (l' :: Symbol) (r :: Row *) :: Row * where
   Rename l l' r = Extend  l' (r .! l) (r .- l)
 
-infixl 6 .!
+infixl 5 .!
 -- | Type level label fetching
 type family (r :: Row *) .! (t :: Symbol) :: * where
   R r .! l = Get l r
 
+infixl 6 .-
 -- | Type level Row element removal
 type family (r :: Row *) .- (s :: Symbol) :: Row * where
   R r .- l = R (Remove l r)
 
-infixr 6 .+
+infixl 6 .+
 -- | Type level Row append
 type family (l :: Row *) .+ (r :: Row *) :: Row * where
   R l .+ R r = R (Merge l r)
 
--- | Type level Row difference.  That is, @l :// r@ is the row remaining after
+infixl 6 .\\ {- This comment needed to appease CPP -}
+-- | Type level Row difference.  That is, @l .\\ r@ is the row remaining after
 -- removing any matching elements of @r@ from @l@.
 type family (l :: Row *) .\\ (r :: Row *) :: Row * where
   R l .\\ R r = R (Diff l r)
@@ -143,13 +141,13 @@ class Lacks (l :: Symbol) (r :: Row *)
 instance (r .\ l) => Lacks l r
 
 
--- | Alias for @(r .! l) ~ a@. It is a class rather than an alias, so that
+-- | Alias for @(r .! l) ≈ a@. It is a class rather than an alias, so that
 -- it can be partially applied.
-class ((r .! l) ~ a) => HasType l a r
-instance ((r .! l) ~ a) => HasType l a r
+class (r .! l ≈ a) => HasType l a r
+instance (r .! l ≈ a) => HasType l a r
 
 -- | A type level way to create a singleton Row.
-infixr 7 .==
+infix 7 .==
 type (l :: Symbol) .== (a :: *) = Extend l a Empty
 
 
@@ -160,7 +158,7 @@ type (l :: Symbol) .== (a :: *) = Extend l a Empty
 -- | Proof that the given label is a valid candidate for the next step
 -- in a metamorph fold, i.e. it's not in the list yet and, when sorted,
 -- will be placed at the head.
-type FoldStep ℓ τ ρ = ( (Inject (ℓ :-> τ) ρ) ~ (ℓ :-> τ ': ρ)
+type FoldStep ℓ τ ρ = ( Inject (ℓ :-> τ) ρ ≈ ℓ :-> τ ': ρ
                       , R ρ .\ ℓ
                       )
 
@@ -276,55 +274,12 @@ labels = getConst $ metamorph @ρ @c @(Const ()) @(Const [s]) @(Const ()) Proxy 
         doCons l _ (Const c) = Const $ show' l : c
 
 
-
-{--------------------------------------------------------------------
-  Common operations on types over rows
---------------------------------------------------------------------}
--- | Extendable row types support adding labels to the row.
-class Extendable (t :: Row * -> *) where
-  type Inp t a
-  -- | Record extension. The row must not already contain the label.
-  extend  :: forall a l r. KnownSymbol l => Label l -> Inp t a -> t r -> t (Extend l a r)
-
--- | Updatable row types support changing the value at a label in the row.
-class Updatable (t :: Row * -> *) where
-  -- Update the value in the Row at the given label by providing a new one.
-  update :: KnownSymbol l => Label l -> a -> t r -> t r
-
--- | Focusable row types support modifying the value at a label in the row,
--- and doing it in a lens-y way
-class Focusable (t :: Row * -> *) where
-  type FRequires t :: (* -> *) -> Constraint
-  -- Apply the given function to the value in the Row at the given label.
-  focus :: (FRequires t f, KnownSymbol l) => Label l -> (r .! l -> f a) -> t r -> f (t (Modify l a r))
-
--- | Renamable row types support renaming labels in the row.
-class Renamable (t :: Row * -> *) where
-  -- Rename a label in the row.
-  rename :: (KnownSymbol l, KnownSymbol l') => Label l -> Label l' -> t r -> t (Rename l l' r)
-
--- | Eraseable row types can be folded up.  Really, this should be called RowFoldable
---   or something, and the inner functions should be
---   @forall a. c a => a -> Output t b -> Output t b@
---   with a base case value of @Output t b@ provided, and then 'erase' can be derived
---   from that.
-class Erasable (t :: Row * -> *) where
-  -- | The output structure of the fold
-  type Output t a
-  -- | The output structure of the zip fold
-  type OutputZip t a
-  -- | A standard fold
-  erase :: Forall r c => Proxy c -> (forall a. c a => a -> b) -> t r -> Output t b
-  -- A fold with labels
-  eraseWithLabels :: (Forall r c, IsString s) => Proxy c -> (forall a. c a => a -> b) -> t r -> Output t (s, b)
-  -- | A fold over two row type structures at once
-  eraseZip :: Forall r c => Proxy c -> (forall a. c a => a -> a -> b) -> t r -> t r -> OutputZip t b
-
-
-
 {--------------------------------------------------------------------
   Convenient type families and classes
 --------------------------------------------------------------------}
+
+-- | A convenient way to provide common, easy constraints
+type WellBehaved ρ = (Forall ρ Unconstrained1, AllUniqueLabels ρ)
 
 -- | Are all of the labels in this Row unique?
 type family AllUniqueLabels (r :: Row *) :: Constraint where
@@ -359,6 +314,14 @@ type family SubsetR (r1 :: [LT *]) (r2 :: [LT *]) :: Constraint where
              :<>: ShowType al :<>: TL.Text " while the second has no assignment for it."))
       (SubsetR (hl :-> al ': tl) tr)
 
+-- | A type synonym for disjointness.
+type Disjoint l r = ( WellBehaved l
+                    , WellBehaved r
+                    , Subset l (l .+ r)
+                    , Subset r (l .+ r)
+                    , l .+ r .\\ l ≈ r
+                    , l .+ r .\\ r ≈ l)
+
 -- | Map a type level function over a Row.
 type family Map (f :: a -> b) (r :: Row a) :: Row b where
   Map f (R r) = R (MapR f r)
@@ -369,8 +332,8 @@ type family MapR (f :: a -> b) (r :: [LT a]) :: [LT b] where
 
 -- | Zips two rows together to create a Row of the pairs.
 --   The two rows must have the same set of labels.
-type family RZip (r1 :: Row *) (r2 :: Row *) where
-  RZip (R r1) (R r2) = R (ZipR r1 r2)
+type family Zip (r1 :: Row *) (r2 :: Row *) where
+  Zip (R r1) (R r2) = R (ZipR r1 r2)
 
 type family ZipR (r1 :: [LT *]) (r2 :: [LT *]) where
   ZipR '[] '[] = '[]
@@ -424,16 +387,6 @@ type family LacksR (l :: Symbol) (r :: [LT *]) (r_orig :: [LT *]) :: Constraint 
                                     :<>: TL.Text " already exists in " :<>: ShowType r)
   LacksR l (p ': x) r = LacksR l x r
 
--- | Useful for checking if a symbol is *not* in the symbol list.
-type family LacksL (l :: Symbol) (ls :: [Symbol]) where
-  LacksL l ls = LacksLT l ls ls
-
-type family LacksLT (l :: Symbol) (ls :: [Symbol]) (ls_orig :: [Symbol]) where
-  LacksLT l '[] ls = Unconstrained
-  LacksLT l (l ': x) ls = TypeError (TL.Text "The label " :<>: ShowType l
-                                    :<>: TL.Text " already exists in " :<>: ShowType ls)
-  LacksLT l (p ': x) ls = LacksLT l x ls
-
 type family Merge (l :: [LT *]) (r :: [LT *]) where
   Merge '[] r = r
   Merge l '[] = l
@@ -461,6 +414,6 @@ type family Diff (l :: [LT *]) (r :: [LT *]) where
 -- so here it is in terms of other ghc-7.8 type functions
 type a <=.? b = (CmpSymbol a b == 'LT)
 
-{-# DEPRECATED Disjoint "This constraint should no longer be necessary" #-}
-type Disjoint l r = Unconstrained
-
+-- | A lower fixity operator for type equality
+infix 4 ≈
+type a ≈ b = a ~ b
