@@ -1,5 +1,5 @@
 Name:                row-types
-Version:             0.1
+Version:             0.2.0.0
 Synopsis:	           Open records and variants.
 Description:         Open records and variants.
 License:             MIT
@@ -55,7 +55,6 @@ benchmark perf
                , row-types
                , deepseq >= 1.4
                , criterion >= 1.1
-  default-language: Haskell2010
   Extensions: AllowAmbiguousTypes,
               DataKinds,
               OverloadedLabels,
