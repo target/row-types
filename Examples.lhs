@@ -194,7 +194,6 @@ using the :== and :+ record patterns:
 >         -> Rec r
 > get2D'' ((Label :: Label "x") :== n1 :+ (Label :: Label "y") :== n2 :+ _)
 >           = #x .== n1 .+ #y .== n2
-> get2D'' _ = error "impossible"
 
 (Note that overloaded labels cannot be used in the patterns, so the notation is
 unfortunately bloated by types.  Also, the type operators are left associated,
