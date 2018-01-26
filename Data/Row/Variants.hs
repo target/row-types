@@ -30,7 +30,7 @@ module Data.Row.Variants
   -- ** Fold
   , Forall, erase, eraseWithLabels, eraseZip
   -- ** Sequence
-  , sequence
+  , sequence, sequenceCompose
   -- ** labels
   , labels
   )
@@ -232,6 +232,14 @@ sequence = getCompose . metamorph' @r @Unconstrained1 @(VMap f) @(Compose f Var)
     doUncons l = right VMap . flip trial l . unVMap
     doCons l (Left fx) = Compose $ unsafeMakeVar l <$> fx
     doCons _ (Right (Compose v)) = Compose $ unsafeInjectFront <$> v
+
+sequenceCompose :: forall r f g. (Forall r Unconstrained1, Applicative f) => Var (Map (Compose f g) r) -> f (Var (Map g r))
+sequenceCompose = fmap unVMap . getCompose . metamorph' @r @Unconstrained1 @(VMap (Compose f g)) @(Compose f (VMap g)) @(Compose f g) Proxy doNil doUncons doCons . VMap
+  where
+    doNil (VMap x) = impossible x
+    doUncons l = right VMap . flip trial l . unVMap
+    doCons l (Left (Compose fx)) = Compose $ VMap . unsafeMakeVar l <$> fx
+    doCons _ (Right (Compose v)) = Compose $ VMap . unsafeInjectFront . unVMap <$> v
 
 
 {--------------------------------------------------------------------
