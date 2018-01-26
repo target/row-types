@@ -120,6 +120,7 @@ l .== a = extend l a empty
 
 -- | A pattern for the singleton record; can be used to both destruct a record
 -- when in a pattern position or construct one in an expression position.
+{-# COMPLETE (:==) #-}
 infix 7 :==
 pattern (:==) :: forall l a. KnownSymbol l => Label l -> a -> Rec (l .== a)
 pattern l :== a <- (unSingleton @l @a -> (l, a)) where
@@ -172,6 +173,7 @@ OR l .+ OR r = OR $ M.unionWith (error "Impossible") l r
 
 
 -- | A pattern version of record union, for use in pattern matching.
+{-# COMPLETE (:+) #-}
 infixl 6 :+
 pattern (:+) :: forall l r. Disjoint l r => Rec l -> Rec r -> Rec (l .+ r)
 pattern l :+ r <- (split @l -> (l, r)) where

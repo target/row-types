@@ -189,13 +189,15 @@ using type applications, and the function can instead be written as:
 with no trouble.  Yet another altnerative is to match directly on the values desired
 using the :== and :+ record patterns:
 
+> get2D'' :: (r ≈ "x" .== Double .+ "y" .== Double, Disjoint r rest)
+>         => Rec (r .+ rest)
+>         -> Rec r
 > get2D'' ((Label :: Label "x") :== n1 :+ (Label :: Label "y") :== n2 :+ _)
 >           = #x .== n1 .+ #y .== n2
-> get2D'' _ = error "impossible"
 
 (Note that overloaded labels cannot be used in the patterns, so the notation is
 unfortunately bloated by types.  Also, the type operators are left associated,
-so the "_" must go on the right.)
+so the "_" must go on the right, and the type signature is unforunately necessary.)
 
 All three of the get2D functions behave the same.
 
