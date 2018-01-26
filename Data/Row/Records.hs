@@ -32,7 +32,7 @@ module Data.Row.Records
   , type (.-), (.-)
   , restrict, split
   -- ** Modification
-  , update, focus, Modify, rename, Rename
+  , update, focus, multifocus, Modify, rename, Rename
   -- * Query
   , HasType, type (.!), (.!)
   -- * Combine
@@ -150,6 +150,13 @@ focus :: (Functor f, KnownSymbol l) => Label l -> (r .! l -> f a) -> Rec r -> f 
 focus (toKey -> l) f (OR m) = case m M.! l of
   HideType x -> OR . flip (M.insert l) m . HideType <$> f (unsafeCoerce x)
 
+-- | Focus on a sub-record
+multifocus :: forall u v r f.
+  ( Functor f
+  , Disjoint u r
+  , Disjoint v r)
+  => (Rec u -> f (Rec v)) -> Rec (u .+ r) -> f (Rec (v .+ r))
+multifocus f (u :+ r) = (.+ r) <$> f u
 
 -- | Rename a label.
 rename :: (KnownSymbol l, KnownSymbol l') => Label l -> Label l' -> Rec r -> Rec (Rename l l' r)
