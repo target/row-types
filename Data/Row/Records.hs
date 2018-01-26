@@ -47,7 +47,7 @@ module Data.Row.Records
   -- ** Zip
   , Zip, zip
   -- ** Sequence
-  , sequence
+  , sequence, sequenceCompose
   -- ** Labels
   , labels
   -- ** UNSAFE operations
@@ -294,6 +294,13 @@ sequence = getCompose . metamorph @r @Unconstrained1 @(RMap f) @(Compose f Rec) 
     doNil _ = Compose (pure empty)
     doUncons l (RMap r) = (r .! l, RMap $ unsafeRemove l r)
     doCons l fv (Compose fr) = Compose $ unsafeInjectFront l <$> fv <*> fr
+
+sequenceCompose :: forall r f g. (Forall r Unconstrained1, Applicative f) => Rec (Map (Compose f g) r) -> f (Rec (Map g r))
+sequenceCompose = fmap unRMap . getCompose . metamorph @r @Unconstrained1 @(RMap (Compose f g)) @(Compose f (RMap g)) @(Compose f g) Proxy doNil doUncons doCons . RMap
+  where
+    doNil _ = Compose (pure (RMap empty))
+    doUncons l (RMap r) = (r .! l, RMap $ unsafeRemove l r)
+    doCons l (Compose fv) (Compose frm) = Compose . fmap RMap $ ((. unRMap) . unsafeInjectFront l) <$> fv <*> frm
 
 -- | RZipPair is used internally as a type level lambda for zipping records.
 newtype RZipPair (ρ1 :: Row *) (ρ2 :: Row *) = RZipPair { unRZipPair :: Rec (Zip ρ1 ρ2) }
