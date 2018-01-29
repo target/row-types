@@ -31,6 +31,8 @@ module Data.Row.Variants
   , Forall, erase, eraseWithLabels, eraseZip
   -- ** Sequence
   , sequence
+  -- ** Compose
+  , compose, uncompose
   -- ** labels
   , labels
   )
@@ -39,7 +41,7 @@ where
 import Prelude hiding (zip, map, sequence)
 
 import Control.Applicative
-import Control.Arrow (left, right)
+import Control.Arrow ((<<<), (+++), left, right)
 import Control.DeepSeq (NFData(..), deepseq)
 
 import Data.Functor.Compose
@@ -190,6 +192,7 @@ eraseZip f x y = getConst $ metamorph' @ρ @c @(Product Var Var) @(Const (Maybe 
 
 -- | VMap is used internally as a type level lambda for defining variant maps.
 newtype VMap (f :: * -> *) (ρ :: Row *) = VMap { unVMap :: Var (Map f ρ) }
+newtype VMap2 (f :: * -> *) (g :: * -> *) (ρ :: Row *) = VMap2 { unVMap2 :: Var (Map f (Map g ρ)) }
 
 -- | A function to map over a variant given a constraint.
 map :: forall c f r. Forall r c => (forall a. c a => a -> f a) -> Var r -> Var (Map f r)
@@ -232,6 +235,22 @@ sequence = getCompose . metamorph' @r @Unconstrained1 @(VMap f) @(Compose f Var)
     doUncons l = right VMap . flip trial l . unVMap
     doCons l (Left fx) = Compose $ unsafeMakeVar l <$> fx
     doCons _ (Right (Compose v)) = Compose $ unsafeInjectFront <$> v
+
+compose :: forall (f :: * -> *) g r . Forall r Unconstrained1 => Var (Map f (Map g r)) -> Var (Map (Compose f g) r)
+compose = unVMap . metamorph' @r @Unconstrained1 @(VMap2 f g) @(VMap (Compose f g)) Proxy doNil doUncons doCons . VMap2
+  where
+    doNil (VMap2 x) = impossible x
+    doUncons l = Compose +++ VMap2 <<< flip trial l . unVMap2
+    doCons l (Left x) = VMap $ unsafeMakeVar l x
+    doCons _ (Right (VMap v)) = VMap $ unsafeInjectFront v
+
+uncompose :: forall (f :: * -> *) g r . Forall r Unconstrained1 => Var (Map (Compose f g) r) -> Var (Map f (Map g r))
+uncompose = unVMap2 . metamorph' @r @Unconstrained1 @(VMap (Compose f g)) @(VMap2 f g) Proxy doNil doUncons doCons . VMap
+  where
+    doNil (VMap x) = impossible x
+    doUncons l = right VMap . flip trial l . unVMap
+    doCons l (Left (Compose x)) = VMap2 $ unsafeMakeVar l x
+    doCons _ (Right (VMap2 v)) = VMap2 $ unsafeInjectFront v
 
 
 {--------------------------------------------------------------------
