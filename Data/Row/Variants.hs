@@ -35,6 +35,8 @@ module Data.Row.Variants
   , compose, uncompose
   -- ** labels
   , labels
+  -- ** UNSAFE operations
+  , unsafeMakeVar, unsafeInjectFront
   )
 where
 
