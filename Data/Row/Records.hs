@@ -48,6 +48,8 @@ module Data.Row.Records
   , Zip, zip
   -- ** Sequence
   , sequence
+  -- ** Compose
+  , compose, uncompose
   -- ** Labels
   , labels
   -- ** UNSAFE operations
@@ -255,6 +257,7 @@ eraseToHashMap f r = M.fromList $ eraseWithLabels @c f r
 
 -- | RMap is used internally as a type level lambda for defining record maps.
 newtype RMap (f :: * -> *) (ρ :: Row *) = RMap { unRMap :: Rec (Map f ρ) }
+newtype RMap2 (f :: * -> *) (g :: * -> *) (ρ :: Row *) = RMap2 { unRMap2 :: Rec (Map f (Map g ρ)) }
 
 -- | A function to map over a record given a constraint.
 map :: forall c f r. Forall r c => (forall a. c a => a -> f a) -> Rec r -> Rec (Map f r)
@@ -294,6 +297,20 @@ sequence = getCompose . metamorph @r @Unconstrained1 @(RMap f) @(Compose f Rec) 
     doNil _ = Compose (pure empty)
     doUncons l (RMap r) = (r .! l, RMap $ unsafeRemove l r)
     doCons l fv (Compose fr) = Compose $ unsafeInjectFront l <$> fv <*> fr
+
+compose :: forall (f :: * -> *) g r . Forall r Unconstrained1 => Rec (Map f (Map g r)) -> Rec (Map (Compose f g) r)
+compose = unRMap . metamorph @r @Unconstrained1 @(RMap2 f g) @(RMap (Compose f g)) Proxy doNil doUncons doCons . RMap2
+  where
+    doNil _ = RMap empty
+    doUncons l (RMap2 r) = (Compose $ r .! l, RMap2 $ unsafeRemove l r)
+    doCons l v (RMap r) = RMap $ unsafeInjectFront l v r
+
+uncompose :: forall (f :: * -> *) g r . Forall r Unconstrained1 => Rec (Map (Compose f g) r) -> Rec (Map f (Map g r))
+uncompose = unRMap2 . metamorph @r @Unconstrained1 @(RMap (Compose f g)) @(RMap2 f g) Proxy doNil doUncons doCons . RMap
+  where
+    doNil _ = RMap2 empty
+    doUncons l (RMap r) = (r .! l, RMap $ unsafeRemove l r)
+    doCons l (Compose v) (RMap2 r) = RMap2 $ unsafeInjectFront l v r
 
 -- | RZipPair is used internally as a type level lambda for zipping records.
 newtype RZipPair (ρ1 :: Row *) (ρ2 :: Row *) = RZipPair { unRZipPair :: Rec (Zip ρ1 ρ2) }
