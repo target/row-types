@@ -33,6 +33,8 @@ module Data.Row.Variants
   , sequence
   -- ** labels
   , labels
+  -- ** UNSAFE operations
+  , unsafeMakeVar, unsafeInjectFront
   )
 where
 
