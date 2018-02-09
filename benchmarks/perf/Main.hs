@@ -2,7 +2,6 @@ module Main (main) where
 
 import Criterion.Main
 
-import Data.Proxy
 import Data.String
 
 import Data.Row.Records
@@ -21,14 +20,14 @@ main =
         , bench "append 3 3" $ nf (uncurry (.+)) (#a .== () .+ #b .== () .+ #c .== (),   #d .== () .+ #e .== () .+ #f .== ())
         , bench "append 5 1" $ nf (uncurry (.+)) (#a .== () .+ #b .== () .+ #c .== () .+ #d .== () .+ #e .== (),   #f .== ())
         , bench "append 1 5" $ nf (uncurry (.+)) (#a .== (),   #b .== () .+ #c .== () .+ #d .== () .+ #e .== () .+ #f .== ())
-        , bench "default 5" $ nf id $ defaultRecord @Num @(FiveRecord Double) 0
-        , bench "recordFromLabels 5" $ nf id $ recordFromLabels @IsString @(FiveRecord String) (fromString . show)
+        , bench "default 5" $ nf id $ default' @Num @(FiveRecord Double) 0
+        , bench "recordFromLabels 5" $ nf id $ fromLabels @IsString @(FiveRecord String) (fromString . show)
         ]
     , bgroup "Record Access"
         [ bench "get 1 of 5" $ nf (.! #a) $ #a .== () .+ #b .== () .+ #c .== () .+ #d .== () .+ #e .== ()
         , bench "get 5 of 5" $ nf (.! #e) $ #a .== () .+ #b .== () .+ #c .== () .+ #d .== () .+ #e .== ()
         ]
     , bgroup "Record Metamorphosis"
-        [ bench "erase" $ nf (erase (Proxy @Show) show) $ #a .== () .+ #b .== () .+ #c .== () .+ #d .== () .+ #e .== ()
+        [ bench "erase" $ nf (erase @Show show) $ #a .== () .+ #b .== () .+ #c .== () .+ #d .== () .+ #e .== ()
         ]
     ]
