@@ -85,7 +85,7 @@ import Data.Row.Internal
   Open records
 --------------------------------------------------------------------}
 -- | A record with row r.
-data Rec (r :: Row *) where
+newtype Rec (r :: Row *) where
   OR :: HashMap Text HideType -> Rec r
 
 instance Forall r Show => Show (Rec r) where
