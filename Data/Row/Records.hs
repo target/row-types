@@ -340,7 +340,7 @@ zip r1 r2 = unRZipPair $ metamorph2 @r1 @r2 @Unconstrained1 @Rec @Rec @RZipPair 
 
 -- | A helper function for unsafely adding an element to the front of a record
 -- This can cause the resulting record to be malformed, for instance, if the record
--- already contains labels that are lexicographically less than the given label.
+-- already contains labels that are lexicographically before the given label.
 -- Realistically, this function should only be used when writing calls to 'metamorph'.
 unsafeInjectFront :: KnownSymbol l => Label l -> a -> Rec (R r) -> Rec (R (l :-> a ': r))
 unsafeInjectFront (toKey -> a) b (OR m) = OR $ M.insert a (HideType b) m

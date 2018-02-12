@@ -274,7 +274,11 @@ uncompose = unVMap2 . metamorph' @r @Unconstrained1 @(VMap (Compose f g)) @(VMap
   Variant initialization
 --------------------------------------------------------------------}
 
--- | A helper function for unsafely adding an element to the front of a variant
+-- | A helper function for unsafely adding an element to the front of a variant.
+-- This can cause the type of the resulting variant to be malformed, for instance,
+-- if the variant already contains labels that are lexicographically before the
+-- given label.  Realistically, this function should only be used when writing
+-- calls to 'metamorph'.
 unsafeInjectFront :: forall l a r. KnownSymbol l => Var (R r) -> Var (R (l :-> a ': r))
 unsafeInjectFront = unsafeCoerce
 
