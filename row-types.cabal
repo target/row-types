@@ -1,7 +1,5 @@
 Name:                row-types
 Version:             0.2.0.0
-Synopsis:	           Open records and variants.
-Description:         This package uses closed type families and type literals to implement open records and variants.
 License:             MIT
 License-file:        LICENSE
 Author:              Daniel Winograd-Cort, Matthew Farkas-Dyck
@@ -9,8 +7,25 @@ Maintainer:          daniel.winograd-cort@target.com, matthew.farkas-dyck@target
 Build-Type:          Simple
 Cabal-Version:       >=1.8
 Category:            Data, Data Structures
+Synopsis:	           Open Records and Variants
+Description:
+  This package uses closed type families and type literals to implement open
+  records and variants.
+  The core is based off of the <https://hackage.haskell.org/package/CTRex CTRex>
+  package, but it additionally includes polymorphic variants and a number of
+  additional functions.  That said, it is not a proper superset of CTRex as it
+  specifically forbids records from having more than one element of the same
+  label.
+
+extra-source-files:
+  Examples.lhs
+  README.md
+  CHANGELOG.md
+  LICENSE
+  NOTICE
+
 Library
-  Build-Depends: base >= 2 && < 6,
+  Build-Depends: base >= 2 && < 5,
                  deepseq >= 1.4,
                  hashable >= 1.2,
                  unordered-containers >= 0.2,

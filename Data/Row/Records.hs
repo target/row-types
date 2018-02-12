@@ -338,7 +338,7 @@ zip r1 r2 = unRZipPair $ metamorph2 @r1 @r2 @Unconstrained1 @Rec @Rec @RZipPair 
     doUncons l r1 r2 = ((Identity $ r1 .! l, unsafeRemove l r1), (Identity $ r2 .! l, unsafeRemove l r2))
     doCons l (Identity v1) (Identity v2) (RZipPair r) = RZipPair $ unsafeInjectFront l (v1, v2) r
 
--- | A helper function for unsafely adding an element to the front of a record
+-- | A helper function for unsafely adding an element to the front of a record.
 -- This can cause the resulting record to be malformed, for instance, if the record
 -- already contains labels that are lexicographically before the given label.
 -- Realistically, this function should only be used when writing calls to 'metamorph'.
