@@ -22,7 +22,6 @@ import Data.Row.Variants
 
 
 -- | A 'Var' and a 'Rec' can combine if their rows line up properly.
--- A minimal complete definition is one of @switch@ or @caseon@
 class Switch (v :: Row *) (r :: Row *) x | v x -> r, r x -> v where
   {-# MINIMAL switch | caseon #-}
   -- | Given a Variant and a Record of functions from each possible value

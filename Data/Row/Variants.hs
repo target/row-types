@@ -32,6 +32,7 @@ module Data.Row.Variants
   -- ** Sequence
   , sequence
   -- ** Compose
+  -- $compose
   , compose, uncompose
   -- ** labels
   , labels
@@ -238,6 +239,17 @@ sequence = getCompose . metamorph' @r @Unconstrained1 @(VMap f) @(Compose f Var)
     doCons l (Left fx) = Compose $ unsafeMakeVar l <$> fx
     doCons _ (Right (Compose v)) = Compose $ unsafeInjectFront <$> v
 
+-- $compose
+-- We can easily convert between mapping two functors over the types of a row
+-- and mapping the composition of the two functors.  The following two functions
+-- perform this composition with the gaurantee that:
+--
+-- >>> compose . uncompose = id
+--
+-- >>> uncompose . compose = id
+
+-- | Convert from a variant where two functors have been mapped over the types to
+-- one where the composition of the two functors is mapped over the types.
 compose :: forall (f :: * -> *) g r . Forall r Unconstrained1 => Var (Map f (Map g r)) -> Var (Map (Compose f g) r)
 compose = unVMap . metamorph' @r @Unconstrained1 @(VMap2 f g) @(VMap (Compose f g)) Proxy doNil doUncons doCons . VMap2
   where
@@ -246,6 +258,9 @@ compose = unVMap . metamorph' @r @Unconstrained1 @(VMap2 f g) @(VMap (Compose f 
     doCons l (Left x) = VMap $ unsafeMakeVar l x
     doCons _ (Right (VMap v)) = VMap $ unsafeInjectFront v
 
+-- | Convert from a variant where the composition of two functors have been mapped
+-- over the types to one where the two functors are mapped individually one at a
+-- time over the types.
 uncompose :: forall (f :: * -> *) g r . Forall r Unconstrained1 => Var (Map (Compose f g) r) -> Var (Map f (Map g r))
 uncompose = unVMap2 . metamorph' @r @Unconstrained1 @(VMap (Compose f g)) @(VMap2 f g) Proxy doNil doUncons doCons . VMap
   where

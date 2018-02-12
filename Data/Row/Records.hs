@@ -49,6 +49,7 @@ module Data.Row.Records
   -- ** Sequence
   , sequence
   -- ** Compose
+  -- $compose
   , compose, uncompose
   -- ** Labels
   , labels
@@ -206,7 +207,7 @@ restrict = fst . split
 -- that is split over two commands).
 --
 -- If the resulting record is then merged (with '.+') with another record that
--- contains a value at that label, an "Impossible" error will occur.
+-- contains a value at that label, an "impossible" error will occur.
 unsafeRemove :: KnownSymbol l => Label l -> Rec r -> Rec (r .- l)
 unsafeRemove _ (OR m) = OR m
 
@@ -298,6 +299,17 @@ sequence = getCompose . metamorph @r @Unconstrained1 @(RMap f) @(Compose f Rec) 
     doUncons l (RMap r) = (r .! l, RMap $ unsafeRemove l r)
     doCons l fv (Compose fr) = Compose $ unsafeInjectFront l <$> fv <*> fr
 
+-- $compose
+-- We can easily convert between mapping two functors over the types of a row
+-- and mapping the composition of the two functors.  The following two functions
+-- perform this composition with the gaurantee that:
+--
+-- >>> compose . uncompose = id
+--
+-- >>> uncompose . compose = id
+
+-- | Convert from a record where two functors have been mapped over the types to
+-- one where the composition of the two functors is mapped over the types.
 compose :: forall (f :: * -> *) g r . Forall r Unconstrained1 => Rec (Map f (Map g r)) -> Rec (Map (Compose f g) r)
 compose = unRMap . metamorph @r @Unconstrained1 @(RMap2 f g) @(RMap (Compose f g)) Proxy doNil doUncons doCons . RMap2
   where
@@ -305,6 +317,9 @@ compose = unRMap . metamorph @r @Unconstrained1 @(RMap2 f g) @(RMap (Compose f g
     doUncons l (RMap2 r) = (Compose $ r .! l, RMap2 $ unsafeRemove l r)
     doCons l v (RMap r) = RMap $ unsafeInjectFront l v r
 
+-- | Convert from a record where the composition of two functors have been mapped
+-- over the types to one where the two functors are mapped individually one at a
+-- time over the types.
 uncompose :: forall (f :: * -> *) g r . Forall r Unconstrained1 => Rec (Map (Compose f g) r) -> Rec (Map f (Map g r))
 uncompose = unRMap2 . metamorph @r @Unconstrained1 @(RMap (Compose f g)) @(RMap2 f g) Proxy doNil doUncons doCons . RMap
   where
@@ -325,7 +340,7 @@ zip r1 r2 = unRZipPair $ metamorph2 @r1 @r2 @Unconstrained1 @Rec @Rec @RZipPair 
 
 -- | A helper function for unsafely adding an element to the front of a record
 -- This can cause the resulting record to be malformed, for instance, if the record
--- already contains labels that are "less than" the given label.
+-- already contains labels that are lexicographically less than the given label.
 -- Realistically, this function should only be used when writing calls to 'metamorph'.
 unsafeInjectFront :: KnownSymbol l => Label l -> a -> Rec (R r) -> Rec (R (l :-> a ': r))
 unsafeInjectFront (toKey -> a) b (OR m) = OR $ M.insert a (HideType b) m

@@ -1,7 +1,7 @@
 Name:                row-types
 Version:             0.2.0.0
 Synopsis:	           Open records and variants.
-Description:         Open records and variants.
+Description:         This package uses closed type families and type literals to implement open records and variants.
 License:             MIT
 License-file:        LICENSE
 Author:              Daniel Winograd-Cort, Matthew Farkas-Dyck

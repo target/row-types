@@ -52,9 +52,12 @@ import qualified GHC.TypeLits as TL
   Rows
 --------------------------------------------------------------------}
 -- | The kind of rows. This type is only used as a datakind. A row is a typelevel entity telling us
---   which symbols are associated with which types.  The constructor is exported
---   here (because this is an internal module) but should not be exported elsewhere.
+--   which symbols are associated with which types.
 newtype Row a = R [LT a]
+  -- ^ A row is a list of symbol-to-type pairs that should always be sorted
+  -- lexically by the symbol.
+  -- The constructor is exported here (because this is an internal module) but
+  -- should not be exported elsewhere.
 
 -- | The kind of elements of rows.  Each element is a label and its associated type.
 data LT a = Symbol :-> a
@@ -127,7 +130,7 @@ type family (l :: Row *) .+ (r :: Row *) :: Row * where
   R l .+ R r = R (Merge l r)
 
 infixl 6 .\\ {- This comment needed to appease CPP -}
--- | Type level Row difference.  That is, @l .\\ r@ is the row remaining after
+-- | Type level Row difference.  That is, @l .\\\\ r@ is the row remaining after
 -- removing any matching elements of @r@ from @l@.
 type family (l :: Row *) .\\ (r :: Row *) :: Row * where
   R l .\\ R r = R (Diff l r)
@@ -267,7 +270,7 @@ type family Labels (r :: Row a) where
   Labels (R '[]) = '[]
   Labels (R (l :-> a ': xs)) = l ': Labels (R xs)
 
--- | Return a list of the labels in a record type.
+-- | Return a list of the labels in a row type.
 labels :: forall ρ c s. (IsString s, Forall ρ c) => [s]
 labels = getConst $ metamorph @ρ @c @(Const ()) @(Const [s]) @(Const ()) Proxy (const $ Const []) doUncons doCons (Const ())
   where doUncons _ _ = (Const (), Const ())
