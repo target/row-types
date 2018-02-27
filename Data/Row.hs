@@ -51,7 +51,7 @@ module Data.Row
   )
 where
 
-import Data.Row.Variants
+import Data.Row.Variants hiding (restrict, split)
 import Data.Row.Records
 import Data.Row.Switch
 
