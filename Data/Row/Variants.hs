@@ -126,7 +126,7 @@ diversify = unsafeCoerce -- (OneOf l x) = OneOf l x
 
 -- | If the variant exists at the given label, update it to the given value.
 -- Otherwise, do nothing.
-update :: KnownSymbol l => Label l -> a -> Var r -> Var r
+update :: KnownSymbol l => Label l -> a -> Var r -> Var (Modify l a r)
 update (toKey -> l') a (OneOf l x) = OneOf l $ if l == l' then HideType a else x
 
 -- | If the variant exists at the given label, focus on the value associated with it.
