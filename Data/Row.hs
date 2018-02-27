@@ -34,7 +34,6 @@ module Data.Row
   , type (.==), (.==), pattern (:==), unSingleton
   -- ** Restriction
   , type (.-), (.-)
-  , restrict
   -- ** Query
   , type (.!), (.!)
   -- ** Disjoint union

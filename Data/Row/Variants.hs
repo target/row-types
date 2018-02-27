@@ -22,6 +22,7 @@ module Data.Row.Variants
   , update, focus, Modify, rename, Rename
   -- * Destruction
   , impossible, trial, trial', multiTrial, view
+  , restrict, split
   -- ** Types for destruction
   , type (.!), type (.-), type (.\\), type (.==)
   -- * Row operations
@@ -160,6 +161,15 @@ multiTrial (OneOf l x) = if l `elem` labels @(y .\\ x) @Unconstrained1 then Righ
 -- myShow (view y -> Just s) = "String of "++s @
 view :: KnownSymbol l => Label l -> Var r -> Maybe (r .! l)
 view = flip trial'
+
+-- | Split a variant into two sub-variants.
+split :: forall s r. (WellBehaved s, Subset s r) => Var r -> Either (Var s) (Var (r .\\ s))
+split (OneOf l a) | l `elem` labels @s @Unconstrained1 = Left  $ OneOf l a
+                  | otherwise                          = Right $ OneOf l a
+
+-- | Arbitrary variant restriction.  Turn a variant into a subset of itself.
+restrict :: forall r r'. (WellBehaved r, Subset r r') => Var r' -> Maybe (Var r)
+restrict = either Just (pure Nothing) . split
 
 
 {--------------------------------------------------------------------
