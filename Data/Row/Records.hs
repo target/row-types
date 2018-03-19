@@ -25,7 +25,7 @@ module Data.Row.Records
   , empty
   , type (.==), (.==), pattern (:==), unSingleton
   , default', defaultA
-  , fromLabels, fromLabelsA
+  , fromLabels, fromLabelsA, fromLabelsMapA
   -- ** Extension
   , extend, Extend, Lacks, type (.\)
   -- ** Restriction
@@ -62,6 +62,7 @@ import Prelude hiding (map, sequence, zip)
 
 import Control.DeepSeq (NFData(..), deepseq)
 
+import qualified Data.Constraint as Constraint
 import Data.Functor.Compose
 import Data.Functor.Const
 import Data.Functor.Identity
@@ -376,3 +377,11 @@ fromLabelsA mk = getCompose $ metamorph @ρ @c @(Const ()) @(Compose f Rec) @(Co
                => Label ℓ -> Const () τ -> Compose f Rec ('R ρ) -> Compose f Rec ('R (ℓ :-> τ ': ρ))
         doCons l _ (Compose r) = Compose $ unsafeInjectFront l <$> mk l <*> r
 
+-- | Initialize a record that is produced by a `Map`.
+fromLabelsMapA :: forall c f g ρ. (Applicative f, Forall ρ c, AllUniqueLabels ρ)
+               => (forall l a. (KnownSymbol l, c a) => Label l -> f (g a)) -> f (Rec (Map g ρ))
+fromLabelsMapA f = fromLabelsA @(IsA c g) @f @(Map g ρ) inner
+                Constraint.\\ mapForall @g @c @ρ
+                Constraint.\\ uniqueMap @g @ρ
+   where inner :: forall l a. (KnownSymbol l, IsA c g a) => Label l -> f a
+         inner l = case as @c @g @a of As -> f l
