@@ -30,9 +30,15 @@ module Data.Row.Internal
   , toKey
   , type (≈)
   , WellBehaved, AllUniqueLabels, Zip, Map, Subset, Disjoint
+
+  , mapForall
+  , uniqueMap
+  , IsA(..)
+  , As(..)
   )
 where
 
+import Data.Constraint
 import Data.Functor.Const
 import Data.Proxy
 import Data.String (IsString (fromString))
@@ -40,7 +46,8 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Type.Equality (type (==))
 
-import GHC.Exts -- needed for constraints kinds
+import qualified Unsafe.Coerce as UNSAFE
+
 import GHC.OverloadedLabels
 import GHC.TypeLits
 import qualified GHC.TypeLits as TL
@@ -193,6 +200,39 @@ class Forall (r :: Row *) (c :: * -> Constraint) where
                -- ^ The fold
             -> f r  -- ^ The input structure
             -> g r
+
+-- * Says that there exists a `t` such that `a ~ f t` and `c t`.
+data As c f a where
+  As :: forall c f a t. (a ~ f t, c t) => As c f a
+
+class IsA c f a where
+  as :: As c f a
+
+instance c a => IsA c f (f a) where
+  as = As
+
+newtype MapForall c f (r :: Row *) = MapForall { unMapForall :: Dict (Forall (Map f r) (IsA c f)) }
+
+-- | This allows us to derive a `Forall (Map f r) ..` from a `Forall r ..`.
+mapForall :: forall f r c. Forall r c :- Forall (Map f r) (IsA c f)
+mapForall = Sub $ unMapForall $ metamorph @r @c @(Const ()) @(MapForall c f) @(Const ()) Proxy empty uncons cons $ Const ()
+  where empty :: Const () Empty -> MapForall c f Empty
+        empty _ = MapForall Dict
+
+        uncons :: forall l t r. (KnownSymbol l, c t)
+               => Label l -> Const () ('R (l :-> t ': r)) -> (Const () t, Const () ('R r))
+        uncons _ _ = (Const (), Const ())
+
+        cons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FoldStep ℓ τ ρ)
+             => Label ℓ -> Const () τ -> MapForall c f ('R ρ)
+             -> MapForall c f ('R (ℓ :-> τ ': ρ))
+        cons _ _ (MapForall Dict) =
+           case UNSAFE.unsafeCoerce @(Dict Unconstrained) @(Dict (FoldStep ℓ (f τ) (MapR f ρ))) Dict of
+             Dict -> MapForall Dict
+
+-- | Map preserves uniqueness of labels.
+uniqueMap :: AllUniqueLabels r :- AllUniqueLabels (Map f r)
+uniqueMap = Sub $ UNSAFE.unsafeCoerce @(Dict Unconstrained) Dict
 
 instance Forall (R '[]) c where
   {-# INLINE metamorph #-}
