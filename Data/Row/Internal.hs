@@ -214,8 +214,8 @@ instance c a => IsA c f (f a) where
 newtype MapForall c f (r :: Row *) = MapForall { unMapForall :: Dict (Forall (Map f r) (IsA c f)) }
 
 -- | This allows us to derive a `Forall (Map f r) ..` from a `Forall r ..`.
-mapForall :: forall f r c. Forall r c :- Forall (Map f r) (IsA c f)
-mapForall = Sub $ unMapForall $ metamorph @r @c @(Const ()) @(MapForall c f) @(Const ()) Proxy empty uncons cons $ Const ()
+mapForall :: forall f c ρ. Forall ρ c :- Forall (Map f ρ) (IsA c f)
+mapForall = Sub $ unMapForall $ metamorph @ρ @c @(Const ()) @(MapForall c f) @(Const ()) Proxy empty uncons cons $ Const ()
   where empty :: Const () Empty -> MapForall c f Empty
         empty _ = MapForall Dict
 
@@ -231,7 +231,7 @@ mapForall = Sub $ unMapForall $ metamorph @r @c @(Const ()) @(MapForall c f) @(C
              Dict -> MapForall Dict
 
 -- | Map preserves uniqueness of labels.
-uniqueMap :: AllUniqueLabels r :- AllUniqueLabels (Map f r)
+uniqueMap :: forall f ρ. AllUniqueLabels ρ :- AllUniqueLabels (Map f ρ)
 uniqueMap = Sub $ UNSAFE.unsafeCoerce @(Dict Unconstrained) Dict
 
 instance Forall (R '[]) c where
