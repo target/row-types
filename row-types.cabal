@@ -86,7 +86,9 @@ test-suite test
   ghc-options: -W
   other-modules: Examples
   build-depends: base >= 2 && < 6
+               , deepseq
                , row-types
+               , weigh
   Extensions: AllowAmbiguousTypes,
               DataKinds,
               FlexibleContexts,
