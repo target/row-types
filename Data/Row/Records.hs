@@ -47,12 +47,13 @@ module Data.Row.Records
   -- ** Zip
   , Zip, zip
   -- ** Sequence
-  , sequence
+  , sequence, sequence'
   -- ** Compose
   -- $compose
   , compose, uncompose
+  , compose', uncompose'
   -- ** Labels
-  , labels
+  , labels, labels'
   -- ** UNSAFE operations
   , unsafeRemove, unsafeInjectFront
   )
@@ -293,12 +294,17 @@ transform' :: forall r f g. Forall r Unconstrained1 => (forall a. f a -> g a) ->
 transform' = transform @Unconstrained1 @r
 
 -- | Applicative sequencing over a record
-sequence :: forall f r. (Forall r Unconstrained1, Applicative f) => Rec (Map f r) -> f (Rec r)
-sequence = getCompose . metamorph @r @Unconstrained1 @(RMap f) @(Compose f Rec) @f Proxy doNil doUncons doCons . RMap
+sequence :: forall f r c. (Forall r c, Applicative f)
+         => Rec (Map f r) -> f (Rec r)
+sequence = getCompose . metamorph @r @c @(RMap f) @(Compose f Rec) @f Proxy doNil doUncons doCons . RMap
   where
     doNil _ = Compose (pure empty)
     doUncons l (RMap r) = (r .! l, RMap $ unsafeRemove l r)
     doCons l fv (Compose fr) = Compose $ unsafeInjectFront l <$> fv <*> fr
+
+sequence' :: forall f r. (Forall r Unconstrained1, Applicative f)
+          => Rec (Map f r) -> f (Rec r)
+sequence' = sequence @_ @_ @Unconstrained1
 
 -- $compose
 -- We can easily convert between mapping two functors over the types of a row
@@ -311,22 +317,33 @@ sequence = getCompose . metamorph @r @Unconstrained1 @(RMap f) @(Compose f Rec) 
 
 -- | Convert from a record where two functors have been mapped over the types to
 -- one where the composition of the two functors is mapped over the types.
-compose :: forall (f :: * -> *) g r . Forall r Unconstrained1 => Rec (Map f (Map g r)) -> Rec (Map (Compose f g) r)
-compose = unRMap . metamorph @r @Unconstrained1 @(RMap2 f g) @(RMap (Compose f g)) Proxy doNil doUncons doCons . RMap2
+compose :: forall c (f :: * -> *) g r . Forall r c
+        => Rec (Map f (Map g r)) -> Rec (Map (Compose f g) r)
+compose = unRMap . metamorph @r @c @(RMap2 f g) @(RMap (Compose f g)) @(Compose f g) Proxy doNil doUncons doCons . RMap2
   where
     doNil _ = RMap empty
     doUncons l (RMap2 r) = (Compose $ r .! l, RMap2 $ unsafeRemove l r)
     doCons l v (RMap r) = RMap $ unsafeInjectFront l v r
 
+compose' :: forall (f :: * -> *) g r . Forall r Unconstrained1
+         => Rec (Map f (Map g r)) -> Rec (Map (Compose f g) r)
+compose' = compose @Unconstrained1 @f @g @r
+
 -- | Convert from a record where the composition of two functors have been mapped
 -- over the types to one where the two functors are mapped individually one at a
 -- time over the types.
-uncompose :: forall (f :: * -> *) g r . Forall r Unconstrained1 => Rec (Map (Compose f g) r) -> Rec (Map f (Map g r))
-uncompose = unRMap2 . metamorph @r @Unconstrained1 @(RMap (Compose f g)) @(RMap2 f g) Proxy doNil doUncons doCons . RMap
+uncompose :: forall c (f :: * -> *) g r . Forall r c
+          => Rec (Map (Compose f g) r) -> Rec (Map f (Map g r))
+uncompose = unRMap2 . metamorph @r @c @(RMap (Compose f g)) @(RMap2 f g) @(Compose f g) Proxy doNil doUncons doCons . RMap
   where
     doNil _ = RMap2 empty
     doUncons l (RMap r) = (r .! l, RMap $ unsafeRemove l r)
     doCons l (Compose v) (RMap2 r) = RMap2 $ unsafeInjectFront l v r
+
+uncompose' :: forall (f :: * -> *) g r . Forall r Unconstrained1
+          => Rec (Map (Compose f g) r) -> Rec (Map f (Map g r))
+uncompose' = uncompose @Unconstrained1 @f @g @r
+
 
 -- | RZipPair is used internally as a type level lambda for zipping records.
 newtype RZipPair (ρ1 :: Row *) (ρ2 :: Row *) = RZipPair { unRZipPair :: Rec (Zip ρ1 ρ2) }
