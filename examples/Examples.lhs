@@ -94,7 +94,7 @@ Once again, the type is inferred for us, and the record is exactly as expected.
 In fact, we can do this generally.  The following function takes a name and a
 record and adds the "name" field to that record with the given name.
 
-> named :: r .\ "name" => a -> Rec r -> Rec ("name" .== a .+ r)
+> named :: a -> Rec r -> Rec ("name" .== a .+ r)
 > named s r = #name .== s .+ r
 
 Note that we require that the record we are naming must not have a "name" field
@@ -385,6 +385,6 @@ ugly (the type equalities are necessary but annoying).
 >   Left  e' -> f1 e'
 >   Right e' -> f2 e'
 
-> joinVarLists :: forall x y. (WellBehaved (x .+ y), x .+ y ≈ y .+ x)
->              => [Var x] -> [Var y] -> [Var (x .+ y)]
+> joinVarLists :: forall x y. (WellBehaved (x .\/ y), x .\/ y ≈ y .\/ x)
+>              => [Var x] -> [Var y] -> [Var (x .\/ y)]
 > joinVarLists xs ys = map (diversify @y) xs ++ map (diversify @x) ys

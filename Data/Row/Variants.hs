@@ -17,7 +17,7 @@ module Data.Row.Variants
   , HasType, pattern IsJust, singleton
   , fromLabels
   -- ** Extension
-  , type (.\), Lacks, diversify, type (.+)
+  , type (.\), Lacks, type (.\/), diversify, type (.+)
   -- ** Modification
   , update, focus, Modify, rename, Rename
   -- * Destruction
@@ -122,7 +122,7 @@ unSingleton :: forall l r. KnownSymbol l => Var r -> (Label l, Maybe (r .! l))
 unSingleton v = (l, view l v) where l = Label @l
 
 -- | Make the variant arbitrarily more diverse.
-diversify :: forall r' r. AllUniqueLabels (r .+ r') => Var r -> Var (r .+ r')
+diversify :: forall r' r. Var r -> Var (r .\/ r')
 diversify = unsafeCoerce -- (OneOf l x) = OneOf l x
 
 -- | If the variant exists at the given label, update it to the given value.
