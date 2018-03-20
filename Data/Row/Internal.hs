@@ -204,16 +204,21 @@ class Forall (r :: Row *) (c :: * -> Constraint) where
             -> f r  -- ^ The input structure
             -> g r
 
--- * Says that there exists a `t` such that `a ~ f t` and `c t`.
+-- | This data type is used to for its ability to existentially bind a type
+-- variable.  Particularly, it says that for the type 'a', there exists a 't'
+-- such that 'a ~ f t' and 'c t' holds.
 data As c f a where
   As :: forall c f a t. (a ~ f t, c t) => As c f a
 
+-- | A class to capture the idea of 'As' so that it can be partially applied in
+-- a context.
 class IsA c f a where
   as :: As c f a
 
 instance c a => IsA c f (f a) where
   as = As
 
+-- | An internal type used by the 'metamorph' in 'mapForall'.
 newtype MapForall c f (r :: Row *) = MapForall { unMapForall :: Dict (Forall (Map f r) (IsA c f)) }
 
 -- | This allows us to derive a `Forall (Map f r) ..` from a `Forall r ..`.
@@ -323,6 +328,7 @@ labels = getConst $ metamorph @ρ @c @(Const ()) @(Const [s]) @(Const ()) Proxy 
   where doUncons _ _ = (Const (), Const ())
         doCons l _ (Const c) = Const $ show' l : c
 
+-- | Return a list of the labels in a row type and is specialized to the 'Unconstrained1' constraint.
 labels' :: forall ρ s. (IsString s, Forall ρ Unconstrained1) => [s]
 labels' = labels @ρ @Unconstrained1
 

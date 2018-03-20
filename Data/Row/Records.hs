@@ -292,7 +292,7 @@ transform f = unRMap . metamorph @r @c @(RMap f) @(RMap g) @f Proxy doNil doUnco
 transform' :: forall r f g. Forall r Unconstrained1 => (forall a. f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
 transform' = transform @Unconstrained1 @r
 
--- | Applicative sequencing over a record
+-- | A version of 'sequence' in which the constraint for 'Forall' can be chosen.
 sequence' :: forall f r c. (Forall r c, Applicative f)
           => Rec (Map f r) -> f (Rec r)
 sequence' = getCompose . metamorph @r @c @(RMap f) @(Compose f Rec) @f Proxy doNil doUncons doCons . RMap
@@ -301,6 +301,7 @@ sequence' = getCompose . metamorph @r @c @(RMap f) @(Compose f Rec) @f Proxy doN
     doUncons l (RMap r) = (r .! l, RMap $ unsafeRemove l r)
     doCons l fv (Compose fr) = Compose $ unsafeInjectFront l <$> fv <*> fr
 
+-- | Applicative sequencing over a record.
 sequence :: forall f r. (Forall r Unconstrained1, Applicative f)
          => Rec (Map f r) -> f (Rec r)
 sequence = sequence' @_ @_ @Unconstrained1
@@ -314,8 +315,7 @@ sequence = sequence' @_ @_ @Unconstrained1
 --
 -- >>> uncompose . compose = id
 
--- | Convert from a record where two functors have been mapped over the types to
--- one where the composition of the two functors is mapped over the types.
+-- | A version of 'compose' in which the constraint for 'Forall' can be chosen.
 compose' :: forall c (f :: * -> *) g r . Forall r c
         => Rec (Map f (Map g r)) -> Rec (Map (Compose f g) r)
 compose' = unRMap . metamorph @r @c @(RMap2 f g) @(RMap (Compose f g)) @(Compose f g) Proxy doNil doUncons doCons . RMap2
@@ -324,13 +324,13 @@ compose' = unRMap . metamorph @r @c @(RMap2 f g) @(RMap (Compose f g)) @(Compose
     doUncons l (RMap2 r) = (Compose $ r .! l, RMap2 $ unsafeRemove l r)
     doCons l v (RMap r) = RMap $ unsafeInjectFront l v r
 
+-- | Convert from a record where two functors have been mapped over the types to
+-- one where the composition of the two functors is mapped over the types.
 compose :: forall (f :: * -> *) g r . Forall r Unconstrained1
         => Rec (Map f (Map g r)) -> Rec (Map (Compose f g) r)
 compose = compose' @Unconstrained1 @f @g @r
 
--- | Convert from a record where the composition of two functors have been mapped
--- over the types to one where the two functors are mapped individually one at a
--- time over the types.
+-- | A version of 'uncompose' in which the constraint for 'Forall' can be chosen.
 uncompose' :: forall c (f :: * -> *) g r . Forall r c
            => Rec (Map (Compose f g) r) -> Rec (Map f (Map g r))
 uncompose' = unRMap2 . metamorph @r @c @(RMap (Compose f g)) @(RMap2 f g) @(Compose f g) Proxy doNil doUncons doCons . RMap
@@ -339,6 +339,9 @@ uncompose' = unRMap2 . metamorph @r @c @(RMap (Compose f g)) @(RMap2 f g) @(Comp
     doUncons l (RMap r) = (r .! l, RMap $ unsafeRemove l r)
     doCons l (Compose v) (RMap2 r) = RMap2 $ unsafeInjectFront l v r
 
+-- | Convert from a record where the composition of two functors have been mapped
+-- over the types to one where the two functors are mapped individually one at a
+-- time over the types.
 uncompose :: forall (f :: * -> *) g r . Forall r Unconstrained1
           => Rec (Map (Compose f g) r) -> Rec (Map f (Map g r))
 uncompose = uncompose' @Unconstrained1 @f @g @r
