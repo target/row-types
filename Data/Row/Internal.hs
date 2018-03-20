@@ -22,7 +22,7 @@ module Data.Row.Internal
   , type (.\), type (.!), type (.-), type (.+), type (.\\), type (.==)
   , Lacks, HasType
   -- * Row Classes
-  , Labels, labels
+  , Labels, labels, labels'
   , Forall(..), Forall2(..)
   , Unconstrained1
   -- * Helper functions
@@ -35,6 +35,8 @@ module Data.Row.Internal
   , uniqueMap
   , IsA(..)
   , As(..)
+
+  , FoldStep
   )
 where
 
@@ -315,6 +317,9 @@ labels :: forall ρ c s. (IsString s, Forall ρ c) => [s]
 labels = getConst $ metamorph @ρ @c @(Const ()) @(Const [s]) @(Const ()) Proxy (const $ Const []) doUncons doCons (Const ())
   where doUncons _ _ = (Const (), Const ())
         doCons l _ (Const c) = Const $ show' l : c
+
+labels' :: forall ρ s. (IsString s, Forall ρ Unconstrained1) => [s]
+labels' = labels @ρ @Unconstrained1
 
 
 {--------------------------------------------------------------------
