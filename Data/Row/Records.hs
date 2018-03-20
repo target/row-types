@@ -63,7 +63,7 @@ import Prelude hiding (map, sequence, zip)
 
 import Control.DeepSeq (NFData(..), deepseq)
 
-import qualified Data.Constraint as Constraint
+import Data.Constraint ((\\))
 import Data.Functor.Compose
 import Data.Functor.Const
 import Data.Functor.Identity
@@ -71,7 +71,6 @@ import Data.Functor.Product
 import Data.Hashable
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as M
-import Data.List hiding (map, zip)
 import qualified Data.List as L
 import Data.Proxy
 import Data.String (IsString)
@@ -92,7 +91,7 @@ newtype Rec (r :: Row *) where
   OR :: HashMap Text HideType -> Rec r
 
 instance Forall r Show => Show (Rec r) where
-  show r = "{ " ++ intercalate ", " binds ++ " }"
+  show r = "{ " ++ L.intercalate ", " binds ++ " }"
     where binds = (\ (x, y) -> x ++ "=" ++ y) <$> eraseWithLabels @Show show r
 
 instance Forall r Eq => Eq (Rec r) where
@@ -398,7 +397,7 @@ fromLabelsA mk = getCompose $ metamorph @ρ @c @(Const ()) @(Compose f Rec) @(Co
 fromLabelsMapA :: forall c f g ρ. (Applicative f, Forall ρ c, AllUniqueLabels ρ)
                => (forall l a. (KnownSymbol l, c a) => Label l -> f (g a)) -> f (Rec (Map g ρ))
 fromLabelsMapA f = fromLabelsA @(IsA c g) @f @(Map g ρ) inner
-                Constraint.\\ mapForall @g @c @ρ
-                Constraint.\\ uniqueMap @g @ρ
+                \\ mapForall @g @c @ρ
+                \\ uniqueMap @g @ρ
    where inner :: forall l a. (KnownSymbol l, IsA c g a) => Label l -> f a
          inner l = case as @c @g @a of As -> f l

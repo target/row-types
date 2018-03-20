@@ -32,6 +32,7 @@ module Data.Row.Internal
   , WellBehaved, AllUniqueLabels, Zip, Map, Subset, Disjoint
 
   , mapForall
+  , freeForall
   , uniqueMap
   , IsA(..)
   , As(..)
@@ -235,6 +236,10 @@ mapForall = Sub $ unMapForall $ metamorph @ρ @c @(Const ()) @(MapForall c f) @(
 -- | Map preserves uniqueness of labels.
 uniqueMap :: forall f ρ. AllUniqueLabels ρ :- AllUniqueLabels (Map f ρ)
 uniqueMap = Sub $ UNSAFE.unsafeCoerce @(Dict Unconstrained) Dict
+
+-- | Allow any 'Forall` over a row-type, be usable for 'Unconstrained1'.
+freeForall :: forall r c. Forall r c :- Forall r Unconstrained1
+freeForall = Sub $ UNSAFE.unsafeCoerce @(Dict (Forall r c)) Dict
 
 instance Forall (R '[]) c where
   {-# INLINE metamorph #-}
