@@ -3,7 +3,7 @@ Row-Types
 
 Row-types is a library of open records and variants for Haskell using closed
 type families and type literals (among other things...).
-See [Examples.lhs](https://raw.githubusercontent.com/target/row-types/master/Examples.lhs)
+See [examples/Examples.lhs](https://raw.githubusercontent.com/target/row-types/master/examples/Examples.lhs)
 for an overview of how this library can be used.
 
 This work is a branch from CTRex [1,2] with other inspiration from data-diverse [3].
