@@ -146,7 +146,7 @@ extend :: forall a l r. KnownSymbol l => Label l -> a -> Rec r -> Rec (Extend l 
 extend (toKey -> l) a (OR m) = OR $ M.insert l (HideType a) m
 
 -- | Update the value associated with the label.
-update :: KnownSymbol l => Label l -> a -> Rec r -> Rec r
+update :: (KnownSymbol l, r .! l ≈ a) => Label l -> a -> Rec r -> Rec r
 update (toKey -> l) a (OR m) = OR $ M.adjust f l m where f = const (HideType a)
 
 -- | Focus on the value associated with the label.

@@ -176,7 +176,7 @@ the rest of the fields from it.
 > get2D :: (r ≈ "x" .== Double .+ "y" .== Double, Disjoint r rest)
 >       => Rec (r .+ rest)
 >       -> Rec r
-> get2D r = restrict r
+> get2D r = Rec.restrict r
 
 GHC is a little finicky about the type operators and constraints -- indeed, this
 type signature will fail to type check if the parentheses around
@@ -184,7 +184,7 @@ type signature will fail to type check if the parentheses around
 in the argument are missing.  Of course, a type signature is not necessary when
 using type applications, and the function can instead be written as:
 
-> get2D' r = restrict @("x" .== Double .+ "y" .== Double) r
+> get2D' r = Rec.restrict @("x" .== Double .+ "y" .== Double) r
 
 with no trouble.  Yet another altnerative is to match directly on the values desired
 using the :== and :+ record patterns:
