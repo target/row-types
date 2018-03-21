@@ -20,6 +20,7 @@ module Data.Row.Internal
   -- * Row Operations
   , Extend, Modify, Rename
   , type (.\), type (.!), type (.-), type (.+), type (.\\), type (.==)
+  , type (.\/)
   , Lacks, HasType
   -- * Row Classes
   , Labels, labels, labels'
@@ -32,6 +33,7 @@ module Data.Row.Internal
   , WellBehaved, AllUniqueLabels, Zip, Map, Subset, Disjoint
 
   , mapForall
+  , freeForall
   , uniqueMap
   , IsA(..)
   , As(..)
@@ -144,6 +146,11 @@ infixl 6 .\\ {- This comment needed to appease CPP -}
 type family (l :: Row *) .\\ (r :: Row *) :: Row * where
   R l .\\ R r = R (Diff l r)
 
+-- | The minimum join of the two rows.
+type family (l :: Row *) .\/ (r :: Row *) where
+  R l .\/ R r = R (MinJoinR l r)
+
+
 {--------------------------------------------------------------------
   Syntactic sugar for record operations
 --------------------------------------------------------------------}
@@ -170,9 +177,7 @@ type (l :: Symbol) .== (a :: *) = Extend l a Empty
 -- | Proof that the given label is a valid candidate for the next step
 -- in a metamorph fold, i.e. it's not in the list yet and, when sorted,
 -- will be placed at the head.
-type FoldStep ℓ τ ρ = ( Inject (ℓ :-> τ) ρ ≈ ℓ :-> τ ': ρ
-                      , R ρ .\ ℓ
-                      )
+type FoldStep ℓ τ ρ = Inject (ℓ :-> τ) ρ ≈ ℓ :-> τ ': ρ
 
 -- | Any structure over a row in which every element is similarly constrained can
 --   be metamorphized into another structure over the same row.
@@ -203,16 +208,21 @@ class Forall (r :: Row *) (c :: * -> Constraint) where
             -> f r  -- ^ The input structure
             -> g r
 
--- * Says that there exists a `t` such that `a ~ f t` and `c t`.
+-- | This data type is used to for its ability to existentially bind a type
+-- variable.  Particularly, it says that for the type 'a', there exists a 't'
+-- such that 'a ~ f t' and 'c t' holds.
 data As c f a where
   As :: forall c f a t. (a ~ f t, c t) => As c f a
 
+-- | A class to capture the idea of 'As' so that it can be partially applied in
+-- a context.
 class IsA c f a where
   as :: As c f a
 
 instance c a => IsA c f (f a) where
   as = As
 
+-- | An internal type used by the 'metamorph' in 'mapForall'.
 newtype MapForall c f (r :: Row *) = MapForall { unMapForall :: Dict (Forall (Map f r) (IsA c f)) }
 
 -- | This allows us to derive a `Forall (Map f r) ..` from a `Forall r ..`.
@@ -235,6 +245,10 @@ mapForall = Sub $ unMapForall $ metamorph @ρ @c @(Const ()) @(MapForall c f) @(
 -- | Map preserves uniqueness of labels.
 uniqueMap :: forall f ρ. AllUniqueLabels ρ :- AllUniqueLabels (Map f ρ)
 uniqueMap = Sub $ UNSAFE.unsafeCoerce @(Dict Unconstrained) Dict
+
+-- | Allow any 'Forall` over a row-type, be usable for 'Unconstrained1'.
+freeForall :: forall r c. Forall r c :- Forall r Unconstrained1
+freeForall = Sub $ UNSAFE.unsafeCoerce @(Dict (Forall r c)) Dict
 
 instance Forall (R '[]) c where
   {-# INLINE metamorph #-}
@@ -318,6 +332,7 @@ labels = getConst $ metamorph @ρ @c @(Const ()) @(Const [s]) @(Const ()) Proxy 
   where doUncons _ _ = (Const (), Const ())
         doCons l _ (Const c) = Const $ show' l : c
 
+-- | Return a list of the labels in a row type and is specialized to the 'Unconstrained1' constraint.
 labels' :: forall ρ s. (IsString s, Forall ρ Unconstrained1) => [s]
 labels' = labels @ρ @Unconstrained1
 
@@ -430,16 +445,14 @@ type family RemoveT (l :: Symbol) (r :: [LT *]) (r_orig :: [LT *]) where
                           :<>: ShowType r)
 
 type family LacksR (l :: Symbol) (r :: [LT *]) (r_orig :: [LT *]) :: Constraint where
-  LacksR l '[] r = Unconstrained
+  LacksR l '[] _ = Unconstrained
   LacksR l (l :-> t ': x) r = TypeError (TL.Text "The label " :<>: ShowType l
                                     :<>: TL.Text " already exists in " :<>: ShowType r)
-  LacksR l (p ': x) r = LacksR l x r
+  LacksR l (l' :-> _ ': x) r = Ifte (l <=.? l') Unconstrained (LacksR l x r)
 
 type family Merge (l :: [LT *]) (r :: [LT *]) where
   Merge '[] r = r
   Merge l '[] = l
-  Merge (h :-> a ': tl)   (h :-> a ': tr) =
-      (h :-> a ': Merge tl tr)
   Merge (h :-> a ': tl)   (h :-> b ': tr) =
     TypeError (TL.Text "The label " :<>: ShowType h :<>: TL.Text " has conflicting assignments."
           :$$: TL.Text "Its type is both " :<>: ShowType a :<>: TL.Text " and " :<>: ShowType b :<>: TL.Text ".")
@@ -447,6 +460,20 @@ type family Merge (l :: [LT *]) (r :: [LT *]) where
       Ifte (hl <=.? hr)
       (hl :-> al ': Merge tl (hr :-> ar ': tr))
       (hr :-> ar ': Merge (hl :-> al ': tl) tr)
+
+type family MinJoinR (l :: [LT *]) (r :: [LT *]) where
+  MinJoinR '[] r = r
+  MinJoinR l '[] = l
+  MinJoinR (h :-> a ': tl)   (h :-> a ': tr) =
+      (h :-> a ': MinJoinR tl tr)
+  MinJoinR (h :-> a ': tl)   (h :-> b ': tr) =
+    TypeError (TL.Text "The label " :<>: ShowType h :<>: TL.Text " has conflicting assignments."
+          :$$: TL.Text "Its type is both " :<>: ShowType a :<>: TL.Text " and " :<>: ShowType b :<>: TL.Text ".")
+  MinJoinR (hl :-> al ': tl) (hr :-> ar ': tr) =
+      Ifte (CmpSymbol hl hr == 'LT)
+      (hl :-> al ': MinJoinR tl (hr :-> ar ': tr))
+      (hr :-> ar ': MinJoinR (hl :-> al ': tl) tr)
+
 
 -- | Returns the left list with all of the elements from the right list removed.
 type family Diff (l :: [LT *]) (r :: [LT *]) where
