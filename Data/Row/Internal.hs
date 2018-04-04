@@ -146,6 +146,7 @@ infixl 6 .\\ {- This comment needed to appease CPP -}
 type family (l :: Row *) .\\ (r :: Row *) :: Row * where
   R l .\\ R r = R (Diff l r)
 
+infixl 6 .\/
 -- | The minimum join of the two rows.
 type family (l :: Row *) .\/ (r :: Row *) where
   R l .\/ R r = R (MinJoinR l r)
