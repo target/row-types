@@ -110,45 +110,45 @@ data HideType where
 
 infixl 4 .\ {- This comment needed to appease CPP -}
 -- | Does the row lack (i.e. it does not have) the specified label?
-type family (r :: Row *) .\ (l :: Symbol) :: Constraint where
+type family (r :: Row k) .\ (l :: Symbol) :: Constraint where
   R r .\ l = LacksR l r r
 
 -- | Type level Row extension
-type family Extend (l :: Symbol) (a :: *) (r :: Row *) :: Row * where
+type family Extend (l :: Symbol) (a :: k) (r :: Row k) :: Row k where
   Extend l a (R x) = R (Inject (l :-> a) x)
 
 -- | Type level Row modification
-type family Modify (l :: Symbol) (a :: *) (r :: Row *) :: Row * where
+type family Modify (l :: Symbol) (a :: k) (r :: Row k) :: Row k where
   Modify l a (R ρ) = R (ModifyR l a ρ)
 
 -- | Type level row renaming
-type family Rename (l :: Symbol) (l' :: Symbol) (r :: Row *) :: Row * where
+type family Rename (l :: Symbol) (l' :: Symbol) (r :: Row k) :: Row k where
   Rename l l' r = Extend  l' (r .! l) (r .- l)
 
 infixl 5 .!
 -- | Type level label fetching
-type family (r :: Row *) .! (t :: Symbol) :: * where
+type family (r :: Row k) .! (t :: Symbol) :: k where
   R r .! l = Get l r
 
 infixl 6 .-
 -- | Type level Row element removal
-type family (r :: Row *) .- (s :: Symbol) :: Row * where
+type family (r :: Row k) .- (s :: Symbol) :: Row k where
   R r .- l = R (Remove l r)
 
 infixl 6 .+
 -- | Type level Row append
-type family (l :: Row *) .+ (r :: Row *) :: Row * where
+type family (l :: Row k) .+ (r :: Row k) :: Row k where
   R l .+ R r = R (Merge l r)
 
 infixl 6 .\\ {- This comment needed to appease CPP -}
 -- | Type level Row difference.  That is, @l .\\\\ r@ is the row remaining after
 -- removing any matching elements of @r@ from @l@.
-type family (l :: Row *) .\\ (r :: Row *) :: Row * where
+type family (l :: Row k) .\\ (r :: Row k) :: Row k where
   R l .\\ R r = R (Diff l r)
 
 infixl 6 .\/
 -- | The minimum join of the two rows.
-type family (l :: Row *) .\/ (r :: Row *) where
+type family (l :: Row k) .\/ (r :: Row k) where
   R l .\/ R r = R (MinJoinR l r)
 
 
@@ -168,7 +168,7 @@ instance (r .! l ≈ a) => HasType l a r
 
 -- | A type level way to create a singleton Row.
 infix 7 .==
-type (l :: Symbol) .== (a :: *) = Extend l a Empty
+type (l :: Symbol) .== (a :: k) = Extend l a Empty
 
 
 {--------------------------------------------------------------------
@@ -182,10 +182,10 @@ type FoldStep ℓ τ ρ = Inject (ℓ :-> τ) ρ ≈ ℓ :-> τ ': ρ
 
 -- | Any structure over a row in which every element is similarly constrained can
 --   be metamorphized into another structure over the same row.
-class Forall (r :: Row *) (c :: * -> Constraint) where
+class Forall (r :: Row k) (c :: k -> Constraint) where
   -- | A metamorphism is an unfold followed by a fold.  This one is for
   -- product-like row-types (e.g. Rec).
-  metamorph :: forall (f :: Row * -> *) (g :: Row * -> *) (h :: * -> *).
+  metamorph :: forall (f :: Row k -> *) (g :: Row k -> *) (h :: k -> *).
                Proxy h
             -> (f Empty -> g Empty)
                -- ^ The way to transform the empty element
@@ -198,7 +198,7 @@ class Forall (r :: Row *) (c :: * -> Constraint) where
 
   -- | A metamorphism is an unfold followed by a fold.  This one is for
   -- sum-like row-types (e.g. Var).
-  metamorph' :: forall (f :: Row * -> *) (g :: Row * -> *) (h :: * -> *).
+  metamorph' :: forall (f :: Row k -> *) (g :: Row k -> *) (h :: k -> *).
                Proxy h
             -> (f Empty -> g Empty)
                -- ^ The way to transform the empty element
@@ -224,11 +224,11 @@ instance c a => IsA c f (f a) where
   as = As
 
 -- | An internal type used by the 'metamorph' in 'mapForall'.
-newtype MapForall c f (r :: Row *) = MapForall { unMapForall :: Dict (Forall (Map f r) (IsA c f)) }
+newtype MapForall c f (r :: Row k) = MapForall { unMapForall :: Dict (Forall (Map f r) (IsA c f)) }
 
 -- | This allows us to derive a `Forall (Map f r) ..` from a `Forall r ..`.
 mapForall :: forall f c ρ. Forall ρ c :- Forall (Map f ρ) (IsA c f)
-mapForall = Sub $ unMapForall $ metamorph @ρ @c @(Const ()) @(MapForall c f) @(Const ()) Proxy empty uncons cons $ Const ()
+mapForall = Sub $ unMapForall $ metamorph @_ @ρ @c @(Const ()) @(MapForall c f) @(Const ()) Proxy empty uncons cons $ Const ()
   where empty :: Const () Empty -> MapForall c f Empty
         empty _ = MapForall Dict
 
@@ -257,8 +257,8 @@ instance Forall (R '[]) c where
   {-# INLINE metamorph' #-}
   metamorph' _ empty _ _ = empty
 
-instance (KnownSymbol ℓ, c τ, FoldStep ℓ τ ρ, Forall ('R ρ) c) => Forall ('R (ℓ :-> τ ': ρ)) c where
-  metamorph :: forall (f :: Row * -> *) (g :: Row * -> *) (h :: * -> *).
+instance (KnownSymbol ℓ, c τ, FoldStep ℓ τ ρ, Forall ('R ρ) c) => Forall ('R (ℓ :-> τ ': ρ) :: Row k) c where
+  metamorph :: forall (f :: Row k -> *) (g :: Row k -> *) (h :: k -> *).
                Proxy h
             -> (f Empty -> g Empty)
                -- ^ The way to transform the empty element
@@ -269,9 +269,9 @@ instance (KnownSymbol ℓ, c τ, FoldStep ℓ τ ρ, Forall ('R ρ) c) => Forall
             -> f ('R (ℓ :-> τ ': ρ))  -- ^ The input structure
             -> g ('R (ℓ :-> τ ': ρ))
   {-# INLINE metamorph #-}
-  metamorph _ empty uncons cons r = cons Label t $ metamorph @('R ρ) @c @_ @_ @h Proxy empty uncons cons r'
+  metamorph _ empty uncons cons r = cons Label t $ metamorph @_ @('R ρ) @c @_ @_ @h Proxy empty uncons cons r'
     where (t, r') = uncons Label r
-  metamorph' :: forall (f :: Row * -> *) (g :: Row * -> *) (h :: * -> *).
+  metamorph' :: forall (f :: Row k -> *) (g :: Row k -> *) (h :: k -> *).
                Proxy h
             -> (f Empty -> g Empty)
                -- ^ The way to transform the empty element
@@ -282,17 +282,17 @@ instance (KnownSymbol ℓ, c τ, FoldStep ℓ τ ρ, Forall ('R ρ) c) => Forall
             -> f ('R (ℓ :-> τ ': ρ))  -- ^ The input structure
             -> g ('R (ℓ :-> τ ': ρ))
   {-# INLINE metamorph' #-}
-  metamorph' _ empty uncons cons r = cons Label $ metamorph' @('R ρ) @c @_ @_ @h Proxy empty uncons cons <$> uncons Label r
+  metamorph' _ empty uncons cons r = cons Label $ metamorph' @_ @('R ρ) @c @_ @_ @h Proxy empty uncons cons <$> uncons Label r
 
 -- | Any structure over two rows in which every element of both rows satisfies the
 --   given constraint can be metamorphized into another structure over both of the
 --   rows.
 -- TODO: Perhaps it should be over two constraints?  But this hasn't seemed necessary
 --  in practice.
-class Forall2 (r1 :: Row *) (r2 :: Row *) (c :: * -> Constraint) where
+class Forall2 (r1 :: Row k) (r2 :: Row k) (c :: k -> Constraint) where
   -- | A metamorphism is a fold followed by an unfold.  Here, we fold both of the inputs.
-  metamorph2 :: forall (f :: Row * -> *) (g :: Row * -> *) (h :: Row * -> Row * -> *)
-                       (f' :: * -> *) (g' :: * -> *).
+  metamorph2 :: forall (f :: Row k -> *) (g :: Row k -> *) (h :: Row k -> Row k -> *)
+                       (f' :: k -> *) (g' :: k -> *).
                 Proxy f' -> Proxy g'
              -> (f Empty -> g Empty -> h Empty Empty)
              -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1, c τ2)
@@ -311,7 +311,7 @@ instance Forall2 (R '[]) (R '[]) c where
 instance (KnownSymbol ℓ, c τ1, c τ2, Forall2 ('R ρ1) ('R ρ2) c)
       => Forall2 ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)) c where
   {-# INLINE metamorph2 #-}
-  metamorph2 f g empty uncons cons r1 r2 = cons (Label @ℓ) t1 t2 $ metamorph2 @('R ρ1) @('R ρ2) @c f g empty uncons cons r1' r2'
+  metamorph2 f g empty uncons cons r1 r2 = cons (Label @ℓ) t1 t2 $ metamorph2 @_ @('R ρ1) @('R ρ2) @c f g empty uncons cons r1' r2'
     where ((t1, r1'), (t2, r2')) = uncons (Label @ℓ) r1 r2
 
 -- | A null constraint
@@ -329,7 +329,7 @@ type family Labels (r :: Row a) where
 
 -- | Return a list of the labels in a row type.
 labels :: forall ρ c s. (IsString s, Forall ρ c) => [s]
-labels = getConst $ metamorph @ρ @c @(Const ()) @(Const [s]) @(Const ()) Proxy (const $ Const []) doUncons doCons (Const ())
+labels = getConst $ metamorph @_ @ρ @c @(Const ()) @(Const [s]) @(Const ()) Proxy (const $ Const []) doUncons doCons (Const ())
   where doUncons _ _ = (Const (), Const ())
         doCons l _ (Const c) = Const $ show' l : c
 
@@ -346,10 +346,10 @@ labels' = labels @ρ @Unconstrained1
 type WellBehaved ρ = (Forall ρ Unconstrained1, AllUniqueLabels ρ)
 
 -- | Are all of the labels in this Row unique?
-type family AllUniqueLabels (r :: Row *) :: Constraint where
+type family AllUniqueLabels (r :: Row k) :: Constraint where
   AllUniqueLabels (R r) = AllUniqueLabelsR r
 
-type family AllUniqueLabelsR (r :: [LT *]) :: Constraint where
+type family AllUniqueLabelsR (r :: [LT k]) :: Constraint where
   AllUniqueLabelsR '[] = Unconstrained
   AllUniqueLabelsR '[l :-> a] = Unconstrained
   AllUniqueLabelsR (l :-> a ': l :-> b ': _) = TypeError
@@ -358,10 +358,10 @@ type family AllUniqueLabelsR (r :: [LT *]) :: Constraint where
   AllUniqueLabelsR (l :-> a ': l' :-> b ': r) = AllUniqueLabelsR (l' :-> b ': r)
 
 -- | Is the first row a subset of the second?
-type family Subset (r1 :: Row *) (r2 :: Row *) :: Constraint where
+type family Subset (r1 :: Row k) (r2 :: Row k) :: Constraint where
   Subset (R r1) (R r2) = SubsetR r1 r2
 
-type family SubsetR (r1 :: [LT *]) (r2 :: [LT *]) :: Constraint where
+type family SubsetR (r1 :: [LT k]) (r2 :: [LT k]) :: Constraint where
   SubsetR '[] _ = Unconstrained
   SubsetR x '[] = TypeError (TL.Text "One row-type is not a subset of the other."
         :$$: TL.Text "The first contains the bindings " :<>: ShowType x
@@ -408,7 +408,7 @@ type family ZipR (r1 :: [LT *]) (r2 :: [LT *]) where
   ZipR '[] (l :-> t ': r) = TypeError (TL.Text "Row types with different label sets cannot be zipped"
                                   :$$: TL.Text "For one, the label " :<>: ShowType l :<>: TL.Text " is not in both lists.")
 
-type family Inject (l :: LT *) (r :: [LT *]) where
+type family Inject (l :: LT k) (r :: [LT k]) where
   Inject (l :-> t) '[] = (l :-> t ': '[])
   Inject (l :-> t) (l :-> t' ': x) = TypeError (TL.Text "Cannot inject a label into a row type that already has that label"
                                   :$$: TL.Text "The label " :<>: ShowType l :<>: TL.Text " was already assigned the type "
@@ -420,7 +420,7 @@ type family Inject (l :: LT *) (r :: [LT *]) where
       (l' :-> t' ': Inject (l :-> t)  x)
 
 -- | Type level Row modification helper
-type family ModifyR (l :: Symbol) (a :: *) (ρ :: [LT *]) :: [LT *] where
+type family ModifyR (l :: Symbol) (a :: k) (ρ :: [LT k]) :: [LT k] where
   ModifyR l a (l :-> a' ': ρ) = l :-> a ': ρ
   ModifyR l a (l' :-> a' ': ρ) = l' :-> a' ': ModifyR l a ρ
   ModifyR l a '[] = TypeError (TL.Text "Tried to modify the label " :<>: ShowType l
@@ -430,28 +430,28 @@ type family Ifte (c :: Bool) (t :: k) (f :: k)   where
   Ifte True  t f = t
   Ifte False t f = f
 
-type family Get (l :: Symbol) (r :: [LT *]) where
+type family Get (l :: Symbol) (r :: [LT k]) where
   Get l '[] = TypeError (TL.Text "No such field: " :<>: ShowType l)
   Get l (l :-> t ': x) = t
   Get l (l' :-> t ': x) = Get l x
 
-type family Remove (l :: Symbol) (r :: [LT *]) where
+type family Remove (l :: Symbol) (r :: [LT k]) where
   Remove l r = RemoveT l r r
 
-type family RemoveT (l :: Symbol) (r :: [LT *]) (r_orig :: [LT *]) where
+type family RemoveT (l :: Symbol) (r :: [LT k]) (r_orig :: [LT k]) where
   RemoveT l (l :-> t ': x) _ = x
   RemoveT l (l' :-> t ': x) r = l' :-> t ': RemoveT l x r
   RemoveT l '[] r = TypeError (TL.Text "Cannot remove a label that does not occur in the row type."
                           :$$: TL.Text "The label " :<>: ShowType l :<>: TL.Text " is not in "
                           :<>: ShowType r)
 
-type family LacksR (l :: Symbol) (r :: [LT *]) (r_orig :: [LT *]) :: Constraint where
+type family LacksR (l :: Symbol) (r :: [LT k]) (r_orig :: [LT k]) :: Constraint where
   LacksR l '[] _ = Unconstrained
   LacksR l (l :-> t ': x) r = TypeError (TL.Text "The label " :<>: ShowType l
                                     :<>: TL.Text " already exists in " :<>: ShowType r)
   LacksR l (l' :-> _ ': x) r = Ifte (l <=.? l') Unconstrained (LacksR l x r)
 
-type family Merge (l :: [LT *]) (r :: [LT *]) where
+type family Merge (l :: [LT k]) (r :: [LT k]) where
   Merge '[] r = r
   Merge l '[] = l
   Merge (h :-> a ': tl)   (h :-> b ': tr) =
@@ -462,7 +462,7 @@ type family Merge (l :: [LT *]) (r :: [LT *]) where
       (hl :-> al ': Merge tl (hr :-> ar ': tr))
       (hr :-> ar ': Merge (hl :-> al ': tl) tr)
 
-type family MinJoinR (l :: [LT *]) (r :: [LT *]) where
+type family MinJoinR (l :: [LT k]) (r :: [LT k]) where
   MinJoinR '[] r = r
   MinJoinR l '[] = l
   MinJoinR (h :-> a ': tl)   (h :-> a ': tr) =
@@ -477,7 +477,7 @@ type family MinJoinR (l :: [LT *]) (r :: [LT *]) where
 
 
 -- | Returns the left list with all of the elements from the right list removed.
-type family Diff (l :: [LT *]) (r :: [LT *]) where
+type family Diff (l :: [LT k]) (r :: [LT k]) where
   Diff '[] r = '[]
   Diff l '[] = l
   Diff (l :-> al ': tl) (l :-> al ': tr) = Diff tl tr

@@ -78,7 +78,7 @@ instance Forall r Eq => Eq (Var r) where
 
 instance (Forall r Eq, Forall r Ord) => Ord (Var r) where
   compare :: Var r -> Var r -> Ordering
-  compare x y = getConst $ metamorph' @r @Ord @(Product Var Var) @(Const Ordering) @(Const Ordering) Proxy doNil doUncons doCons (Pair x y)
+  compare x y = getConst $ metamorph' @_ @r @Ord @(Product Var Var) @(Const Ordering) @(Const Ordering) Proxy doNil doUncons doCons (Pair x y)
     where doNil (Pair x _) = impossible x
           doUncons l (Pair r1 r2) = case (trial r1 l, trial r2 l) of
             (Left a,  Left b)  -> Left $ Const $ compare a b
@@ -89,7 +89,7 @@ instance (Forall r Eq, Forall r Ord) => Ord (Var r) where
           doCons _ (Right (Const c)) = Const c
 
 instance Forall r NFData => NFData (Var r) where
-  rnf r = getConst $ metamorph' @r @NFData @Var @(Const ()) @Identity Proxy empty doUncons doCons r
+  rnf r = getConst $ metamorph' @_ @r @NFData @Var @(Const ()) @Identity Proxy empty doUncons doCons r
     where empty = const $ Const ()
           doUncons l = left Identity . flip trial l
           doCons _ x = deepseq x $ Const ()
@@ -182,7 +182,7 @@ erase f = snd @String . eraseWithLabels @c f
 
 -- | A fold with labels
 eraseWithLabels :: forall c ρ s b. (Forall ρ c, IsString s) => (forall a. c a => a -> b) -> Var ρ -> (s,b)
-eraseWithLabels f = getConst . metamorph' @ρ @c @Var @(Const (s,b)) @Identity Proxy impossible doUncons doCons
+eraseWithLabels f = getConst . metamorph' @_ @ρ @c @Var @(Const (s,b)) @Identity Proxy impossible doUncons doCons
   where doUncons l = left Identity . flip trial l
         doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
                => Label ℓ -> Either (Identity τ) (Const (s,b) ('R ρ)) -> Const (s,b) ('R (ℓ :-> τ ': ρ))
@@ -191,7 +191,7 @@ eraseWithLabels f = getConst . metamorph' @ρ @c @Var @(Const (s,b)) @Identity P
 
 -- | A fold over two row type structures at once
 eraseZip :: forall c ρ b. Forall ρ c => (forall a. c a => a -> a -> b) -> Var ρ -> Var ρ -> Maybe b
-eraseZip f x y = getConst $ metamorph' @ρ @c @(Product Var Var) @(Const (Maybe b)) @(Const (Maybe b)) Proxy doNil doUncons doCons (Pair x y)
+eraseZip f x y = getConst $ metamorph' @_ @ρ @c @(Product Var Var) @(Const (Maybe b)) @(Const (Maybe b)) Proxy doNil doUncons doCons (Pair x y)
   where doNil _ = Const Nothing
         doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
                  => Label ℓ -> Product Var Var ('R (ℓ :-> τ ': ρ)) -> Either (Const (Maybe b) τ) (Product Var Var ('R ρ))
@@ -209,7 +209,7 @@ newtype VMap2 (f :: * -> *) (g :: * -> *) (ρ :: Row *) = VMap2 { unVMap2 :: Var
 
 -- | A function to map over a variant given a constraint.
 map :: forall c f r. Forall r c => (forall a. c a => a -> f a) -> Var r -> Var (Map f r)
-map f = unVMap . metamorph' @r @c @Var @(VMap f) @Identity Proxy doNil doUncons doCons
+map f = unVMap . metamorph' @_ @r @c @Var @(VMap f) @Identity Proxy doNil doUncons doCons
   where
     doNil = impossible
     doUncons l = left Identity . flip trial l
@@ -226,8 +226,8 @@ map' = map @Unconstrained1
 -- variant transformer to convert a variant of @f a@ values to a variant of @g a@
 -- values.  If no constraint is needed, instantiate the first type argument with
 -- 'Unconstrained1'.
-transform :: forall r c f g. Forall r c => (forall a. c a => f a -> g a) -> Var (Map f r) -> Var (Map g r)
-transform f = unVMap . metamorph' @r @c @(VMap f) @(VMap g) @f Proxy doNil doUncons doCons . VMap
+transform :: forall r c (f :: * -> *) (g :: * -> *). Forall r c => (forall a. c a => f a -> g a) -> Var (Map f r) -> Var (Map g r)
+transform f = unVMap . metamorph' @_ @r @c @(VMap f) @(VMap g) @f Proxy doNil doUncons doCons . VMap
   where
     doNil = impossible . unVMap
     doUncons l = right VMap . flip trial l . unVMap
@@ -237,12 +237,12 @@ transform f = unVMap . metamorph' @r @c @(VMap f) @(VMap g) @f Proxy doNil doUnc
     doCons _ (Right (VMap v)) = VMap $ unsafeInjectFront v
 
 -- | A form of @transformC@ that doesn't have a constraint on @a@
-transform' :: forall r f g . Forall r Unconstrained1 => (forall a. f a -> g a) -> Var (Map f r) -> Var (Map g r)
+transform' :: forall r (f :: * -> *) (g :: * -> *) . Forall r Unconstrained1 => (forall a. f a -> g a) -> Var (Map f r) -> Var (Map g r)
 transform' = transform @r @Unconstrained1
 
 -- | Applicative sequencing over a variant
 sequence :: forall f r. (Forall r Unconstrained1, Applicative f) => Var (Map f r) -> f (Var r)
-sequence = getCompose . metamorph' @r @Unconstrained1 @(VMap f) @(Compose f Var) @f Proxy doNil doUncons doCons . VMap
+sequence = getCompose . metamorph' @_ @r @Unconstrained1 @(VMap f) @(Compose f Var) @f Proxy doNil doUncons doCons . VMap
   where
     doNil (VMap x) = impossible x
     doUncons l = right VMap . flip trial l . unVMap
@@ -260,8 +260,8 @@ sequence = getCompose . metamorph' @r @Unconstrained1 @(VMap f) @(Compose f Var)
 
 -- | Convert from a variant where two functors have been mapped over the types to
 -- one where the composition of the two functors is mapped over the types.
-compose :: forall (f :: * -> *) g r . Forall r Unconstrained1 => Var (Map f (Map g r)) -> Var (Map (Compose f g) r)
-compose = unVMap . metamorph' @r @Unconstrained1 @(VMap2 f g) @(VMap (Compose f g)) Proxy doNil doUncons doCons . VMap2
+compose :: forall (f :: * -> *) (g :: * -> *) r . Forall r Unconstrained1 => Var (Map f (Map g r)) -> Var (Map (Compose f g) r)
+compose = unVMap . metamorph' @_ @r @Unconstrained1 @(VMap2 f g) @(VMap (Compose f g)) Proxy doNil doUncons doCons . VMap2
   where
     doNil (VMap2 x) = impossible x
     doUncons l = Compose +++ VMap2 <<< flip trial l . unVMap2
@@ -271,8 +271,8 @@ compose = unVMap . metamorph' @r @Unconstrained1 @(VMap2 f g) @(VMap (Compose f 
 -- | Convert from a variant where the composition of two functors have been mapped
 -- over the types to one where the two functors are mapped individually one at a
 -- time over the types.
-uncompose :: forall (f :: * -> *) g r . Forall r Unconstrained1 => Var (Map (Compose f g) r) -> Var (Map f (Map g r))
-uncompose = unVMap2 . metamorph' @r @Unconstrained1 @(VMap (Compose f g)) @(VMap2 f g) Proxy doNil doUncons doCons . VMap
+uncompose :: forall (f :: * -> *) (g :: * -> *) r . Forall r Unconstrained1 => Var (Map (Compose f g) r) -> Var (Map f (Map g r))
+uncompose = unVMap2 . metamorph' @_ @r @Unconstrained1 @(VMap (Compose f g)) @(VMap2 f g) Proxy doNil doUncons doCons . VMap
   where
     doNil (VMap x) = impossible x
     doUncons l = right VMap . flip trial l . unVMap
@@ -297,7 +297,7 @@ unsafeInjectFront = unsafeCoerce
 -- be the value in the variant.
 fromLabels :: forall c ρ f. (Alternative f, Forall ρ c, AllUniqueLabels ρ)
            => (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Var ρ)
-fromLabels mk = getCompose $ metamorph' @ρ @c @(Const ()) @(Compose f Var) @(Const ())
+fromLabels mk = getCompose $ metamorph' @_ @ρ @c @(Const ()) @(Compose f Var) @(Const ())
                                         Proxy doNil doUncons doCons (Const ())
   where doNil _ = Compose $ empty
         doUncons _ _ = Right $ Const ()
@@ -306,4 +306,3 @@ fromLabels mk = getCompose $ metamorph' @ρ @c @(Const ()) @(Compose f Var) @(Co
         doCons l (Left _) = Compose $ unsafeMakeVar l <$> mk l --This case should be impossible
         doCons l (Right (Compose v)) = Compose $
           unsafeMakeVar l <$> mk l <|> unsafeInjectFront <$> v
-
