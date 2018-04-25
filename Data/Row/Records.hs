@@ -108,7 +108,7 @@ instance (Forall r Bounded, AllUniqueLabels r) => Bounded (Rec r) where
   maxBound = default' @Bounded maxBound
 
 instance Forall r NFData => NFData (Rec r) where
-  rnf r = getConst $ metamorph @r @NFData @Rec @(Const ()) @Identity Proxy empty doUncons doCons r
+  rnf r = getConst $ metamorph @_ @r @NFData @Rec @(Const ()) @Identity Proxy empty doUncons doCons r
     where empty = const $ Const ()
           doUncons l r = (Identity $ r .! l, unsafeRemove l r)
           doCons _ x r = deepseq x $ deepseq r $ Const ()
@@ -234,7 +234,7 @@ erase f = fmap (snd @String) . eraseWithLabels @c f
 
 -- | A fold with labels
 eraseWithLabels :: forall c ρ s b. (Forall ρ c, IsString s) => (forall a. c a => a -> b) -> Rec ρ -> [(s,b)]
-eraseWithLabels f = getConst . metamorph @ρ @c @Rec @(Const [(s,b)]) @Identity Proxy doNil doUncons doCons
+eraseWithLabels f = getConst . metamorph @_ @ρ @c @Rec @(Const [(s,b)]) @Identity Proxy doNil doUncons doCons
   where doNil _ = Const []
         doUncons l r = (Identity $ r .! l, unsafeRemove l r)
         doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
@@ -243,7 +243,7 @@ eraseWithLabels f = getConst . metamorph @ρ @c @Rec @(Const [(s,b)]) @Identity 
 
 -- | A fold over two row type structures at once
 eraseZip :: forall c ρ b. Forall ρ c => (forall a. c a => a -> a -> b) -> Rec ρ -> Rec ρ -> [b]
-eraseZip f x y = getConst $ metamorph @ρ @c @(Product Rec Rec) @(Const [b]) @IPair Proxy (const $ Const []) doUncons doCons (Pair x y)
+eraseZip f x y = getConst $ metamorph @_ @ρ @c @(Product Rec Rec) @(Const [b]) @IPair Proxy (const $ Const []) doUncons doCons (Pair x y)
   where doUncons l (Pair r1 r2) = (iPair a b, Pair r1' r2')
           where (a, r1') = (r1 .! l, unsafeRemove l r1)
                 (b, r2') = (r2 .! l, unsafeRemove l r2)
@@ -263,7 +263,7 @@ newtype RMap2 (f :: * -> *) (g :: * -> *) (ρ :: Row *) = RMap2 { unRMap2 :: Rec
 
 -- | A function to map over a record given a constraint.
 map :: forall c f r. Forall r c => (forall a. c a => a -> f a) -> Rec r -> Rec (Map f r)
-map f = unRMap . metamorph @r @c @Rec @(RMap f) @Identity Proxy doNil doUncons doCons
+map f = unRMap . metamorph @_ @r @c @Rec @(RMap f) @Identity Proxy doNil doUncons doCons
   where
     doNil _ = RMap empty
     doUncons l r = (Identity $ r .! l, unsafeRemove l r)
@@ -279,8 +279,8 @@ map' = map @Unconstrained1
 -- record transformer to convert a record of @f a@ values to a record of @g a@
 -- values.  If no constraint is needed, instantiate the first type argument with
 -- 'Unconstrained1' or use 'transform''.
-transform :: forall c r f g. Forall r c => (forall a. c a => f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
-transform f = unRMap . metamorph @r @c @(RMap f) @(RMap g) @f Proxy doNil doUncons doCons . RMap
+transform :: forall c r (f :: * -> *) (g :: * -> *). Forall r c => (forall a. c a => f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
+transform f = unRMap . metamorph @_ @r @c @(RMap f) @(RMap g) @f Proxy doNil doUncons doCons . RMap
   where
     doNil _ = RMap empty
     doUncons l (RMap r) = (r .! l, RMap $ unsafeRemove l r)
@@ -289,13 +289,13 @@ transform f = unRMap . metamorph @r @c @(RMap f) @(RMap g) @f Proxy doNil doUnco
     doCons l v (RMap r) = RMap (unsafeInjectFront l (f v) r)
 
 -- | A version of 'transform' for when there is no constraint.
-transform' :: forall r f g. Forall r Unconstrained1 => (forall a. f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
+transform' :: forall r (f :: * -> *) (g :: * -> *). Forall r Unconstrained1 => (forall a. f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
 transform' = transform @Unconstrained1 @r
 
 -- | A version of 'sequence' in which the constraint for 'Forall' can be chosen.
 sequence' :: forall f r c. (Forall r c, Applicative f)
           => Rec (Map f r) -> f (Rec r)
-sequence' = getCompose . metamorph @r @c @(RMap f) @(Compose f Rec) @f Proxy doNil doUncons doCons . RMap
+sequence' = getCompose . metamorph @_ @r @c @(RMap f) @(Compose f Rec) @f Proxy doNil doUncons doCons . RMap
   where
     doNil _ = Compose (pure empty)
     doUncons l (RMap r) = (r .! l, RMap $ unsafeRemove l r)
@@ -316,9 +316,9 @@ sequence = sequence' @_ @_ @Unconstrained1
 -- >>> uncompose . compose = id
 
 -- | A version of 'compose' in which the constraint for 'Forall' can be chosen.
-compose' :: forall c (f :: * -> *) g r . Forall r c
+compose' :: forall c (f :: * -> *) (g :: * -> *) (r :: Row *) . Forall r c
         => Rec (Map f (Map g r)) -> Rec (Map (Compose f g) r)
-compose' = unRMap . metamorph @r @c @(RMap2 f g) @(RMap (Compose f g)) @(Compose f g) Proxy doNil doUncons doCons . RMap2
+compose' = unRMap . metamorph @_ @r @c @(RMap2 f g) @(RMap (Compose f g)) @(Compose f g) Proxy doNil doUncons doCons . RMap2
   where
     doNil _ = RMap empty
     doUncons l (RMap2 r) = (Compose $ r .! l, RMap2 $ unsafeRemove l r)
@@ -326,14 +326,14 @@ compose' = unRMap . metamorph @r @c @(RMap2 f g) @(RMap (Compose f g)) @(Compose
 
 -- | Convert from a record where two functors have been mapped over the types to
 -- one where the composition of the two functors is mapped over the types.
-compose :: forall (f :: * -> *) g r . Forall r Unconstrained1
+compose :: forall (f :: * -> *) (g :: * -> *) r . Forall r Unconstrained1
         => Rec (Map f (Map g r)) -> Rec (Map (Compose f g) r)
 compose = compose' @Unconstrained1 @f @g @r
 
 -- | A version of 'uncompose' in which the constraint for 'Forall' can be chosen.
-uncompose' :: forall c (f :: * -> *) g r . Forall r c
+uncompose' :: forall c (f :: * -> *) (g :: * -> *) r . Forall r c
            => Rec (Map (Compose f g) r) -> Rec (Map f (Map g r))
-uncompose' = unRMap2 . metamorph @r @c @(RMap (Compose f g)) @(RMap2 f g) @(Compose f g) Proxy doNil doUncons doCons . RMap
+uncompose' = unRMap2 . metamorph @_ @r @c @(RMap (Compose f g)) @(RMap2 f g) @(Compose f g) Proxy doNil doUncons doCons . RMap
   where
     doNil _ = RMap2 empty
     doUncons l (RMap r) = (r .! l, RMap $ unsafeRemove l r)
@@ -342,7 +342,7 @@ uncompose' = unRMap2 . metamorph @r @c @(RMap (Compose f g)) @(RMap2 f g) @(Comp
 -- | Convert from a record where the composition of two functors have been mapped
 -- over the types to one where the two functors are mapped individually one at a
 -- time over the types.
-uncompose :: forall (f :: * -> *) g r . Forall r Unconstrained1
+uncompose :: forall (f :: * -> *) (g :: * -> *) r . Forall r Unconstrained1
           => Rec (Map (Compose f g) r) -> Rec (Map f (Map g r))
 uncompose = uncompose' @Unconstrained1 @f @g @r
 
@@ -352,7 +352,7 @@ newtype RZipPair (ρ1 :: Row *) (ρ2 :: Row *) = RZipPair { unRZipPair :: Rec (Z
 
 -- | Zips together two records that have the same set of labels.
 zip :: forall r1 r2. Forall2 r1 r2 Unconstrained1 => Rec r1 -> Rec r2 -> Rec (Zip r1 r2)
-zip r1 r2 = unRZipPair $ metamorph2 @r1 @r2 @Unconstrained1 @Rec @Rec @RZipPair @Identity @Identity Proxy Proxy doNil doUncons doCons r1 r2
+zip r1 r2 = unRZipPair $ metamorph2 @_ @r1 @r2 @Unconstrained1 @Rec @Rec @RZipPair @Identity @Identity Proxy Proxy doNil doUncons doCons r1 r2
   where
     doNil _ _ = RZipPair empty
     doUncons l r1 r2 = ((Identity $ r1 .! l, unsafeRemove l r1), (Identity $ r2 .! l, unsafeRemove l r2))
@@ -389,7 +389,7 @@ fromLabels f = runIdentity $ fromLabelsA @c $ (pure .) f
 -- the label at that value.  This function works over an 'Applicative'.
 fromLabelsA :: forall c f ρ. (Applicative f, Forall ρ c, AllUniqueLabels ρ)
             => (forall l a. (KnownSymbol l, c a) => Label l -> f a) -> f (Rec ρ)
-fromLabelsA mk = getCompose $ metamorph @ρ @c @(Const ()) @(Compose f Rec) @(Const ()) Proxy doNil doUncons doCons (Const ())
+fromLabelsA mk = getCompose $ metamorph @_ @ρ @c @(Const ()) @(Compose f Rec) @(Const ()) Proxy doNil doUncons doCons (Const ())
   where doNil _ = Compose $ pure empty
         doUncons _ _ = (Const (), Const ())
         doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
