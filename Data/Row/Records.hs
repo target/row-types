@@ -54,6 +54,8 @@ module Data.Row.Records
   , compose', uncompose'
   -- ** Labels
   , labels, labels'
+  -- ** Native
+  , toNative, fromNative
   -- ** UNSAFE operations
   , unsafeRemove, unsafeInjectFront
   )
@@ -76,6 +78,7 @@ import Data.Proxy
 import Data.String (IsString)
 import Data.Text (Text)
 
+import qualified GHC.Generics as G
 import GHC.TypeLits
 
 import Unsafe.Coerce
@@ -404,3 +407,57 @@ fromLabelsMapA f = fromLabelsA @(IsA c g) @f @(Map g ρ) inner
                 \\ uniqueMap @g @ρ
    where inner :: forall l a. (KnownSymbol l, IsA c g a) => Label l -> f a
          inner l = case as @c @g @a of As -> f l
+
+{--------------------------------------------------------------------
+  Native data type compatibility
+--------------------------------------------------------------------}
+-- ToNative is shamelessly copied from
+--   https://www.athiemann.net/2017/07/02/superrecord.html
+
+
+-- | Conversion helper to bring a record back into a Haskell type. Note that the
+-- native Haskell type must be an instance of 'Generic'.
+class ToNative a ρ where
+  toNative' :: Rec ρ -> a x
+
+instance ToNative cs ρ => ToNative (G.D1 m cs) ρ where
+  toNative' xs = G.M1 $ toNative' xs
+
+instance ToNative cs ρ => ToNative (G.C1 m cs) ρ where
+  toNative' xs = G.M1 $ toNative' xs
+
+instance (KnownSymbol name, ρ .! name ≈ t)
+    => ToNative (G.S1 ('G.MetaSel ('Just name) p s l) (G.Rec0 t)) ρ where
+  toNative' r = G.M1 $ G.K1 $ r .! (Label @name)
+
+instance (ToNative l ρ, ToNative r ρ)
+    => ToNative (l G.:*: r) ρ where
+  toNative' r = toNative' r G.:*: toNative' r
+
+-- | Convert a record to a native Haskell type.
+toNative :: forall t ρ. (G.Generic t, ToNative (G.Rep t) ρ) => Rec ρ -> t
+toNative = G.to . toNative'
+
+
+-- | Conversion helper to turn a Haskell record into a row-types extensible
+-- record. Note that the native Haskell type must be an instance of 'Generic'.
+class FromNative a ρ where
+  fromNative' :: a x -> Rec ρ
+
+instance FromNative cs ρ => FromNative (G.D1 m cs) ρ where
+  fromNative' (G.M1 xs) = fromNative' xs
+
+instance FromNative cs ρ => FromNative (G.C1 m cs) ρ where
+  fromNative' (G.M1 xs) = fromNative' xs
+
+instance (KnownSymbol name, ρ ≈ name .== t)
+    => FromNative (G.S1 ('G.MetaSel ('Just name) p s l) (G.Rec0 t)) ρ where
+  fromNative' (G.M1 (G.K1 x)) =  (Label @name) .== x
+
+instance (FromNative l ρ₁, FromNative r ρ₂, ρ ≈ ρ₁ .+ ρ₂)
+    => FromNative (l G.:*: r) ρ where
+  fromNative' (x G.:*: y) = fromNative' @l @ρ₁ x .+ fromNative' @r @ρ₂ y
+
+-- | Convert a Haskell record to a row-types Rec.
+fromNative :: forall t ρ. (G.Generic t, FromNative (G.Rep t) ρ) => t -> Rec ρ
+fromNative = fromNative' . G.from
