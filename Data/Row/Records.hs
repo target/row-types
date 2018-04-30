@@ -38,6 +38,9 @@ module Data.Row.Records
   -- * Combine
   -- ** Disjoint union
   , type (.+), (.+), Disjoint, pattern (:+)
+  -- * Native Conversion
+  -- $native
+  , toNative, fromNative
   -- * Row operations
   -- ** Map
   , Map, map, map'
@@ -54,8 +57,6 @@ module Data.Row.Records
   , compose', uncompose'
   -- ** Labels
   , labels, labels'
-  -- ** Native
-  , toNative, fromNative
   -- ** UNSAFE operations
   , unsafeRemove, unsafeInjectFront
   )
@@ -413,6 +414,28 @@ fromLabelsMapA f = fromLabelsA @(IsA c g) @f @(Map g ρ) inner
 --------------------------------------------------------------------}
 -- ToNative is shamelessly copied from
 --   https://www.athiemann.net/2017/07/02/superrecord.html
+
+-- $native
+-- The 'toNative' and 'fromNative' functions allow one to convert between
+-- 'Rec's and regular Haskell data types ("native" types) that have a single constructor and any
+-- number of named fields with the same names and types as the 'Rec'.  That
+-- said, they do not compose to form the identity because 'toNative' allows
+-- fields to be dropped: a record with excess fields can still be transformed
+-- to a native type, but when the native type is converted to a record, the
+-- fields are exactly transformed.  Because of this, 'toNative' requires a type
+-- application (although 'fromNative' does not).  The only requirement is that
+-- the native Haskell data type be an instance of 'Generic'.
+--
+-- For example, consider the following simple data type:
+--
+-- >>> data Person = Person { name :: String, age :: Int} deriving (Generic, Show)
+--
+-- Then, we have the following:
+--
+-- >>> toNative @Person $ #name .== "Alice" .+ #age .== 7 .+ #hasDog .== True
+-- Person {name = "Alice", age = 7}
+-- >>> fromNative $ Person "Bob" 9
+-- { age=9, name="Bob" }
 
 
 -- | Conversion helper to bring a record back into a Haskell type. Note that the
