@@ -95,15 +95,23 @@ newtype Rec (r :: Row *) where
   OR :: HashMap Text HideType -> Rec r
 
 instance Forall r Show => Show (Rec r) where
-  show r =
-    case eraseWithLabels @Show show r of
+  showsPrec p r =
+    case eraseWithLabels @Show (showsPrec 7) r of
       [] ->
-        "empty"
+        showString "empty"
       xs ->
-        L.intercalate " .+ " (L.map binds xs)
+        showParen
+          (p > 6)
+          (endo (L.intersperse (showString " .+ ") (L.map binds xs)))
     where
+      endo =
+        foldr (.) id
+
       binds (label, value) =
-        "#" ++ label ++ " .== " ++ value
+        showChar '#' .
+        showString label .
+        showString " .== " .
+        value
 
 instance Forall r Eq => Eq (Rec r) where
   r == r' = and $ eraseZip @Eq (==) r r'
