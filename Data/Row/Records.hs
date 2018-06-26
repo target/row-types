@@ -96,7 +96,11 @@ newtype Rec (r :: Row *) where
 
 instance Forall r Show => Show (Rec r) where
   show r =
-    L.intercalate " .+ " (L.map binds (eraseWithLabels @Show show r))
+    case eraseWithLabels @Show show r of
+      [] ->
+        "empty"
+      xs ->
+        L.intercalate " .+ " (L.map binds xs)
     where
       binds (label, value) =
         "#" ++ label ++ " .== " ++ value
