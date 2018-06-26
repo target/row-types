@@ -102,11 +102,8 @@ instance Forall r Show => Show (Rec r) where
       xs ->
         showParen
           (p > 6)
-          (endo (L.intersperse (showString " .+ ") (L.map binds xs)))
+          (mconcat (L.intersperse (showString " .+ ") (L.map binds xs)))
     where
-      endo =
-        foldr (.) id
-
       binds (label, value) =
         showChar '#' .
         showString label .
