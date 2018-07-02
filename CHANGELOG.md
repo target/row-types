@@ -1,4 +1,9 @@
 
+## 0.2.3.0 [2018-07-02]
+- Update the Show instance to render valid code.
+- Add 'toNative' and 'fromNative' functions for records to easily convert between Haskell records and row-types records.
+- Make type families in Data.Row.Internal polykinded (thanks James Yu!)
+
 ## 0.2.1.0 [2018-03-20]
 - Bug Fix: The type of 'update' for both Record and Variant now enforce the newly inserted type is correct.
 - New: Add 'restrict' and 'split' for Variants.  

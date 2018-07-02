@@ -66,7 +66,7 @@ it exactly.
 
 If we show this at the repl, we see:
 λ> origin
-{ x=0.0, y=0.0 }
+ #x .== 0.0 .+ #y .== 0.0
 
 Of course, as an extensible record, the order that we build it shouldn't matter,
 and indeed, it doesn't.  Consider the following variation:
@@ -76,8 +76,8 @@ and indeed, it doesn't.  Consider the following variation:
 
 If we show this at the repl, we see:
 
-λ> origin2
-{ x=0.0, y=0.0 }
+λ> origin'
+ #x .== 0.0 .+ #y .== 0.0
 
 Indeed, the two values are indistinguishable:
 
@@ -136,7 +136,7 @@ adding dx to it, and then we do the same for y.
 We can see it work in practice:
 
 λ> move origin 3 4
-{ x=3.0, y=4.0 }
+ #x .== 3.0 .+ #y .== 4.0
 λ> distance (move origin 3 4)
 5.0
 λ> distance (move (named "2D" origin3D) 5 12)
@@ -160,7 +160,7 @@ could it!  The type is providing crucial information about the shape of the reco
 Regardless, with the type provided, it works exactly as expected:
 
 λ> origin4
-{ w=0.0, x=0.0, y=0.0, z=0.0 }
+ #w .== 0.0 .+ #x .== 0.0 .+ #y .== 0.0 .+ #z .== 0.0
 
 While we have added names or further fields, we can also choose to forget
 information in a record.  To remove a particular label, one can use the .-
