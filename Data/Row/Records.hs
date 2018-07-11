@@ -75,6 +75,7 @@ import Data.Hashable
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as M
 import qualified Data.List as L
+import Data.Monoid (Endo(..), appEndo)
 import Data.Proxy
 import Data.String (IsString)
 import Data.Text (Text)
@@ -102,7 +103,7 @@ instance Forall r Show => Show (Rec r) where
       xs ->
         showParen
           (p > 6)
-          (mconcat (L.intersperse (showString " .+ ") (L.map binds xs)))
+          (appEndo $ foldMap Endo (L.intersperse (showString " .+ ") (L.map binds xs)))
     where
       binds (label, value) =
         showChar '#' .
