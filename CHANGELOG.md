@@ -1,6 +1,8 @@
+## 0.2.3.1 [2018-07-11]
+- Fix a bug in the Show instance for Rec.
 
 ## 0.2.3.0 [2018-07-02]
-- Update the Show instance to render valid code.
+- Update the Show instance for Rec to render valid code.
 - Add 'toNative' and 'fromNative' functions for records to easily convert between Haskell records and row-types records.
 - Make type families in Data.Row.Internal polykinded (thanks James Yu!)
 
