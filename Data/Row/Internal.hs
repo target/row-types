@@ -35,6 +35,7 @@ module Data.Row.Internal
   , mapForall
   , freeForall
   , uniqueMap
+  , mapHas
   , IsA(..)
   , As(..)
 
@@ -250,6 +251,10 @@ uniqueMap = Sub $ UNSAFE.unsafeCoerce @(Dict Unconstrained) Dict
 -- | Allow any 'Forall` over a row-type, be usable for 'Unconstrained1'.
 freeForall :: forall r c. Forall r c :- Forall r Unconstrained1
 freeForall = Sub $ UNSAFE.unsafeCoerce @(Dict (Forall r c)) Dict
+
+-- | This allows us to derive `Map f r .! l ≈ f t` from `r .! l ≈ t`
+mapHas :: forall f r l t. (r .! l ≈ t) :- (Map f r .! l ≈ f t)
+mapHas = Sub $ UNSAFE.unsafeCoerce $ Dict @(r .! l ≈ t)
 
 instance Forall (R '[]) c where
   {-# INLINE metamorph #-}
