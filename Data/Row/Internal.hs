@@ -24,13 +24,14 @@ module Data.Row.Internal
   , Lacks, HasType
   -- * Row Classes
   , Labels, labels, labels'
-  , Forall(..), Forall2(..)
+  , Forall(..)
+  , BiForall(..)
   , Unconstrained1
   -- * Helper functions
   , show'
   , toKey
   , type (≈)
-  , WellBehaved, AllUniqueLabels, Zip, Map, Subset, Disjoint
+  , WellBehaved, AllUniqueLabels, DotProduct, Zip, Map, Subset, Disjoint
 
   , mapForall
   , freeForall
@@ -75,6 +76,7 @@ data LT a = Symbol :-> a
 
 -- | A label
 data Label (s :: Symbol) = Label
+  deriving (Eq)
 
 instance KnownSymbol s => Show (Label s) where
   show = symbolVal
@@ -280,35 +282,32 @@ instance (KnownSymbol ℓ, c τ, Forall ('R ρ) c) => Forall ('R (ℓ :-> τ ': 
   {-# INLINE metamorph' #-}
   metamorph' _ empty uncons cons r = cons Label $ metamorph' @_ @('R ρ) @c @_ @_ @h Proxy empty uncons cons <$> uncons Label r
 
--- | Any structure over two rows in which every element of both rows satisfies the
---   given constraint can be metamorphized into another structure over both of the
+-- | Any structure over two rows in which the elements of each row satisfy some
+--   constraints can be metamorphized into another structure over both of the
 --   rows.
--- TODO: Perhaps it should be over two constraints?  But this hasn't seemed necessary
---  in practice.
-class Forall2 (r1 :: Row k) (r2 :: Row k) (c :: k -> Constraint) where
-  -- | A metamorphism is a fold followed by an unfold.  Here, we fold both of the inputs.
-  metamorph2 :: forall (f :: Row k -> *) (g :: Row k -> *) (h :: Row k -> Row k -> *)
-                       (f' :: k -> *) (g' :: k -> *).
-                Proxy f' -> Proxy g'
-             -> (f Empty -> g Empty -> h Empty Empty)
-             -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1, c τ2)
-                 => Label ℓ
-                 -> f ('R (ℓ :-> τ1 ': ρ1))
-                 -> g ('R (ℓ :-> τ2 ': ρ2))
-                 -> ((f' τ1, f ('R ρ1)), (g' τ2, g ('R ρ2))))
-             -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1, c τ2)
-                 => Label ℓ -> f' τ1 -> g' τ2 -> h ('R ρ1) ('R ρ2) -> h ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)))
-             -> f r1 -> g r2 -> h r1 r2
+class BiForall (r1 :: Row k1) (r2 :: Row k2) (c1 :: k1 -> Constraint) (c2 :: k2 -> Constraint) where
+  -- | A metamorphism is a fold followed by an unfold.
+  biMetamorph :: forall (f :: Row k1 -> Row k2 -> *) (g :: Row k1 -> Row k2 -> *)
+                        (h :: k1 -> k2 -> *).
+                 Proxy h
+              -> (f Empty Empty -> g Empty Empty)
+              -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c1 τ1, c2 τ2)
+                  => Label ℓ
+                  -> f ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2))
+                  -> (h τ1 τ2, f ('R ρ1) ('R ρ2)))
+              -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c1 τ1, c2 τ2)
+                  => Label ℓ -> h τ1 τ2 -> g ('R ρ1) ('R ρ2) -> g ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)))
+              -> f r1 r2 -> g r1 r2
 
-instance Forall2 (R '[]) (R '[]) c where
-  {-# INLINE metamorph2 #-}
-  metamorph2 _ _ empty _ _ = empty
+instance BiForall (R '[]) (R '[]) c1 c2 where
+  {-# INLINE biMetamorph #-}
+  biMetamorph _ empty _ _ = empty
 
-instance (KnownSymbol ℓ, c τ1, c τ2, Forall2 ('R ρ1) ('R ρ2) c)
-      => Forall2 ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)) c where
-  {-# INLINE metamorph2 #-}
-  metamorph2 f g empty uncons cons r1 r2 = cons (Label @ℓ) t1 t2 $ metamorph2 @_ @('R ρ1) @('R ρ2) @c f g empty uncons cons r1' r2'
-    where ((t1, r1'), (t2, r2')) = uncons (Label @ℓ) r1 r2
+instance (KnownSymbol ℓ, c1 τ1, c2 τ2, BiForall ('R ρ1) ('R ρ2) c1 c2)
+      => BiForall ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)) c1 c2 where
+  {-# INLINE biMetamorph #-}
+  biMetamorph h empty uncons cons r = cons (Label @ℓ) t $ biMetamorph @_ @_ @('R ρ1) @('R ρ2) @c1 @c2 h empty uncons cons r'
+    where (t, r') = uncons (Label @ℓ) r
 
 -- | A null constraint
 class Unconstrained
@@ -389,6 +388,16 @@ type family Map (f :: a -> b) (r :: Row a) :: Row b where
 type family MapR (f :: a -> b) (r :: [LT a]) :: [LT b] where
   MapR f '[] = '[]
   MapR f (l :-> v ': t) = l :-> f v ': MapR f t
+
+-- | Take two rows with the same labels, and apply the type operator from the
+-- first row to the type of the second.
+type family DotProduct (fs :: Row (* -> *)) (r :: Row *) :: Row * where
+  DotProduct (R fs) (R r) = R (DotProductR fs r)
+
+type family DotProductR (fs :: [LT (* -> *)]) (r :: [LT *]) :: [LT *] where
+  DotProductR '[] '[] = '[]
+  DotProductR (l :-> f ': tf) (l :-> v ': tv) = l :-> f v ': DotProductR tf tv
+  DotProductR _ _ = TypeError (TL.Text "Row types with different label sets cannot be Dot Producted")
 
 -- | Zips two rows together to create a Row of the pairs.
 --   The two rows must have the same set of labels.

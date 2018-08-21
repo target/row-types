@@ -43,7 +43,7 @@ module Data.Row.Records
   , toNative, fromNative
   -- * Row operations
   -- ** Map
-  , Map, map, map'
+  , Map, map, map', mapF
   , transform, transform'
   -- ** Fold
   , Forall, erase, eraseWithLabels, eraseZip, eraseToHashMap
@@ -288,11 +288,28 @@ map f = unRMap . metamorph @_ @r @c @Rec @(RMap f) @Identity Proxy doNil doUncon
            => Label ℓ -> Identity τ -> RMap f ('R ρ) -> RMap f ('R (ℓ :-> τ ': ρ))
     doCons l (Identity v) (RMap r) = RMap (unsafeInjectFront l (f v) r)
 
+newtype RFMap (g :: * -> *) (ϕ :: Row (* -> *)) (ρ :: Row *) = RFMap { unRFMap :: Rec (DotProduct ϕ (Map g ρ)) }
+newtype DotProd (ϕ :: Row (* -> *)) (ρ :: Row *) = DotProd (Rec (DotProduct ϕ ρ))
+newtype App (f :: * -> *) (a :: *) = App (f a)
+
+-- | A function to map over a DotProduct record given constraints.
+mapF :: forall c1 c2 g ϕ ρ. BiForall ϕ ρ c1 c2
+     => (forall f a. (c1 f, c2 a) => f a -> f (g a))
+     -> Rec (DotProduct ϕ ρ)
+     -> Rec (DotProduct ϕ (Map g ρ))
+mapF f = unRFMap . biMetamorph @_ @_ @ϕ @ρ @c1 @c2 @DotProd @(RFMap g) @App Proxy doNil doUncons doCons . DotProd
+  where
+    doNil _ = RFMap empty
+    doUncons l (DotProd r) = (App $ r .! l, DotProd $ unsafeRemove l r)
+    doCons :: forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c1 τ1, c2 τ2)
+           => Label ℓ -> App τ1 τ2 -> RFMap g ('R ρ1) ('R ρ2) -> RFMap g ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2))
+    doCons l (App v) (RFMap r) = RFMap (unsafeInjectFront l (f @τ1 @τ2 v) r)
+
 -- | A function to map over a record given no constraint.
 map' :: forall f r. Forall r Unconstrained1 => (forall a. a -> f a) -> Rec r -> Rec (Map f r)
 map' = map @Unconstrained1
 
--- | Lifts a natrual transformation over a record.  In other words, it acts as a
+-- | Lifts a natural transformation over a record.  In other words, it acts as a
 -- record transformer to convert a record of @f a@ values to a record of @g a@
 -- values.  If no constraint is needed, instantiate the first type argument with
 -- 'Unconstrained1' or use 'transform''.
@@ -365,15 +382,16 @@ uncompose = uncompose' @Unconstrained1 @f @g @r
 
 
 -- | RZipPair is used internally as a type level lambda for zipping records.
+newtype RecPair  (ρ1 :: Row *) (ρ2 :: Row *) = RecPair  (Rec ρ1, Rec ρ2)
 newtype RZipPair (ρ1 :: Row *) (ρ2 :: Row *) = RZipPair { unRZipPair :: Rec (Zip ρ1 ρ2) }
 
 -- | Zips together two records that have the same set of labels.
-zip :: forall r1 r2. Forall2 r1 r2 Unconstrained1 => Rec r1 -> Rec r2 -> Rec (Zip r1 r2)
-zip r1 r2 = unRZipPair $ metamorph2 @_ @r1 @r2 @Unconstrained1 @Rec @Rec @RZipPair @Identity @Identity Proxy Proxy doNil doUncons doCons r1 r2
+zip :: forall r1 r2. BiForall r1 r2 Unconstrained1 Unconstrained1 => Rec r1 -> Rec r2 -> Rec (Zip r1 r2)
+zip r1 r2 = unRZipPair $ biMetamorph @_ @_ @r1 @r2 @Unconstrained1 @Unconstrained1 @RecPair @RZipPair @(,) Proxy doNil doUncons doCons $ RecPair (r1, r2)
   where
-    doNil _ _ = RZipPair empty
-    doUncons l r1 r2 = ((Identity $ r1 .! l, unsafeRemove l r1), (Identity $ r2 .! l, unsafeRemove l r2))
-    doCons l (Identity v1) (Identity v2) (RZipPair r) = RZipPair $ unsafeInjectFront l (v1, v2) r
+    doNil _ = RZipPair empty
+    doUncons l (RecPair (r1, r2)) = ((r1 .! l, r2 .! l), RecPair (unsafeRemove l r1, unsafeRemove l r2))
+    doCons l (v1, v2) (RZipPair r) = RZipPair $ unsafeInjectFront l (v1, v2) r
 
 -- | A helper function for unsafely adding an element to the front of a record.
 -- This can cause the resulting record to be malformed, for instance, if the record
@@ -381,6 +399,7 @@ zip r1 r2 = unRZipPair $ metamorph2 @_ @r1 @r2 @Unconstrained1 @Rec @Rec @RZipPa
 -- Realistically, this function should only be used when writing calls to 'metamorph'.
 unsafeInjectFront :: KnownSymbol l => Label l -> a -> Rec (R r) -> Rec (R (l :-> a ': r))
 unsafeInjectFront (toKey -> a) b (OR m) = OR $ M.insert a (HideType b) m
+{-# INLINE unsafeInjectFront #-}
 
 
 {--------------------------------------------------------------------
