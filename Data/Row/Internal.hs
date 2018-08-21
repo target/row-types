@@ -38,8 +38,6 @@ module Data.Row.Internal
   , mapHas
   , IsA(..)
   , As(..)
-
-  , FoldStep
   )
 where
 
@@ -176,11 +174,6 @@ type (l :: Symbol) .== (a :: k) = Extend l a Empty
   Constrained record operations
 --------------------------------------------------------------------}
 
--- | Proof that the given label is a valid candidate for the next step
--- in a metamorph fold, i.e. it's not in the list yet and, when sorted,
--- will be placed at the head.
-type FoldStep ℓ τ ρ = Inject (ℓ :-> τ) ρ ≈ ℓ :-> τ ': ρ
-
 -- | Any structure over a row in which every element is similarly constrained can
 --   be metamorphized into another structure over the same row.
 class Forall (r :: Row k) (c :: k -> Constraint) where
@@ -192,7 +185,7 @@ class Forall (r :: Row k) (c :: k -> Constraint) where
                -- ^ The way to transform the empty element
             -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> f ('R (ℓ :-> τ ': ρ)) -> (h τ, f ('R ρ)))
                -- ^ The unfold
-            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FoldStep ℓ τ ρ) => Label ℓ -> h τ -> g ('R ρ) -> g ('R (ℓ :-> τ ': ρ)))
+            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> h τ -> g ('R ρ) -> g ('R (ℓ :-> τ ': ρ)))
                -- ^ The fold
             -> f r  -- ^ The input structure
             -> g r
@@ -205,7 +198,7 @@ class Forall (r :: Row k) (c :: k -> Constraint) where
                -- ^ The way to transform the empty element
             -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> f ('R (ℓ :-> τ ': ρ)) -> Either (h τ) (f ('R ρ)))
                -- ^ The unfold
-            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FoldStep ℓ τ ρ) => Label ℓ -> Either (h τ) (g ('R ρ)) -> g ('R (ℓ :-> τ ': ρ)))
+            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> Either (h τ) (g ('R ρ)) -> g ('R (ℓ :-> τ ': ρ)))
                -- ^ The fold
             -> f r  -- ^ The input structure
             -> g r
@@ -237,12 +230,10 @@ mapForall = Sub $ unMapForall $ metamorph @_ @ρ @c @(Const ()) @(MapForall c f)
                => Label l -> Const () ('R (l :-> t ': r)) -> (Const () t, Const () ('R r))
         uncons _ _ = (Const (), Const ())
 
-        cons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FoldStep ℓ τ ρ)
+        cons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
              => Label ℓ -> Const () τ -> MapForall c f ('R ρ)
              -> MapForall c f ('R (ℓ :-> τ ': ρ))
-        cons _ _ (MapForall Dict) =
-           case UNSAFE.unsafeCoerce @(Dict Unconstrained) @(Dict (FoldStep ℓ (f τ) (MapR f ρ))) Dict of
-             Dict -> MapForall Dict
+        cons _ _ (MapForall Dict) = MapForall Dict
 
 -- | Map preserves uniqueness of labels.
 uniqueMap :: forall f ρ. AllUniqueLabels ρ :- AllUniqueLabels (Map f ρ)
@@ -262,14 +253,14 @@ instance Forall (R '[]) c where
   {-# INLINE metamorph' #-}
   metamorph' _ empty _ _ = empty
 
-instance (KnownSymbol ℓ, c τ, FoldStep ℓ τ ρ, Forall ('R ρ) c) => Forall ('R (ℓ :-> τ ': ρ) :: Row k) c where
+instance (KnownSymbol ℓ, c τ, Forall ('R ρ) c) => Forall ('R (ℓ :-> τ ': ρ) :: Row k) c where
   metamorph :: forall (f :: Row k -> *) (g :: Row k -> *) (h :: k -> *).
                Proxy h
             -> (f Empty -> g Empty)
                -- ^ The way to transform the empty element
             -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> f ('R (ℓ :-> τ ': ρ)) -> (h τ, f ('R ρ)))
                -- ^ The unfold
-            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FoldStep ℓ τ ρ) => Label ℓ -> h τ -> g ('R ρ) -> g ('R (ℓ :-> τ ': ρ)))
+            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> h τ -> g ('R ρ) -> g ('R (ℓ :-> τ ': ρ)))
                -- ^ The fold
             -> f ('R (ℓ :-> τ ': ρ))  -- ^ The input structure
             -> g ('R (ℓ :-> τ ': ρ))
@@ -282,7 +273,7 @@ instance (KnownSymbol ℓ, c τ, FoldStep ℓ τ ρ, Forall ('R ρ) c) => Forall
                -- ^ The way to transform the empty element
             -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> f ('R (ℓ :-> τ ': ρ)) -> Either (h τ) (f ('R ρ)))
                -- ^ The unfold
-            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FoldStep ℓ τ ρ) => Label ℓ -> Either (h τ) (g ('R ρ)) -> g ('R (ℓ :-> τ ': ρ)))
+            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> Either (h τ) (g ('R ρ)) -> g ('R (ℓ :-> τ ': ρ)))
                -- ^ The fold
             -> f ('R (ℓ :-> τ ': ρ))  -- ^ The input structure
             -> g ('R (ℓ :-> τ ': ρ))
