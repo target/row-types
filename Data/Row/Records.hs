@@ -41,6 +41,8 @@ module Data.Row.Records
   -- * Native Conversion
   -- $native
   , toNative, fromNative
+  -- * Dynamic Conversion
+  , toDynamicMap, fromDynamicMap
   -- * Row operations
   -- ** Map
   , Map, map, map', mapF
@@ -67,6 +69,7 @@ import Prelude hiding (map, sequence, zip)
 import Control.DeepSeq (NFData(..), deepseq)
 
 import Data.Constraint ((\\))
+import Data.Dynamic
 import Data.Functor.Compose
 import Data.Functor.Const
 import Data.Functor.Identity
@@ -440,6 +443,22 @@ fromLabelsMapA f = fromLabelsA @(IsA c g) @f @(Map g ρ) inner
                 \\ uniqueMap @g @ρ
    where inner :: forall l a. (KnownSymbol l, IsA c g a) => Label l -> f a
          inner l = case as @c @g @a of As -> f l
+
+
+{--------------------------------------------------------------------
+  Dynamic compatibility
+--------------------------------------------------------------------}
+
+-- | Converts a 'Rec' into a 'HashMap' of 'Dynamic's.
+toDynamicMap :: Forall r Typeable => Rec r -> HashMap Text Dynamic
+toDynamicMap = eraseToHashMap @Typeable @_ @Text @Dynamic toDyn
+
+-- | Produces a 'Rec' from a 'HashMap' of 'Dynamic's.
+fromDynamicMap :: (AllUniqueLabels r, Forall r Typeable)
+               => HashMap Text Dynamic -> Maybe (Rec r)
+fromDynamicMap m = fromLabelsA @Typeable
+  $ \ (toKey -> k) -> M.lookup k m >>= fromDynamic
+
 
 {--------------------------------------------------------------------
   Native data type compatibility
