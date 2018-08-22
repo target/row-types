@@ -436,13 +436,9 @@ toDynamicMap = eraseToHashMap @Typeable @_ @Text @Dynamic toDyn
 
 -- | Produces a 'Rec' from a 'HashMap' of 'Dynamic's.
 fromDynamicMap :: (AllUniqueLabels r, Forall r Typeable)
-               => HashMap Text Dynamic -> Rec r
-fromDynamicMap m = fromLabels @Typeable
-  $ \ (toKey -> k) -> unMaybe k (M.lookup k m >>= fromDynamic)
-  where unMaybe :: Text -> Maybe a -> a
-        unMaybe _ (Just x) = x
-        unMaybe k Nothing  = error $ "Key " ++ show k
-          ++ " does not exist in the Map or has the wrong type."
+               => HashMap Text Dynamic -> Maybe (Rec r)
+fromDynamicMap m = fromLabelsA @Typeable
+  $ \ (toKey -> k) -> M.lookup k m >>= fromDynamic
 
 
 {--------------------------------------------------------------------
