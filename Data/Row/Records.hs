@@ -291,19 +291,19 @@ map f = unRMap . metamorph @_ @r @c @Rec @(RMap f) @Identity Proxy doNil doUncon
            => Label ℓ -> Identity τ -> RMap f ('R ρ) -> RMap f ('R (ℓ :-> τ ': ρ))
     doCons l (Identity v) (RMap r) = RMap (unsafeInjectFront l (f v) r)
 
-newtype RFMap (g :: * -> *) (ϕ :: Row (* -> *)) (ρ :: Row *) = RFMap { unRFMap :: Rec (DotProduct ϕ (Map g ρ)) }
-newtype DotProd (ϕ :: Row (* -> *)) (ρ :: Row *) = DotProd (Rec (DotProduct ϕ ρ))
+newtype RFMap (g :: * -> *) (ϕ :: Row (* -> *)) (ρ :: Row *) = RFMap { unRFMap :: Rec (Ap ϕ (Map g ρ)) }
+newtype RecAp (ϕ :: Row (* -> *)) (ρ :: Row *) = RecAp (Rec (Ap ϕ ρ))
 newtype App (f :: * -> *) (a :: *) = App (f a)
 
--- | A function to map over a DotProduct record given constraints.
+-- | A function to map over a Ap record given constraints.
 mapF :: forall c1 c2 g ϕ ρ. BiForall ϕ ρ c1 c2
      => (forall f a. (c1 f, c2 a) => f a -> f (g a))
-     -> Rec (DotProduct ϕ ρ)
-     -> Rec (DotProduct ϕ (Map g ρ))
-mapF f = unRFMap . biMetamorph @_ @_ @ϕ @ρ @c1 @c2 @DotProd @(RFMap g) @App Proxy doNil doUncons doCons . DotProd
+     -> Rec (Ap ϕ ρ)
+     -> Rec (Ap ϕ (Map g ρ))
+mapF f = unRFMap . biMetamorph @_ @_ @ϕ @ρ @c1 @c2 @RecAp @(RFMap g) @App Proxy doNil doUncons doCons . RecAp
   where
     doNil _ = RFMap empty
-    doUncons l (DotProd r) = (App $ r .! l, DotProd $ unsafeRemove l r)
+    doUncons l (RecAp r) = (App $ r .! l, RecAp $ unsafeRemove l r)
     doCons :: forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c1 τ1, c2 τ2)
            => Label ℓ -> App τ1 τ2 -> RFMap g ('R ρ1) ('R ρ2) -> RFMap g ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2))
     doCons l (App v) (RFMap r) = RFMap (unsafeInjectFront l (f @τ1 @τ2 v) r)

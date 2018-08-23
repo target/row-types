@@ -31,7 +31,7 @@ module Data.Row.Internal
   , show'
   , toKey
   , type (≈)
-  , WellBehaved, AllUniqueLabels, DotProduct, Zip, Map, Subset, Disjoint
+  , WellBehaved, AllUniqueLabels, Ap, Zip, Map, Subset, Disjoint
 
   , mapForall
   , freeForall
@@ -391,13 +391,13 @@ type family MapR (f :: a -> b) (r :: [LT a]) :: [LT b] where
 
 -- | Take two rows with the same labels, and apply the type operator from the
 -- first row to the type of the second.
-type family DotProduct (fs :: Row (* -> *)) (r :: Row *) :: Row * where
-  DotProduct (R fs) (R r) = R (DotProductR fs r)
+type family Ap (fs :: Row (* -> *)) (r :: Row *) :: Row * where
+  Ap (R fs) (R r) = R (ApR fs r)
 
-type family DotProductR (fs :: [LT (* -> *)]) (r :: [LT *]) :: [LT *] where
-  DotProductR '[] '[] = '[]
-  DotProductR (l :-> f ': tf) (l :-> v ': tv) = l :-> f v ': DotProductR tf tv
-  DotProductR _ _ = TypeError (TL.Text "Row types with different label sets cannot be Dot Producted")
+type family ApR (fs :: [LT (* -> *)]) (r :: [LT *]) :: [LT *] where
+  ApR '[] '[] = '[]
+  ApR (l :-> f ': tf) (l :-> v ': tv) = l :-> f v ': ApR tf tv
+  ApR _ _ = TypeError (TL.Text "Row types with different label sets cannot be App'd together.")
 
 -- | Zips two rows together to create a Row of the pairs.
 --   The two rows must have the same set of labels.
