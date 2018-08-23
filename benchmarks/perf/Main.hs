@@ -8,6 +8,12 @@ import Data.Row.Records
 
 type FourRecord a =
      "i0" .== a   .+ "i1" .== a   .+ "i2" .== a   .+ "i3"   .== a
+
+type ElevenRecord a =
+     "i0"  .== a  .+ "i1"  .== a  .+ "i2"  .== a  .+ "i3"   .== a
+  .+ "i10" .== a  .+ "i11" .== a  .+ "i12" .== a  .+ "i13"  .== a
+  .+ "i20" .== a  .+ "i21" .== a  .+ "i22" .== a
+
 type SixteenRecord a =
      "i0"  .== a  .+ "i1"  .== a  .+ "i2"  .== a  .+ "i3"   .== a
   .+ "i10" .== a  .+ "i11" .== a  .+ "i12" .== a  .+ "i13"  .== a
@@ -60,6 +66,8 @@ main =
         , bench "reverse 4" $ nf id $ #d .== () .+ #c .== () .+ #b .== () .+ #a .== ()
         , bench "default 4" $ nf id $ default' @Num @(FourRecord Double) 0
         , bench "recordFromLabels 4" $ nf id $ fromLabels @IsString @(FourRecord String) (fromString . show)
+        , bench "default 11" $ nf id $ default' @Num @(ElevenRecord Double) 0
+        , bench "recordFromLabels 11" $ nf id $ fromLabels @IsString @(ElevenRecord String) (fromString . show)
         , bench "default 16" $ nf id $ default' @Num @(SixteenRecord Double) 0
         , bench "recordFromLabels 16" $ nf id $ fromLabels @IsString @(SixteenRecord String) (fromString . show)
         , bench "simple 64" $ nf id $ my64Record
@@ -73,6 +81,7 @@ main =
         ]
     , bgroup "Record Access"
         [ bench "get 2 of 4" $ nf (.! #i1)     $ default' @Num @(FourRecord Double) 0
+        [ bench "get 7 of 11" $ nf (.! #i1)    $ default' @Num @(ElevenRecord Double) 0
         , bench "get 4 of 16" $ nf (.! #i10)   $ default' @Num @(SixteenRecord Double) 0
         , bench "get 16 of 16" $ nf (.! #i33)  $ default' @Num @(SixteenRecord Double) 0
         , bench "get 4 of 64" $ nf (.! #i10)   $ default' @Num @(SixtyFourRecord Double) 1
