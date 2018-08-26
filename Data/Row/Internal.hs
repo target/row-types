@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE UndecidableSuperClasses #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Data.Row.Internal
@@ -26,7 +27,9 @@ module Data.Row.Internal
   , Labels, labels, labels'
   , Forall(..)
   , BiForall(..)
+  , BiConstraint
   , Unconstrained1
+  , Unconstrained2
   -- * Helper functions
   , show'
   , toKey
@@ -285,29 +288,48 @@ instance (KnownSymbol ℓ, c τ, Forall ('R ρ) c) => Forall ('R (ℓ :-> τ ': 
 -- | Any structure over two rows in which the elements of each row satisfy some
 --   constraints can be metamorphized into another structure over both of the
 --   rows.
-class BiForall (r1 :: Row k1) (r2 :: Row k2) (c1 :: k1 -> Constraint) (c2 :: k2 -> Constraint) where
-  -- | A metamorphism is a fold followed by an unfold.
+class BiForall (r1 :: Row k1) (r2 :: Row k2) (c :: k1 -> k2 -> Constraint) where
+  -- | A metamorphism is a fold followed by an unfold.  This one is for
+  -- product-like row-types.
   biMetamorph :: forall (f :: Row k1 -> Row k2 -> *) (g :: Row k1 -> Row k2 -> *)
                         (h :: k1 -> k2 -> *).
                  Proxy h
               -> (f Empty Empty -> g Empty Empty)
-              -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c1 τ1, c2 τ2)
+              -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1 τ2)
                   => Label ℓ
                   -> f ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2))
                   -> (h τ1 τ2, f ('R ρ1) ('R ρ2)))
-              -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c1 τ1, c2 τ2)
+              -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1 τ2)
                   => Label ℓ -> h τ1 τ2 -> g ('R ρ1) ('R ρ2) -> g ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)))
               -> f r1 r2 -> g r1 r2
 
-instance BiForall (R '[]) (R '[]) c1 c2 where
+  -- | A metamorphism is a fold followed by an unfold.  This one is for
+  -- sum-like row-types.
+  biMetamorph' :: forall (f :: Row k1 -> Row k2 -> *) (g :: Row k1 -> Row k2 -> *)
+                         (h :: k1 -> k2 -> *).
+                  Proxy h
+               -> (f Empty Empty -> g Empty Empty)
+               -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1 τ2)
+                   => Label ℓ
+                   -> f ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2))
+                   -> Either (h τ1 τ2) (f ('R ρ1) ('R ρ2)))
+               -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1 τ2)
+                   => Label ℓ -> Either (h τ1 τ2) (g ('R ρ1) ('R ρ2)) -> g ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)))
+               -> f r1 r2 -> g r1 r2
+
+instance BiForall (R '[]) (R '[]) c1 where
   {-# INLINE biMetamorph #-}
   biMetamorph _ empty _ _ = empty
+  biMetamorph' _ empty _ _ = empty
 
-instance (KnownSymbol ℓ, c1 τ1, c2 τ2, BiForall ('R ρ1) ('R ρ2) c1 c2)
-      => BiForall ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)) c1 c2 where
+instance (KnownSymbol ℓ, c τ1 τ2, BiForall ('R ρ1) ('R ρ2) c)
+      => BiForall ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)) c where
   {-# INLINE biMetamorph #-}
-  biMetamorph h empty uncons cons r = cons (Label @ℓ) t $ biMetamorph @_ @_ @('R ρ1) @('R ρ2) @c1 @c2 h empty uncons cons r'
+  biMetamorph h empty uncons cons r = cons (Label @ℓ) t $ biMetamorph @_ @_ @('R ρ1) @('R ρ2) @c h empty uncons cons r'
     where (t, r') = uncons (Label @ℓ) r
+  {-# INLINE biMetamorph' #-}
+  biMetamorph' h empty uncons cons r =
+    cons (Label @ℓ) $ biMetamorph' @_ @_ @('R ρ1) @('R ρ2) @c h empty uncons cons <$> uncons (Label @ℓ) r
 
 -- | A null constraint
 class Unconstrained
@@ -316,6 +338,14 @@ instance Unconstrained
 -- | A null constraint of one argument
 class Unconstrained1 a
 instance Unconstrained1 a
+
+-- | A null constraint of two arguments
+class Unconstrained2 a b
+instance Unconstrained2 a b
+
+-- | A pair of constraints
+class (c1 x, c2 y) => BiConstraint c1 c2 x y
+instance (c1 x, c2 y) => BiConstraint c1 c2 x y
 
 -- | The labels in a Row.
 type family Labels (r :: Row a) where

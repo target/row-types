@@ -296,15 +296,15 @@ newtype RecAp (ϕ :: Row (* -> *)) (ρ :: Row *) = RecAp (Rec (Ap ϕ ρ))
 newtype App (f :: * -> *) (a :: *) = App (f a)
 
 -- | A function to map over a Ap record given constraints.
-mapF :: forall c1 c2 g ϕ ρ. BiForall ϕ ρ c1 c2
-     => (forall f a. (c1 f, c2 a) => f a -> f (g a))
+mapF :: forall c g ϕ ρ. BiForall ϕ ρ c
+     => (forall f a. (c f a) => f a -> f (g a))
      -> Rec (Ap ϕ ρ)
      -> Rec (Ap ϕ (Map g ρ))
-mapF f = unRFMap . biMetamorph @_ @_ @ϕ @ρ @c1 @c2 @RecAp @(RFMap g) @App Proxy doNil doUncons doCons . RecAp
+mapF f = unRFMap . biMetamorph @_ @_ @ϕ @ρ @c @RecAp @(RFMap g) @App Proxy doNil doUncons doCons . RecAp
   where
     doNil _ = RFMap empty
     doUncons l (RecAp r) = (App $ r .! l, RecAp $ unsafeRemove l r)
-    doCons :: forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c1 τ1, c2 τ2)
+    doCons :: forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1 τ2)
            => Label ℓ -> App τ1 τ2 -> RFMap g ('R ρ1) ('R ρ2) -> RFMap g ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2))
     doCons l (App v) (RFMap r) = RFMap (unsafeInjectFront l (f @τ1 @τ2 v) r)
 
@@ -389,8 +389,8 @@ newtype RecPair  (ρ1 :: Row *) (ρ2 :: Row *) = RecPair  (Rec ρ1, Rec ρ2)
 newtype RZipPair (ρ1 :: Row *) (ρ2 :: Row *) = RZipPair { unRZipPair :: Rec (Zip ρ1 ρ2) }
 
 -- | Zips together two records that have the same set of labels.
-zip :: forall r1 r2. BiForall r1 r2 Unconstrained1 Unconstrained1 => Rec r1 -> Rec r2 -> Rec (Zip r1 r2)
-zip r1 r2 = unRZipPair $ biMetamorph @_ @_ @r1 @r2 @Unconstrained1 @Unconstrained1 @RecPair @RZipPair @(,) Proxy doNil doUncons doCons $ RecPair (r1, r2)
+zip :: forall r1 r2. BiForall r1 r2 Unconstrained2 => Rec r1 -> Rec r2 -> Rec (Zip r1 r2)
+zip r1 r2 = unRZipPair $ biMetamorph @_ @_ @r1 @r2 @Unconstrained2 @RecPair @RZipPair @(,) Proxy doNil doUncons doCons $ RecPair (r1, r2)
   where
     doNil _ = RZipPair empty
     doUncons l (RecPair (r1, r2)) = ((r1 .! l, r2 .! l), RecPair (unsafeRemove l r1, unsafeRemove l r2))
