@@ -291,12 +291,12 @@ map f = unRMap . metamorph @_ @r @c @Rec @(RMap f) @Identity Proxy doNil doUncon
            => Label ℓ -> Identity τ -> RMap f ('R ρ) -> RMap f ('R (ℓ :-> τ ': ρ))
     doCons l (Identity v) (RMap r) = RMap (unsafeInjectFront l (f v) r)
 
-newtype RFMap (g :: * -> *) (ϕ :: Row (* -> *)) (ρ :: Row *) = RFMap { unRFMap :: Rec (Ap ϕ (Map g ρ)) }
-newtype RecAp (ϕ :: Row (* -> *)) (ρ :: Row *) = RecAp (Rec (Ap ϕ ρ))
-newtype App (f :: * -> *) (a :: *) = App (f a)
+newtype RFMap (g :: k1 -> k2) (ϕ :: Row (k2 -> *)) (ρ :: Row k1) = RFMap { unRFMap :: Rec (Ap ϕ (Map g ρ)) }
+newtype RecAp (ϕ :: Row (k -> *)) (ρ :: Row k) = RecAp (Rec (Ap ϕ ρ))
+newtype App (f :: k -> *) (a :: k) = App (f a)
 
 -- | A function to map over a Ap record given constraints.
-mapF :: forall c g ϕ ρ. BiForall ϕ ρ c
+mapF :: forall c g (ϕ :: Row (k -> *)) (ρ :: Row k). BiForall ϕ ρ c
      => (forall f a. (c f a) => f a -> f (g a))
      -> Rec (Ap ϕ ρ)
      -> Rec (Ap ϕ (Map g ρ))

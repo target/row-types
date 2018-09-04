@@ -421,10 +421,10 @@ type family MapR (f :: a -> b) (r :: [LT a]) :: [LT b] where
 
 -- | Take two rows with the same labels, and apply the type operator from the
 -- first row to the type of the second.
-type family Ap (fs :: Row (* -> *)) (r :: Row *) :: Row * where
+type family Ap (fs :: Row (a -> b)) (r :: Row a) :: Row b where
   Ap (R fs) (R r) = R (ApR fs r)
 
-type family ApR (fs :: [LT (* -> *)]) (r :: [LT *]) :: [LT *] where
+type family ApR (fs :: [LT (a -> b)]) (r :: [LT a]) :: [LT b] where
   ApR '[] '[] = '[]
   ApR (l :-> f ': tf) (l :-> v ': tv) = l :-> f v ': ApR tf tv
   ApR _ _ = TypeError (TL.Text "Row types with different label sets cannot be App'd together.")
