@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE UndecidableSuperClasses #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Data.Row.Internal
@@ -24,13 +25,16 @@ module Data.Row.Internal
   , Lacks, HasType
   -- * Row Classes
   , Labels, labels, labels'
-  , Forall(..), Forall2(..)
+  , Forall(..)
+  , BiForall(..)
+  , BiConstraint
   , Unconstrained1
+  , Unconstrained2
   -- * Helper functions
   , show'
   , toKey
   , type (≈)
-  , WellBehaved, AllUniqueLabels, Zip, Map, Subset, Disjoint
+  , WellBehaved, AllUniqueLabels, Ap, Zip, Map, Subset, Disjoint
 
   , mapForall
   , freeForall
@@ -38,8 +42,6 @@ module Data.Row.Internal
   , mapHas
   , IsA(..)
   , As(..)
-
-  , FoldStep
   )
 where
 
@@ -77,6 +79,7 @@ data LT a = Symbol :-> a
 
 -- | A label
 data Label (s :: Symbol) = Label
+  deriving (Eq)
 
 instance KnownSymbol s => Show (Label s) where
   show = symbolVal
@@ -176,11 +179,6 @@ type (l :: Symbol) .== (a :: k) = Extend l a Empty
   Constrained record operations
 --------------------------------------------------------------------}
 
--- | Proof that the given label is a valid candidate for the next step
--- in a metamorph fold, i.e. it's not in the list yet and, when sorted,
--- will be placed at the head.
-type FoldStep ℓ τ ρ = Inject (ℓ :-> τ) ρ ≈ ℓ :-> τ ': ρ
-
 -- | Any structure over a row in which every element is similarly constrained can
 --   be metamorphized into another structure over the same row.
 class Forall (r :: Row k) (c :: k -> Constraint) where
@@ -192,7 +190,7 @@ class Forall (r :: Row k) (c :: k -> Constraint) where
                -- ^ The way to transform the empty element
             -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> f ('R (ℓ :-> τ ': ρ)) -> (h τ, f ('R ρ)))
                -- ^ The unfold
-            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FoldStep ℓ τ ρ) => Label ℓ -> h τ -> g ('R ρ) -> g ('R (ℓ :-> τ ': ρ)))
+            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> h τ -> g ('R ρ) -> g ('R (ℓ :-> τ ': ρ)))
                -- ^ The fold
             -> f r  -- ^ The input structure
             -> g r
@@ -205,7 +203,7 @@ class Forall (r :: Row k) (c :: k -> Constraint) where
                -- ^ The way to transform the empty element
             -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> f ('R (ℓ :-> τ ': ρ)) -> Either (h τ) (f ('R ρ)))
                -- ^ The unfold
-            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FoldStep ℓ τ ρ) => Label ℓ -> Either (h τ) (g ('R ρ)) -> g ('R (ℓ :-> τ ': ρ)))
+            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> Either (h τ) (g ('R ρ)) -> g ('R (ℓ :-> τ ': ρ)))
                -- ^ The fold
             -> f r  -- ^ The input structure
             -> g r
@@ -237,12 +235,10 @@ mapForall = Sub $ unMapForall $ metamorph @_ @ρ @c @(Const ()) @(MapForall c f)
                => Label l -> Const () ('R (l :-> t ': r)) -> (Const () t, Const () ('R r))
         uncons _ _ = (Const (), Const ())
 
-        cons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FoldStep ℓ τ ρ)
+        cons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
              => Label ℓ -> Const () τ -> MapForall c f ('R ρ)
              -> MapForall c f ('R (ℓ :-> τ ': ρ))
-        cons _ _ (MapForall Dict) =
-           case UNSAFE.unsafeCoerce @(Dict Unconstrained) @(Dict (FoldStep ℓ (f τ) (MapR f ρ))) Dict of
-             Dict -> MapForall Dict
+        cons _ _ (MapForall Dict) = MapForall Dict
 
 -- | Map preserves uniqueness of labels.
 uniqueMap :: forall f ρ. AllUniqueLabels ρ :- AllUniqueLabels (Map f ρ)
@@ -262,14 +258,14 @@ instance Forall (R '[]) c where
   {-# INLINE metamorph' #-}
   metamorph' _ empty _ _ = empty
 
-instance (KnownSymbol ℓ, c τ, FoldStep ℓ τ ρ, Forall ('R ρ) c) => Forall ('R (ℓ :-> τ ': ρ) :: Row k) c where
+instance (KnownSymbol ℓ, c τ, Forall ('R ρ) c) => Forall ('R (ℓ :-> τ ': ρ) :: Row k) c where
   metamorph :: forall (f :: Row k -> *) (g :: Row k -> *) (h :: k -> *).
                Proxy h
             -> (f Empty -> g Empty)
                -- ^ The way to transform the empty element
             -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> f ('R (ℓ :-> τ ': ρ)) -> (h τ, f ('R ρ)))
                -- ^ The unfold
-            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FoldStep ℓ τ ρ) => Label ℓ -> h τ -> g ('R ρ) -> g ('R (ℓ :-> τ ': ρ)))
+            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> h τ -> g ('R ρ) -> g ('R (ℓ :-> τ ': ρ)))
                -- ^ The fold
             -> f ('R (ℓ :-> τ ': ρ))  -- ^ The input structure
             -> g ('R (ℓ :-> τ ': ρ))
@@ -282,42 +278,58 @@ instance (KnownSymbol ℓ, c τ, FoldStep ℓ τ ρ, Forall ('R ρ) c) => Forall
                -- ^ The way to transform the empty element
             -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> f ('R (ℓ :-> τ ': ρ)) -> Either (h τ) (f ('R ρ)))
                -- ^ The unfold
-            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FoldStep ℓ τ ρ) => Label ℓ -> Either (h τ) (g ('R ρ)) -> g ('R (ℓ :-> τ ': ρ)))
+            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> Either (h τ) (g ('R ρ)) -> g ('R (ℓ :-> τ ': ρ)))
                -- ^ The fold
             -> f ('R (ℓ :-> τ ': ρ))  -- ^ The input structure
             -> g ('R (ℓ :-> τ ': ρ))
   {-# INLINE metamorph' #-}
   metamorph' _ empty uncons cons r = cons Label $ metamorph' @_ @('R ρ) @c @_ @_ @h Proxy empty uncons cons <$> uncons Label r
 
--- | Any structure over two rows in which every element of both rows satisfies the
---   given constraint can be metamorphized into another structure over both of the
+-- | Any structure over two rows in which the elements of each row satisfy some
+--   constraints can be metamorphized into another structure over both of the
 --   rows.
--- TODO: Perhaps it should be over two constraints?  But this hasn't seemed necessary
---  in practice.
-class Forall2 (r1 :: Row k) (r2 :: Row k) (c :: k -> Constraint) where
-  -- | A metamorphism is a fold followed by an unfold.  Here, we fold both of the inputs.
-  metamorph2 :: forall (f :: Row k -> *) (g :: Row k -> *) (h :: Row k -> Row k -> *)
-                       (f' :: k -> *) (g' :: k -> *).
-                Proxy f' -> Proxy g'
-             -> (f Empty -> g Empty -> h Empty Empty)
-             -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1, c τ2)
-                 => Label ℓ
-                 -> f ('R (ℓ :-> τ1 ': ρ1))
-                 -> g ('R (ℓ :-> τ2 ': ρ2))
-                 -> ((f' τ1, f ('R ρ1)), (g' τ2, g ('R ρ2))))
-             -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1, c τ2)
-                 => Label ℓ -> f' τ1 -> g' τ2 -> h ('R ρ1) ('R ρ2) -> h ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)))
-             -> f r1 -> g r2 -> h r1 r2
+class BiForall (r1 :: Row k1) (r2 :: Row k2) (c :: k1 -> k2 -> Constraint) where
+  -- | A metamorphism is a fold followed by an unfold.  This one is for
+  -- product-like row-types.
+  biMetamorph :: forall (f :: Row k1 -> Row k2 -> *) (g :: Row k1 -> Row k2 -> *)
+                        (h :: k1 -> k2 -> *).
+                 Proxy h
+              -> (f Empty Empty -> g Empty Empty)
+              -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1 τ2)
+                  => Label ℓ
+                  -> f ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2))
+                  -> (h τ1 τ2, f ('R ρ1) ('R ρ2)))
+              -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1 τ2)
+                  => Label ℓ -> h τ1 τ2 -> g ('R ρ1) ('R ρ2) -> g ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)))
+              -> f r1 r2 -> g r1 r2
 
-instance Forall2 (R '[]) (R '[]) c where
-  {-# INLINE metamorph2 #-}
-  metamorph2 _ _ empty _ _ = empty
+  -- | A metamorphism is a fold followed by an unfold.  This one is for
+  -- sum-like row-types.
+  biMetamorph' :: forall (f :: Row k1 -> Row k2 -> *) (g :: Row k1 -> Row k2 -> *)
+                         (h :: k1 -> k2 -> *).
+                  Proxy h
+               -> (f Empty Empty -> g Empty Empty)
+               -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1 τ2)
+                   => Label ℓ
+                   -> f ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2))
+                   -> Either (h τ1 τ2) (f ('R ρ1) ('R ρ2)))
+               -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1 τ2)
+                   => Label ℓ -> Either (h τ1 τ2) (g ('R ρ1) ('R ρ2)) -> g ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)))
+               -> f r1 r2 -> g r1 r2
 
-instance (KnownSymbol ℓ, c τ1, c τ2, Forall2 ('R ρ1) ('R ρ2) c)
-      => Forall2 ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)) c where
-  {-# INLINE metamorph2 #-}
-  metamorph2 f g empty uncons cons r1 r2 = cons (Label @ℓ) t1 t2 $ metamorph2 @_ @('R ρ1) @('R ρ2) @c f g empty uncons cons r1' r2'
-    where ((t1, r1'), (t2, r2')) = uncons (Label @ℓ) r1 r2
+instance BiForall (R '[]) (R '[]) c1 where
+  {-# INLINE biMetamorph #-}
+  biMetamorph _ empty _ _ = empty
+  biMetamorph' _ empty _ _ = empty
+
+instance (KnownSymbol ℓ, c τ1 τ2, BiForall ('R ρ1) ('R ρ2) c)
+      => BiForall ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)) c where
+  {-# INLINE biMetamorph #-}
+  biMetamorph h empty uncons cons r = cons (Label @ℓ) t $ biMetamorph @_ @_ @('R ρ1) @('R ρ2) @c h empty uncons cons r'
+    where (t, r') = uncons (Label @ℓ) r
+  {-# INLINE biMetamorph' #-}
+  biMetamorph' h empty uncons cons r =
+    cons (Label @ℓ) $ biMetamorph' @_ @_ @('R ρ1) @('R ρ2) @c h empty uncons cons <$> uncons (Label @ℓ) r
 
 -- | A null constraint
 class Unconstrained
@@ -326,6 +338,14 @@ instance Unconstrained
 -- | A null constraint of one argument
 class Unconstrained1 a
 instance Unconstrained1 a
+
+-- | A null constraint of two arguments
+class Unconstrained2 a b
+instance Unconstrained2 a b
+
+-- | A pair of constraints
+class (c1 x, c2 y) => BiConstraint c1 c2 x y
+instance (c1 x, c2 y) => BiConstraint c1 c2 x y
 
 -- | The labels in a Row.
 type family Labels (r :: Row a) where
@@ -398,6 +418,16 @@ type family Map (f :: a -> b) (r :: Row a) :: Row b where
 type family MapR (f :: a -> b) (r :: [LT a]) :: [LT b] where
   MapR f '[] = '[]
   MapR f (l :-> v ': t) = l :-> f v ': MapR f t
+
+-- | Take two rows with the same labels, and apply the type operator from the
+-- first row to the type of the second.
+type family Ap (fs :: Row (a -> b)) (r :: Row a) :: Row b where
+  Ap (R fs) (R r) = R (ApR fs r)
+
+type family ApR (fs :: [LT (a -> b)]) (r :: [LT a]) :: [LT b] where
+  ApR '[] '[] = '[]
+  ApR (l :-> f ': tf) (l :-> v ': tv) = l :-> f v ': ApR tf tv
+  ApR _ _ = TypeError (TL.Text "Row types with different label sets cannot be App'd together.")
 
 -- | Zips two rows together to create a Row of the pairs.
 --   The two rows must have the same set of labels.
