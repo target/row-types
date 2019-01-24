@@ -170,7 +170,14 @@ update :: (KnownSymbol l, r .! l ≈ a) => Label l -> a -> Rec r -> Rec r
 update (toKey -> l) a (OR m) = OR $ M.adjust f l m where f = const (HideType a)
 
 -- | Focus on the value associated with the label.
-focus :: (Functor f, KnownSymbol l) => Label l -> (r .! l -> f a) -> Rec r -> f (Rec (Modify l a r))
+focus ::
+  ( KnownSymbol l
+  , r' .! l ≈ b
+  , r  .! l ≈ a
+  , r' ~ Modify l b r
+  , r  ~ Modify l a r'
+  , Functor f)
+  => Label l -> (a -> f b) -> Rec r -> f (Rec r')
 focus (toKey -> l) f (OR m) = case m M.! l of
   HideType x -> OR . flip (M.insert l) m . HideType <$> f (unsafeCoerce x)
 
