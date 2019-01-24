@@ -14,7 +14,7 @@ module Data.Row.Variants
   , KnownSymbol, AllUniqueLabels, WellBehaved
   , Var, Row, Empty, type (≈)
   -- * Construction
-  , HasType, pattern IsJust, singleton
+  , HasType, pattern IsJust, singleton, unSingleton
   , fromLabels
   -- ** Extension
   , type (.\), Lacks, type (.\/), diversify, type (.+)
@@ -25,6 +25,9 @@ module Data.Row.Variants
   , restrict, split
   -- ** Types for destruction
   , type (.!), type (.-), type (.\\), type (.==)
+  -- * Native Conversion
+  -- $native
+  , toNative, fromNative, fromNativeExact
   -- * Row operations
   -- ** Map
   , Map, map, map', transform, transform'
@@ -56,6 +59,7 @@ import Data.Proxy
 import Data.String (IsString)
 import Data.Text (Text)
 
+import qualified GHC.Generics as G
 import GHC.TypeLits
 
 import Unsafe.Coerce
@@ -112,14 +116,18 @@ impossible _ = error "Impossible! Somehow, a variant of nothing was produced."
 singleton :: KnownSymbol l => Label l -> a -> Var (l .== a)
 singleton = IsJust
 
+-- | A quick destructor for singleton variants.
+unSingleton :: forall l a. KnownSymbol l => Var (l .== a) -> (Label l, a)
+unSingleton (OneOf _ (HideType x)) = (l, unsafeCoerce x) where l = Label @l
+
 -- | A pattern for variants; can be used to both destruct a variant
 -- when in a pattern position or construct one in an expression position.
 pattern IsJust :: forall l r. (AllUniqueLabels r, KnownSymbol l) => Label l -> r .! l -> Var r
-pattern IsJust l a <- (unSingleton @l -> (l, Just a)) where
+pattern IsJust l a <- (isJustHelper @l -> (l, Just a)) where
         IsJust l a = unsafeMakeVar l a
 
-unSingleton :: forall l r. KnownSymbol l => Var r -> (Label l, Maybe (r .! l))
-unSingleton v = (l, view l v) where l = Label @l
+isJustHelper :: forall l r. KnownSymbol l => Var r -> (Label l, Maybe (r .! l))
+isJustHelper v = (l, view l v) where l = Label @l
 
 -- | Make the variant arbitrarily more diverse.
 diversify :: forall r' r. Var r -> Var (r .\/ r')
@@ -306,3 +314,112 @@ fromLabels mk = getCompose $ metamorph' @_ @ρ @c @(Const ()) @(Compose f Var) @
         doCons l (Left _) = Compose $ unsafeMakeVar l <$> mk l --This case should be impossible
         doCons l (Right (Compose v)) = Compose $
           unsafeMakeVar l <$> mk l <|> unsafeInjectFront <$> v
+
+{--------------------------------------------------------------------
+  Native data type compatibility
+--------------------------------------------------------------------}
+
+-- $native
+-- The 'toNative' and 'fromNative' functions allow one to convert between
+-- 'Var's and regular Haskell data types ("native" types) that have the same
+-- number of constructors such that each constructor has one field and the same
+-- name as one of the options of the 'Var', which has the same type as that field.
+-- That said, they do not compose to form the identity because 'fromNative' allows
+-- constructors to be added: a variant with excess options can still be transformed
+-- to a native type, but when the native type is converted to a variant, the
+-- options are exactly transformed.  The only requirement is that
+-- the native Haskell data type be an instance of 'Generic'.
+--
+-- For example, consider the following simple data type:
+--
+-- >>> data Pet = Dog {age :: Int} | Cat {age :: Int} deriving (Generic, Show)
+--
+-- Then, we have the following:
+--
+-- >>> toNative $ IsJust (Label @"Dog") 3 :: Pet
+-- Dog {age = 3}
+-- >>> V.fromNative $ Dog 3 :: Var ("Dog" .== Int .+ "Cat" .== Int)
+-- {Dog=3}
+--
+-- The 'fromNativeExact' function is a more restricted version of 'fromNative' that
+-- does not allow options to be added; in other words, the options in the variant
+-- must exactly match the constructors in the data type.  Because of this,
+-- 'fromNativeExact' and 'toNative' compose to form the identity function.
+
+
+-- | Conversion helper to bring a variant back into a Haskell type. Note that the
+-- native Haskell type must be an instance of 'Generic'.
+class ToNative a ρ where
+  toNative' :: Var ρ -> a x
+
+instance ToNative cs ρ => ToNative (G.D1 m cs) ρ where
+  toNative' = G.M1 . toNative'
+
+instance ToNative G.V1 Empty where
+  toNative' = impossible
+
+instance (KnownSymbol name, ρ ≈ name .== t)
+    => ToNative (G.C1 ('G.MetaCons name fixity sels)
+                (G.S1 ('G.MetaSel n p s l) (G.Rec0 t))) ρ where
+  toNative' = G.M1 . G.M1 . G.K1 . snd . unSingleton
+
+instance ( ToNative l ρ₁, ToNative r ρ₂, ρ₂ ≈ ρ .\\ ρ₁, ρ ≈ ρ₁ .+ ρ₂
+         , AllUniqueLabels ρ₁, Forall ρ₂ Unconstrained1)
+    => ToNative (l G.:+: r) ρ where
+  toNative' v = case multiTrial @ρ₁ @ρ v of
+    Left  v' -> G.L1 $ toNative' @_ @ρ₁ v'
+    Right v' -> G.R1 $ toNative' @_ @ρ₂ v'
+
+-- | Convert a variant to a native Haskell type.
+toNative :: forall t ρ. (G.Generic t, ToNative (G.Rep t) ρ) => Var ρ -> t
+toNative = G.to . toNative'
+
+-- | Conversion helper to turn a Haskell variant into a row-types extensible
+-- variant. Note that the native Haskell type must be an instance of 'Generic'.
+class FromNative a ρ where
+  fromNative' :: a x -> Var ρ
+
+instance FromNative cs ρ => FromNative (G.D1 m cs) ρ where
+  fromNative' (G.M1 v) = fromNative' v
+
+instance FromNative G.V1 ρ where
+  fromNative' _ = error "Impossible! Somehow, a Void type was inhabited."
+
+instance (KnownSymbol name, ρ .! name ≈ t, AllUniqueLabels ρ)
+    => FromNative (G.C1 ('G.MetaCons name fixity sels)
+                  (G.S1 ('G.MetaSel n p s l) (G.Rec0 t))) ρ where
+  fromNative' (G.M1 (G.M1 (G.K1 x))) = IsJust (Label @name) x
+
+instance (FromNative l ρ, FromNative r ρ)
+    => FromNative (l G.:+: r) ρ where
+  fromNative' (G.L1 x) = unsafeCoerce $ fromNative' @l @ρ x
+  fromNative' (G.R1 y) = unsafeCoerce $ fromNative' @r @ρ y
+
+-- | Convert a Haskell record to a row-types Var.
+fromNative :: forall t ρ. (G.Generic t, FromNative (G.Rep t) ρ) => t -> Var ρ
+fromNative = fromNative' . G.from
+
+-- | Conversion helper to turn a Haskell variant into a row-types extensible
+-- variant. Note that the native Haskell type must be an instance of 'Generic'.
+class FromNativeExact a ρ where
+  fromNativeExact' :: a x -> Var ρ
+
+instance FromNativeExact cs ρ => FromNativeExact (G.D1 m cs) ρ where
+  fromNativeExact' (G.M1 v) = fromNativeExact' v
+
+instance FromNativeExact G.V1 Empty where
+  fromNativeExact' _ = error "Impossible! Somehow, a Void type was inhabited."
+
+instance (KnownSymbol name, ρ ≈ name .== t)
+    => FromNativeExact (G.C1 ('G.MetaCons name fixity sels)
+                       (G.S1 ('G.MetaSel n p s l) (G.Rec0 t))) ρ where
+  fromNativeExact' (G.M1 (G.M1 (G.K1 x))) = IsJust (Label @name) x
+
+instance (FromNativeExact l ρ₁, FromNativeExact r ρ₂, ρ ≈ ρ₁ .+ ρ₂)
+    => FromNativeExact (l G.:+: r) ρ where
+  fromNativeExact' (G.L1 x) = unsafeCoerce $ fromNativeExact' @l @ρ₁ x
+  fromNativeExact' (G.R1 y) = unsafeCoerce $ fromNativeExact' @r @ρ₂ y
+
+-- | Convert a Haskell record to a row-types Var.
+fromNativeExact :: forall t ρ. (G.Generic t, FromNativeExact (G.Rep t) ρ) => t -> Var ρ
+fromNativeExact = fromNativeExact' . G.from
