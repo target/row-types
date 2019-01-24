@@ -42,6 +42,10 @@ module Data.Row.Internal
   , mapHas
   , IsA(..)
   , As(..)
+
+  , Lowercase
+  , Uppercase
+  , Head
   )
 where
 
@@ -489,6 +493,9 @@ type family LacksR (l :: Symbol) (r :: [LT k]) (r_orig :: [LT k]) :: Constraint 
 type family Merge (l :: [LT k]) (r :: [LT k]) where
   Merge '[] r = r
   Merge l '[] = l
+  Merge (h :-> a ': tl)   (h :-> a ': tr) =
+    TypeError (TL.Text "The label " :<>: ShowType h :<>: TL.Text " (of type "
+          :$$: ShowType a :<>: TL.Text ") has duplicate assignments.")
   Merge (h :-> a ': tl)   (h :-> b ': tr) =
     TypeError (TL.Text "The label " :<>: ShowType h :<>: TL.Text " has conflicting assignments."
           :$$: TL.Text "Its type is both " :<>: ShowType a :<>: TL.Text " and " :<>: ShowType b :<>: TL.Text ".")
@@ -528,3 +535,176 @@ type a <=.? b = (CmpSymbol a b == 'LT)
 -- | A lower fixity operator for type equality
 infix 4 ≈
 type a ≈ b = a ~ b
+
+-- | Only used at the type level
+data Tree a
+  = Leaf
+  | Node (Tree a) a (Tree a)
+
+-- | A tree for finding the first character of a symbol
+type Chars
+ = 'Node
+  ('Node
+  ('Node
+    ('Node
+      ('Node
+        ('Node ('Node 'Leaf '(" ", "!") 'Leaf) '("!", "\"") 'Leaf)
+        '("\"", "#")
+        ('Node ('Node 'Leaf '("#", "$") 'Leaf) '("$", "%") 'Leaf))
+      '("%", "&")
+      ('Node
+        ('Node ('Node 'Leaf '("&", "'") 'Leaf) '("'", "(") 'Leaf)
+        '("(", ")")
+        ('Node ('Node 'Leaf '(")", "*") 'Leaf) '("*", "+") 'Leaf)))
+    '("+", ",")
+    ('Node
+      ('Node
+        ('Node ('Node 'Leaf '(",", "-") 'Leaf) '("-", ".") 'Leaf)
+        '(".", "/")
+        ('Node ('Node 'Leaf '("/", "0") 'Leaf) '("0", "1") 'Leaf))
+      '("1", "2")
+      ('Node
+        ('Node ('Node 'Leaf '("2", "3") 'Leaf) '("3", "4") 'Leaf)
+        '("4", "5")
+        ('Node ('Node 'Leaf '("5", "6") 'Leaf) '("6", "7") 'Leaf))))
+  '("7", "8")
+  ('Node
+    ('Node
+      ('Node
+        ('Node ('Node 'Leaf '("8", "9") 'Leaf) '("9", ":") 'Leaf)
+        '(":", ";")
+        ('Node ('Node 'Leaf '(";", "<") 'Leaf) '("<", "=") 'Leaf))
+      '("=", ">")
+      ('Node
+        ('Node ('Node 'Leaf '(">", "?") 'Leaf) '("?", "@") 'Leaf)
+        '("@", "A")
+        ('Node ('Node 'Leaf '("A", "B") 'Leaf) '("B", "C") 'Leaf)))
+    '("C", "D")
+    ('Node
+      ('Node
+        ('Node ('Node 'Leaf '("D", "E") 'Leaf) '("E", "F") 'Leaf)
+        '("F", "G")
+        ('Node ('Node 'Leaf '("G", "H") 'Leaf) '("H", "I") 'Leaf))
+      '("I", "J")
+      ('Node
+        ('Node ('Node 'Leaf '("J", "K") 'Leaf) '("K", "L") 'Leaf)
+        '("L", "M")
+        ('Node ('Node 'Leaf '("M", "N") 'Leaf) '("N", "O") 'Leaf)))))
+  '("O", "P")
+  ('Node
+  ('Node
+    ('Node
+      ('Node
+        ('Node ('Node 'Leaf '("P", "Q") 'Leaf) '("Q", "R") 'Leaf)
+        '("R", "S")
+        ('Node ('Node 'Leaf '("S", "T") 'Leaf) '("T", "U") 'Leaf))
+      '("U", "V")
+      ('Node
+        ('Node ('Node 'Leaf '("V", "W") 'Leaf) '("W", "X") 'Leaf)
+        '("X", "Y")
+        ('Node ('Node 'Leaf '("Y", "Z") 'Leaf) '("Z", "[") 'Leaf)))
+    '("[", "\\")
+    ('Node
+      ('Node
+        ('Node ('Node 'Leaf '("\\", "]") 'Leaf) '("]", "^") 'Leaf)
+        '("^", "_")
+        ('Node ('Node 'Leaf '("_", "`") 'Leaf) '("`", "a") 'Leaf))
+      '("a", "b")
+      ('Node
+        ('Node ('Node 'Leaf '("b", "c") 'Leaf) '("c", "d") 'Leaf)
+        '("d", "e")
+        ('Node ('Node 'Leaf '("e", "f") 'Leaf) '("f", "g") 'Leaf))))
+  '("g", "h")
+  ('Node
+    ('Node
+      ('Node
+        ('Node ('Node 'Leaf '("h", "i") 'Leaf) '("i", "j") 'Leaf)
+        '("j", "k")
+        ('Node ('Node 'Leaf '("k", "l") 'Leaf) '("l", "m") 'Leaf))
+      '("m", "n")
+      ('Node
+        ('Node ('Node 'Leaf '("n", "o") 'Leaf) '("o", "p") 'Leaf)
+        '("p", "q")
+        ('Node ('Node 'Leaf '("q", "r") 'Leaf) '("r", "s") 'Leaf)))
+    '("s", "t")
+    ('Node
+      ('Node
+        ('Node ('Node 'Leaf '("t", "u") 'Leaf) '("u", "v") 'Leaf)
+        '("v", "w")
+        ('Node ('Node 'Leaf '("w", "x") 'Leaf) '("x", "y") 'Leaf))
+      '("y", "z")
+      ('Node
+        ('Node ('Node 'Leaf '("z", "{") 'Leaf) '("{", "|") 'Leaf)
+        '("|", "}")
+        ('Node ('Node 'Leaf '("}", "~") 'Leaf) '("~", "~") 'Leaf)))))
+
+type family Lookup (x :: Symbol) (xs :: Tree (Symbol, Symbol)) :: Symbol where
+  Lookup x (Node l '(cl, cr) r)
+    = Lookup2 (CmpSymbol cl x) (CmpSymbol cr x) x cl l r
+
+type family Lookup2 ol or x cl l r :: Symbol where
+  Lookup2 'EQ _ _ cl _ _     = cl -- character matches
+  Lookup2 'LT 'GT _ cl _ r   = cl -- found the right node
+  Lookup2 'LT _ _ cl _ 'Leaf = cl -- we're at the rightmost node (~)
+  Lookup2 'LT _ x _ _ r      = Lookup x r -- go right
+  Lookup2 'GT _ x _ l _      = Lookup x l -- go left
+
+type Head sym = Lookup sym Chars
+
+type family Lowercase sym :: Symbol where
+  Lowercase "A" = "a"
+  Lowercase "B" = "b"
+  Lowercase "C" = "c"
+  Lowercase "D" = "d"
+  Lowercase "E" = "e"
+  Lowercase "F" = "f"
+  Lowercase "G" = "g"
+  Lowercase "H" = "h"
+  Lowercase "I" = "i"
+  Lowercase "J" = "j"
+  Lowercase "K" = "k"
+  Lowercase "L" = "l"
+  Lowercase "M" = "m"
+  Lowercase "N" = "n"
+  Lowercase "O" = "o"
+  Lowercase "P" = "p"
+  Lowercase "Q" = "q"
+  Lowercase "R" = "r"
+  Lowercase "S" = "s"
+  Lowercase "T" = "t"
+  Lowercase "U" = "u"
+  Lowercase "V" = "v"
+  Lowercase "W" = "w"
+  Lowercase "X" = "x"
+  Lowercase "Y" = "y"
+  Lowercase "Z" = "z"
+  Lowercase  x  =  x
+
+type family Uppercase sym :: Symbol where
+  Uppercase "a" = "A"
+  Uppercase "b" = "B"
+  Uppercase "c" = "C"
+  Uppercase "d" = "D"
+  Uppercase "e" = "E"
+  Uppercase "f" = "F"
+  Uppercase "g" = "G"
+  Uppercase "h" = "H"
+  Uppercase "i" = "I"
+  Uppercase "j" = "J"
+  Uppercase "k" = "K"
+  Uppercase "l" = "L"
+  Uppercase "m" = "M"
+  Uppercase "n" = "N"
+  Uppercase "o" = "O"
+  Uppercase "p" = "P"
+  Uppercase "q" = "Q"
+  Uppercase "r" = "R"
+  Uppercase "s" = "S"
+  Uppercase "t" = "T"
+  Uppercase "u" = "U"
+  Uppercase "v" = "V"
+  Uppercase "w" = "W"
+  Uppercase "x" = "X"
+  Uppercase "y" = "Y"
+  Uppercase "z" = "Z"
+  Uppercase  x  =  x

@@ -28,7 +28,7 @@ module Data.Row
   , KnownSymbol, AllUniqueLabels, WellBehaved
   , Var, Rec, Row, Empty, type (≈)
   , HasType, Lacks, type (.\), type (.+)
-  , Forall, Switch(..)
+  , Forall, Switch(..), SwitchU(..)
   -- * Record Construction
   , empty
   , type (.==), (.==), pattern (:==), unSingleton
@@ -53,6 +53,3 @@ where
 import Data.Row.Variants
 import Data.Row.Records
 import Data.Row.Switch
-
-
-

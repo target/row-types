@@ -345,6 +345,10 @@ This version of myShow needs neither a type signature (it is inferred exactly) n
 a default "unreachable" case.  However, we no longer have the benefit of Haskell's
 standard pattern matching.
 
+> myShowRestrictedU v = switchU v $
+>      #x .== (\n -> "Int of "++show n)
+>   .+ #y .== (\s -> "String of "++s)
+
 
 
 A more powerful version of trial is multiTrial, which tests for multiple labels
