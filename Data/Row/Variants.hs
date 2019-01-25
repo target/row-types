@@ -360,7 +360,7 @@ instance ToNative G.V1 Empty where
 
 instance (KnownSymbol name, ρ ≈ name .== t)
     => ToNative (G.C1 ('G.MetaCons name fixity sels)
-                (G.S1 ('G.MetaSel n p s l) (G.Rec0 t))) ρ where
+                (G.S1 m (G.Rec0 t))) ρ where
   toNative' = G.M1 . G.M1 . G.K1 . snd . unSingleton
 
 instance ( ToNative l ρ₁, ToNative r ρ₂, ρ₂ ≈ ρ .\\ ρ₁, ρ ≈ ρ₁ .+ ρ₂
@@ -383,15 +383,17 @@ instance FromNative cs ρ => FromNative (G.D1 m cs) ρ where
   fromNative' (G.M1 v) = fromNative' v
 
 instance FromNative G.V1 ρ where
-  fromNative' _ = error "Impossible! Somehow, a Void type was inhabited."
+  fromNative' = \ case
 
 instance (KnownSymbol name, ρ .! name ≈ t, AllUniqueLabels ρ)
     => FromNative (G.C1 ('G.MetaCons name fixity sels)
-                  (G.S1 ('G.MetaSel n p s l) (G.Rec0 t))) ρ where
+                  (G.S1 m (G.Rec0 t))) ρ where
   fromNative' (G.M1 (G.M1 (G.K1 x))) = IsJust (Label @name) x
 
 instance (FromNative l ρ, FromNative r ρ)
     => FromNative (l G.:+: r) ρ where
+  -- Ideally, we would use 'diversify' here instead of 'unsafeCoerce', but it
+  -- makes the constraints really hairy.
   fromNative' (G.L1 x) = unsafeCoerce $ fromNative' @l @ρ x
   fromNative' (G.R1 y) = unsafeCoerce $ fromNative' @r @ρ y
 
@@ -408,15 +410,17 @@ instance FromNativeExact cs ρ => FromNativeExact (G.D1 m cs) ρ where
   fromNativeExact' (G.M1 v) = fromNativeExact' v
 
 instance FromNativeExact G.V1 Empty where
-  fromNativeExact' _ = error "Impossible! Somehow, a Void type was inhabited."
+  fromNativeExact' = \ case
 
 instance (KnownSymbol name, ρ ≈ name .== t)
     => FromNativeExact (G.C1 ('G.MetaCons name fixity sels)
-                       (G.S1 ('G.MetaSel n p s l) (G.Rec0 t))) ρ where
+                       (G.S1 m (G.Rec0 t))) ρ where
   fromNativeExact' (G.M1 (G.M1 (G.K1 x))) = IsJust (Label @name) x
 
 instance (FromNativeExact l ρ₁, FromNativeExact r ρ₂, ρ ≈ ρ₁ .+ ρ₂)
     => FromNativeExact (l G.:+: r) ρ where
+  -- Ideally, we would use 'diversify' here instead of 'unsafeCoerce', but it
+  -- makes the constraints really hairy.
   fromNativeExact' (G.L1 x) = unsafeCoerce $ fromNativeExact' @l @ρ₁ x
   fromNativeExact' (G.R1 y) = unsafeCoerce $ fromNativeExact' @r @ρ₂ y
 
