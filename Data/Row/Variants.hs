@@ -140,8 +140,18 @@ update (toKey -> l') a (OneOf l x) = OneOf l $ if l == l' then HideType a else x
 
 -- | If the variant exists at the given label, focus on the value associated with it.
 -- Otherwise, do nothing.
-focus :: (Applicative f, KnownSymbol l) => Label l -> (r .! l -> f a) -> Var r -> f (Var (Modify l a r))
-focus (toKey -> l') f (OneOf l (HideType x)) = if l == l' then (OneOf l . HideType) <$> f (unsafeCoerce x) else pure (OneOf l (HideType x))
+focus ::
+  ( AllUniqueLabels r
+  , AllUniqueLabels r'
+  , KnownSymbol l
+  , r  .! l ≈ a
+  , r' .! l ≈ b
+  , r' ≈ (r .- l) .\/ (l .== b)
+  , Applicative f
+  ) => Label l -> (a -> f b) -> Var r -> f (Var r')
+focus (toKey -> l') f (OneOf l (HideType x))
+  | l == l'   = OneOf l . HideType <$> f (unsafeCoerce x)
+  | otherwise = pure (OneOf l (HideType x))
 
 -- | Rename the given label.
 rename :: (KnownSymbol l, KnownSymbol l') => Label l -> Label l' -> Var r -> Var (Rename l l' r)
