@@ -29,6 +29,7 @@ Library
                  constraints,
                  deepseq >= 1.4,
                  hashable >= 1.2,
+                 symbols >= 0.2,
                  unordered-containers >= 0.2,
                  text
   Exposed-modules: Data.Row

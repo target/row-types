@@ -20,6 +20,9 @@ import Data.Row.Internal
 import Data.Row.Records
 import Data.Row.Variants
 
+import Data.Symbol.Ascii
+import Data.Symbol.Utils
+
 import GHC.TypeLits
 
 
@@ -49,7 +52,7 @@ instance (KnownSymbol l, Switch (R v) (R r) b)
 -- | A 'Var' and a 'Rec' can combine if their rows line up properly.
 -- For the "U" variant, we match uppercase variant names with lowercase
 -- record names.  In other words, the variant name "Option1" would match with
--- the record name "option1".
+-- the record name "option1".  NOTE: This only works for ascii names.
 class SwitchU (v :: Row *) (r :: Row *) x | v x -> r, r x -> v where
   {-# MINIMAL switchU | caseonU #-}
   -- | Given a Variant and a Record of functions from each possible value
@@ -66,9 +69,8 @@ instance SwitchU (R '[]) (R '[]) x where
   switchU = const . impossible
 
 instance ( KnownSymbol lv, KnownSymbol lr, SwitchU (R v) (R r) b
-         , hv ~ Head lv, AppendSymbol hv tv ~ lv --Uncons lv hv tv
-         , hr ~ Head lr, AppendSymbol hr tr ~ lr --Uncons lr hr tr
-         , tv ~ tr, Lowercase hv ~ hr, Uppercase hr ~ hv)
+         , Uncons lv hv tv, Uncons lr hr tr
+         , tv ~ tr, ToLower hv ~ hr, ToUpper hr ~ hv)
       => SwitchU (R (lv :-> a ': v)) (R (lr :-> (a -> b) ': r)) b where
   switchU v r = case trial v lv of
     Left x  -> (r .! lr) x
