@@ -31,7 +31,7 @@ module Data.Row
   , Forall, Switch(..), SwitchU(..)
   -- * Record Construction
   , empty
-  , type (.==), (.==), pattern (:==), unSingleton
+  , type (.==), (.==), pattern (:==)
   -- ** Restriction
   , type (.-), (.-)
   -- ** Query
