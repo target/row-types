@@ -31,7 +31,7 @@ module Data.Row
   , Forall, Switch(..)
   -- * Record Construction
   , empty
-  , type (.==), (.==), pattern (:==), unSingleton
+  , type (.==), (.==), pattern (:==)
   -- ** Restriction
   , type (.-), (.-)
   -- ** Query
@@ -53,6 +53,3 @@ where
 import Data.Row.Variants
 import Data.Row.Records
 import Data.Row.Switch
-
-
-

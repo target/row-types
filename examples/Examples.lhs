@@ -1,9 +1,16 @@
 > {-# LANGUAGE OverloadedLabels #-}
+> {-# LANGUAGE DeriveGeneric #-}
+> {-# LANGUAGE PartialTypeSignatures #-}
 > module Examples where
 >
 > import Data.Row
 > import qualified Data.Row.Records as Rec
 > import qualified Data.Row.Variants as Var
+
+> import GHC.Generics
+> import Data.Functor.Identity  (Identity(..))
+> import Data.Coerce            (coerce)
+
 
 In this example file, we will explore how to create and use records and variants.
 
@@ -388,3 +395,28 @@ ugly (the type equalities are necessary but annoying).
 > joinVarLists :: forall x y. (WellBehaved (x .\/ y), x .\/ y ≈ y .\/ x)
 >              => [Var x] -> [Var y] -> [Var (x .\/ y)]
 > joinVarLists xs ys = map (diversify @y) xs ++ map (diversify @x) ys
+
+--------------------------------------------------------------------------------
+  Type Surgery
+--------------------------------------------------------------------------------
+(Inspired by https://blog.poisson.chat/posts/2018-11-26-type-surgery.html)
+
+
+With row-types, we can do the same things as with generic-data-surgery.
+
+> data RecToy = RecToy
+>   { iden    :: Int
+>   , header1 :: Int
+>   , header2 :: Int
+>   , payload :: String
+>   } deriving (Eq, Show, Generic)
+
+> -- Convenience lens functions
+> over :: ((a -> Identity b) -> s -> Identity t) -> (a -> b) -> s -> t
+> over = coerce
+
+> doSurgery :: _ -> RecToy
+> doSurgery = Rec.toNativeExact .
+>   over (Rec.focus #payload) (maybe "default" id)
+
+We can do similar operations over variants.
