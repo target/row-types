@@ -326,6 +326,56 @@ fromLabels mk = getCompose $ metamorph' @_ @ρ @c @(Const ()) @(Compose f Var) @
           unsafeMakeVar l <$> mk l <|> unsafeInjectFront <$> v
 
 {--------------------------------------------------------------------
+  Generic instance
+--------------------------------------------------------------------}
+
+-- This Generic instance isn't quite right in that `from . to` does not always
+-- equal `id`.  Specifically, certain meta-data may be lost, and the associativity
+-- of fields (the `:+:` operator) may be different.
+
+type VarSel = 'G.MetaSel 'Nothing 'G.NoSourceUnpackedness 'G.NoSourceStrictness 'G.DecidedLazy
+
+instance GenericVar r => G.Generic (Var r) where
+  type Rep (Var r) =
+    G.D1 ('G.MetaData "Var" "Data.Row.Variants" "row-types" 'False) (RepVar r)
+  from = G.M1 . fromVar
+  to = toVar . G.unM1
+
+type family RepVar (r :: Row *) :: * -> * where
+  RepVar (R '[]) = G.V1
+  RepVar (R '[name :-> t]) =
+    (G.C1 ('G.MetaCons name 'G.PrefixI 'False)
+          (G.S1 VarSel (G.Rec0 t)))
+  RepVar (R (name :-> t ': r)) =
+    (G.C1 ('G.MetaCons name 'G.PrefixI 'False)
+          (G.S1 VarSel (G.Rec0 t)))
+    G.:+: RepVar (R r)
+
+class GenericVar r where
+  fromVar :: Var r -> RepVar r x
+  toVar   :: RepVar r x -> Var r
+
+instance GenericVar Empty where
+  fromVar = impossible
+  toVar = \case
+
+instance KnownSymbol name => GenericVar (R '[name :-> t]) where
+  fromVar (unSingleton -> (_, a)) = G.M1 (G.M1 (G.K1 a))
+  toVar (G.M1 (G.M1 (G.K1 a))) = IsJust (Label @name) a
+
+instance {-# OVERLAPPABLE #-}
+    ( GenericVar (R r)
+    , KnownSymbol name
+    , r ~ (name' :-> t' ': r') -- r is not Empty
+    , AllUniqueLabels (R (name :-> t ': r))
+    ) => GenericVar (R (name :-> t ': r)) where
+  fromVar v = case trial @name v Label of
+    Left a   -> G.L1 (G.M1 (G.M1 (G.K1 a)))
+    Right v' -> G.R1 (fromVar v')
+  toVar (G.L1 (G.M1 (G.M1 (G.K1 a)))) = IsJust (Label @name) a
+  toVar (G.R1 g) = unsafeInjectFront $ toVar g
+
+{--------------------------------------------------------------------
   Native data type compatibility
 --------------------------------------------------------------------}
 
