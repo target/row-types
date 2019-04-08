@@ -33,9 +33,7 @@ to demonstrate how to use row-types to do type surgery.
 {-# LANGUAGE PartialTypeSignatures #-}
 module TypeSurgery where
 
-import Data.Row
 import qualified Data.Row.Records as Rec
-import qualified Data.Row.Variants as Var
 
 import Data.Aeson
 import Data.Coerce            (coerce)
