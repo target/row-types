@@ -468,6 +468,59 @@ fromDynamicMap m = fromLabelsA @Typeable
 
 
 {--------------------------------------------------------------------
+  Generic instance
+--------------------------------------------------------------------}
+
+-- The generic structure we want Recs to have is not the hidden internal one,
+-- but rather one that appears as a Haskell record.  Thus, we can't derive
+-- Generic automatically.
+--
+-- The following Generic instance creates a representation of a Rec that is
+-- very similar to a native Haskell record except that the tree of pairs (':*:')
+-- that it produces will be extremely unbalanced.  I don't think this is a problem.
+-- Furthermore, because we don't want Recs to always have a trailing unit on
+-- the end, we must have a special case for singleton Recs.  This means that
+-- we can't use metamorph and that we must use an overlappable instance for
+-- larger records.
+
+instance GenericRec r => G.Generic (Rec r) where
+  type Rep (Rec r) =
+    G.D1 ('G.MetaData "Rec" "Data.Row.Records" "row-types" 'False)
+      (G.C1 ('G.MetaCons "Rec" 'G.PrefixI 'True)
+        (RepRec r))
+  from = G.M1 . G.M1 . fromRec
+  to = toRec . G.unM1 . G.unM1
+
+type family RepRec (r :: Row *) :: * -> * where
+  RepRec (R '[])                 = G.U1
+  RepRec (R (name :-> t ': '[])) = G.S1
+    ('G.MetaSel ('Just name) 'G.NoSourceUnpackedness 'G.NoSourceStrictness 'G.DecidedLazy)
+    (G.Rec0 t)
+  RepRec (R (name :-> t ': r))   = (G.S1
+    ('G.MetaSel ('Just name) 'G.NoSourceUnpackedness 'G.NoSourceStrictness 'G.DecidedLazy)
+    (G.Rec0 t)) G.:*: RepRec (R r)
+
+class GenericRec r where
+  fromRec :: Rec r -> RepRec r x
+  toRec   :: RepRec r x -> Rec r
+
+instance GenericRec Empty where
+  fromRec _ = G.U1
+  toRec _ = empty
+
+instance KnownSymbol name => GenericRec (R '[name :-> t]) where
+  fromRec (_ :== a) = G.M1 (G.K1 a)
+  toRec (G.M1 (G.K1 a)) = (Label @name) :== a
+
+instance {-# OVERLAPPABLE #-}
+    ( GenericRec (R r)
+    , KnownSymbol name
+    , r ~ (name' :-> t' ': r') -- r is not Empty
+    ) => GenericRec (R (name :-> t ': r)) where
+  fromRec r = G.M1 (G.K1 (r .! Label @name)) G.:*: fromRec (unsafeRemove @name Label r)
+  toRec (G.M1 (G.K1 a) G.:*: r) = unsafeInjectFront (Label @name) a (toRec r)
+
+{--------------------------------------------------------------------
   Native data type compatibility
 --------------------------------------------------------------------}
 -- ToNative is shamelessly copied from
