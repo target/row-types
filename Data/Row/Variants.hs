@@ -329,11 +329,17 @@ fromLabels mk = getCompose $ metamorph' @_ @ρ @c @(Const ()) @(Compose f Var) @
   Generic instance
 --------------------------------------------------------------------}
 
--- This Generic instance isn't quite right in that `from . to` does not always
--- equal `id`.  Specifically, certain meta-data may be lost, and the associativity
--- of fields (the `:+:` operator) may be different.
-
-type VarSel = 'G.MetaSel 'Nothing 'G.NoSourceUnpackedness 'G.NoSourceStrictness 'G.DecidedLazy
+-- The generic structure we want Vars to have is not the hidden internal one,
+-- but rather one that appears as a Haskell sum type.  Thus, we can't derive
+-- Generic automatically.
+--
+-- The following Generic instance creates a representation of a Var that is
+-- very similar to a native Haskell sum type except that the tree of possibilities (':+:')
+-- that it produces will be extremely unbalanced.  I don't think this is a problem.
+-- Furthermore, because we don't want Vars to always have a trailing void option on
+-- the end, we must have a special case for singleton Vars.  This means that
+-- we can't use metamorph and that we must use an overlappable instance for
+-- larger variants.
 
 instance GenericVar r => G.Generic (Var r) where
   type Rep (Var r) =
@@ -342,14 +348,15 @@ instance GenericVar r => G.Generic (Var r) where
   to = toVar . G.unM1
 
 type family RepVar (r :: Row *) :: * -> * where
-  RepVar (R '[]) = G.V1
-  RepVar (R '[name :-> t]) =
-    (G.C1 ('G.MetaCons name 'G.PrefixI 'False)
-          (G.S1 VarSel (G.Rec0 t)))
-  RepVar (R (name :-> t ': r)) =
-    (G.C1 ('G.MetaCons name 'G.PrefixI 'False)
-          (G.S1 VarSel (G.Rec0 t)))
-    G.:+: RepVar (R r)
+  RepVar (R '[])                 = G.V1
+  RepVar (R (name :-> t ': '[])) = G.C1
+    ('G.MetaCons name 'G.PrefixI 'False)
+    (G.S1 ('G.MetaSel 'Nothing 'G.NoSourceUnpackedness 'G.NoSourceStrictness 'G.DecidedLazy)
+          (G.Rec0 t))
+  RepVar (R (name :-> t ': r))   = (G.C1
+    ('G.MetaCons name 'G.PrefixI 'False)
+    (G.S1 ('G.MetaSel 'Nothing 'G.NoSourceUnpackedness 'G.NoSourceStrictness 'G.DecidedLazy)
+          (G.Rec0 t)))  G.:+: RepVar (R r)
 
 class GenericVar r where
   fromVar :: Var r -> RepVar r x
