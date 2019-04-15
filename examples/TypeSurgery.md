@@ -112,11 +112,13 @@ to `RecToy`, and parsing is complete.
 For a simple case like this, we can do almost the same thing with row-types.
 The main difference is that what generic-data-surgery calls an operating room,
 we simply call a row-types record (or variant).  Indeed, instead of going to and
-from the OR, we go to and from the native type using `Rec.toNative` and
+from the OR, we can go to and from the native type using `Rec.toNative` and
 `Rec.fromNative`.  Specifically:
 
-- In place of `toOR'`, we call `Rec.fromNative` to convert from a native Haskell
-  type to a row-types record.
+- Because row-types records are generic themselves, we don't actually need an operation
+  like `toOR'`.  The result of `genericParseJSON` will be inferred as the
+  appropriate row-types record directly, and we can start with the expression
+  to modify it.
 
 - In place of `modifyRField @"payload" defString`, we do a lensy operation
   to change the record.  In this case, we could write
@@ -134,8 +136,7 @@ instance FromJSON RecToy where
   parseJSON :: Value -> Parser RecToy
   parseJSON
     = fmap ( Rec.toNativeExact
-           . over (Rec.focus #payload) defString
-           . Rec.fromNative)
+           . over (Rec.focus #payload) defString)
     . genericParseJSON defaultOptions{omitNothingFields=True}
 ```
 
