@@ -7,11 +7,6 @@
 > import qualified Data.Row.Records as Rec
 > import qualified Data.Row.Variants as Var
 
-> import GHC.Generics
-> import Data.Functor.Identity  (Identity(..))
-> import Data.Coerce            (coerce)
-
-
 In this example file, we will explore how to create and use records and variants.
 
 --------------------------------------------------------------------------------
@@ -185,10 +180,9 @@ the rest of the fields from it.
 >       -> Rec r
 > get2D r = Rec.restrict r
 
-GHC is a little finicky about the type operators and constraints -- indeed, this
-type signature will fail to type check if the parentheses around
-  "x" .== Double .+ "y" .== Double
-in the argument are missing.  Of course, a type signature is not necessary when
+GHC is a little finicky about the type operators and constraints -- indeed, some
+slight modifications to the signature can easily cause type checking to fail.
+However, a type signature is not necessary when
 using type applications, and the function can instead be written as:
 
 > get2D' r = Rec.restrict @("x" .== Double .+ "y" .== Double) r
@@ -250,8 +244,23 @@ v4 :: Var ('R '["x" ':-> Integer, "y" ':-> String, "z" ':-> Double])
 λ> v == v3
 True
 
-Doing the above equality test does raise the question of how equality works on
-variants.  For instance, v2 and v3 both look the same when you show them, and they
+The diversify function makes use of the .\/ type class, pronounced min-join.
+The min-join of two row-types is the minimum row-type that contains all the
+bindings of the two constituent ones.  This allows use to write a function to
+join two lists of variants:
+
+> joinVarLists :: forall x y. (WellBehaved (x .\/ y), x .\/ y ≈ y .\/ x)
+>              => [Var x] -> [Var y] -> [Var (x .\/ y)]
+> joinVarLists xs ys = map (diversify @y) xs ++ map (diversify @x) ys
+
+Unfortunately, GHC cannot deduce that the min-join of x and y is the same as the
+min-join of y and x, so  we must add that to the constraints.  However, any concrete
+types x and y that we construct will have this property, so it is easy to dispatch
+when we go to use this function.
+
+Taking a step back, it's worth looking closer at the equality tests we did earlier
+on variants.  Indeed, one may ask how equality works on variants at all.
+For instance, v2 and v3 both look the same when you show them, and they
 both have the same value inside, but can we test them for equality?  Indeed, we can't,
 precisely because their types are different: it is a type error to even try to
 check whether they're equal:
@@ -303,12 +312,12 @@ For ease of use in view patterns, Variants also exposes the view function.
 function like this:
 
 > myShow :: (r .! "y" ≈ String, Show (r .! "x")) => Var r -> String
-> myShow (Var.view #x -> Just n) = "Int of "++show n
+> myShow (Var.view #x -> Just n) = "Showable of "++show n
 > myShow (Var.view #y -> Just s) = "String of "++s
 > myShow _ = "Unknown"
 
 λ> myShow v
-"Int of 1"
+"Showable of 1"
 λ> myShow v'
 "String of Foo"
 λ> myShow (just #z 3 :: Var ("y" .== String .+ "x" .== Integer .+ "z" .== Double))
@@ -317,7 +326,7 @@ function like this:
 This can also be achieved with the IsJust pattern synonym in much the same way:
 
 > myShow' :: (WellBehaved r, r .! "y" ≈ String, Show (r .! "x")) => Var r -> String
-> myShow' (IsJust (Label :: Label "x") n) = "Int of "++show n
+> myShow' (IsJust (Label :: Label "x") n) = "Showable of "++show n
 > myShow' (IsJust (Label :: Label "y") s) = "String of "++s
 > myShow' _ = "Unknown"
 
@@ -328,7 +337,7 @@ a function like myShow to be exhaustive in the variant's cases, but to do this,
 you must manually provide a type signature:
 
 > myShowRestricted :: Var ("y" .== String .+ "x" .== Integer) -> String
-> myShowRestricted (Var.view #x -> Just n) = "Int of "++show n
+> myShowRestricted (Var.view #x -> Just n) = "Integer of "++show n
 > myShowRestricted (Var.view #y -> Just s) = "String of "++s
 > myShowRestricted _ = error "Unreachable"
 
@@ -345,7 +354,7 @@ an output value.
 
 > --myShowRestricted' :: Var ("y" .== String .+ "x" .== Integer) -> String
 > myShowRestricted' v = switch v $
->      #x .== (\n -> "Int of "++show n)
+>      #x .== (\n -> "Integer of "++show n)
 >   .+ #y .== (\s -> "String of "++s)
 
 This version of myShow needs neither a type signature (it is inferred exactly) nor
@@ -378,11 +387,8 @@ Left {y="Foo"}
 
 Thus, multiTrial can be used not only to arbitrarily split apart a variant, but
 also to change unused label associations (in this case, we changed the variant
-from one where "x" is an Integer to one where it's a Double).
-
-
-Here are two functions you can define over variants.  The type constraints are a little
-ugly (the type equalities are necessary but annoying).
+from one where "x" is an Integer to one where it's a Double).  We can even use
+it to combine dispatching of two different variants at once:
 
 > also :: Disjoint xs ys
 >      => (Var xs -> a)
@@ -392,31 +398,7 @@ ugly (the type equalities are necessary but annoying).
 >   Left  e' -> f1 e'
 >   Right e' -> f2 e'
 
-> joinVarLists :: forall x y. (WellBehaved (x .\/ y), x .\/ y ≈ y .\/ x)
->              => [Var x] -> [Var y] -> [Var (x .\/ y)]
-> joinVarLists xs ys = map (diversify @y) xs ++ map (diversify @x) ys
-
---------------------------------------------------------------------------------
-  Type Surgery
---------------------------------------------------------------------------------
-(Inspired by https://blog.poisson.chat/posts/2018-11-26-type-surgery.html)
-
-
-With row-types, we can do the same things as with generic-data-surgery.
-
-> data RecToy = RecToy
->   { iden    :: Int
->   , header1 :: Int
->   , header2 :: Int
->   , payload :: String
->   } deriving (Eq, Show, Generic)
-
-> -- Convenience lens functions
-> over :: ((a -> Identity b) -> s -> Identity t) -> (a -> b) -> s -> t
-> over = coerce
-
-> doSurgery :: _ -> RecToy
-> doSurgery = Rec.toNativeExact .
->   over (Rec.focus #payload) (maybe "default" id)
-
-We can do similar operations over variants.
+The above also function takes two functions f1 and f2 that can each independently
+be used on variants with rows xs and ys respectively.  Using multiTrial, we can
+split the input variant (which is the join of xs and ys) and easily apply f1 or
+f2 as appropriate.
