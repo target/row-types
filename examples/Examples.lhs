@@ -35,9 +35,9 @@ We will use the OverloadedLabels notation in these examples.
 --------------------------------------------------------------------------------
 
 Records and variants play nicely with the lens library if we additionally import
-Data.Row.Lens from the row-types-lens "orphan instance" library.  Each overloaded
-label is also a Lens for a record and a Traversal for variants.  Thus, .! can be
-replaced with ^. and trial can be made infix with ^?.  Additionally, update
+Data.Generics.Labels from the generic-lens library.  Each overloaded
+label is also a Lens for a record and a prism for variants.  Thus, .! can be
+replaced with ^. and trial' can be made infix with ^?.  Additionally, update
 can be made infix:
 
 update #x v r === r & #x .~ v
@@ -45,10 +45,19 @@ update #x v r === r & #x .~ v
 And because of the power of lens, it's easy to make modifications rather than
 just update:
 
-update #x (f $ r .! #x) r === r & #x %~ f
+update #x (f (r .! #x)) r === r & #x %~ f
 
 Lens is not included with row-types by default, but using it can make row-types
-much friendlier.
+much friendlier.  For this example module, we'll include a couple of handy lens
+operations:
+
+> import Data.Generics.Labels ()
+> import Data.Generics.Internal.VL.Lens
+>
+> infixl 6 &
+> (&) :: a -> (a -> b) -> b
+> (&) = flip ($)
+> (%~) = over
 
 --------------------------------------------------------------------------------
   RECORDS
@@ -147,7 +156,7 @@ We can see it work in practice:
 Note that if we were using row-types-lens and the lens library, we could write
 move as:
 
-move p dx dy = p & #x +~ dx & #y +~ dy
+> moveLensy p dx dy = p & #x %~ (+ dx) & #y %~ (+ dy)
 
 So far, we created an origin point in 2d and then one in 3d, but what if we are
 adventurous mathematicians who want to have points in a space with some arbitrary
@@ -307,6 +316,31 @@ If trialing at a label l succeeds, then it provides a Left value of the value at
 If not, it provides a Right value of the variant with this label removed---since the
 trial failed, we now can be sure that the value is not from l.
 
+--------------------------------------------------------------------------------
+Note on lenses:
+The generic-lens library distinguishes labels that are meant to be lens from labels
+meant to be prisms by whether the front of the label is an underscore followed by
+an uppercase letter.  This makes a lot of sense for data constructors, which is what
+generic-lens's prisms were designed for, but it's a little restrictive for variants.
+The result is that we can only use the lensy notation if the labels in our variants
+are uppercase.  Consider the following:
+
+> vUpper :: Var ("Y" .== String .+ "X" .== Integer)
+> vUpper = IsJust (Label @"X") 1
+
+λ> v ^? #_X
+Left 1
+
+The row-types library does not generally assert that variants need labels that
+start with uppercase letters while records need labels that start with lowercase
+letters---in fact, the `switch` function described below will only work if the
+labels in a record and variant are exactly the same---but GHC is limited in that
+the # syntax only works for lowercase labels.  Therefore, to make uppercase labels
+like in the `vUpper` example above, one must use the syntax `Label @"X"` instead
+of simply `#X`.  See the proposal in https://github.com/ghc-proposals/ghc-proposals/pull/170
+for more information.
+--------------------------------------------------------------------------------
+
 For ease of use in view patterns, Variants also exposes the view function.
 (If using lens, this can be replaced with preview.)  With it, we can write a
 function like this:
@@ -332,7 +366,11 @@ This can also be achieved with the IsJust pattern synonym in much the same way:
 
 In either case, the type signature is once again totally derivable.
 
-There are two minor annoyances with this.  First, it's fairly common to want to define
+There are three minor annoyances with this.  First, it's annoying to have to write
+out the Label types in the pattern.  This is actually a requested issue on GHC
+(see https://gitlab.haskell.org/ghc/ghc/issues/13116 and
+https://github.com/ghc-proposals/ghc-proposals/pull/80 for more information).
+Second, it's fairly common to want to define
 a function like myShow to be exhaustive in the variant's cases, but to do this,
 you must manually provide a type signature:
 
@@ -341,7 +379,7 @@ you must manually provide a type signature:
 > myShowRestricted (Var.view #y -> Just s) = "String of "++s
 > myShowRestricted _ = error "Unreachable"
 
-The second blemish can be seen in this restricted version of myShow.  Even though
+The final blemish can be seen in this restricted version of myShow.  Even though
 we know from the type that we've covered all the posibilities of the variant, GHC
 will generate a "non-exhaustive pattern match" warning without the final line.
 (This is true for the pattern synonym version too.)
@@ -360,7 +398,6 @@ an output value.
 This version of myShow needs neither a type signature (it is inferred exactly) nor
 a default "unreachable" case.  However, we no longer have the benefit of Haskell's
 standard pattern matching.
-
 
 
 A more powerful version of trial is multiTrial, which tests for multiple labels
