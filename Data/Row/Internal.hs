@@ -21,7 +21,7 @@ module Data.Row.Internal
   -- * Row Operations
   , Extend, Modify, Rename
   , type (.\), type (.!), type (.-), type (.+), type (.\\), type (.==)
-  , type (.\/)
+  , type (.\/), type (.//)
   , Lacks, HasType
   -- * Row Classes
   , Labels, labels, labels'
@@ -154,6 +154,12 @@ infixl 6 .\/
 -- | The minimum join of the two rows.
 type family (l :: Row k) .\/ (r :: Row k) where
   R l .\/ R r = R (MinJoinR l r)
+
+infixl 6 .//
+-- | The overwriting union, where the left row overwrite the types of the right
+-- row where the labels overlap.
+type family (l :: Row k) .// (r :: Row k) where
+  R l .// R r = R (ConstUnionR l r)
 
 
 {--------------------------------------------------------------------
@@ -509,6 +515,16 @@ type family MinJoinR (l :: [LT k]) (r :: [LT k]) where
       Ifte (CmpSymbol hl hr == 'LT)
       (hl :-> al ': MinJoinR tl (hr :-> ar ': tr))
       (hr :-> ar ': MinJoinR (hl :-> al ': tl) tr)
+
+type family ConstUnionR (l :: [LT k]) (r :: [LT k]) where
+  ConstUnionR '[] r = r
+  ConstUnionR l '[] = l
+  ConstUnionR (h :-> a ': tl)   (h :-> b ': tr) =
+      (h :-> a ': ConstUnionR tl tr)
+  ConstUnionR (hl :-> al ': tl) (hr :-> ar ': tr) =
+      Ifte (CmpSymbol hl hr == 'LT)
+      (hl :-> al ': ConstUnionR tl (hr :-> ar ': tr))
+      (hr :-> ar ': ConstUnionR (hl :-> al ': tl) tr)
 
 
 -- | Returns the left list with all of the elements from the right list removed.

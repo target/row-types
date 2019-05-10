@@ -28,6 +28,7 @@ module Data.Row
   , KnownSymbol, AllUniqueLabels, WellBehaved
   , Var, Rec, Row, Empty, type (≈)
   , HasType, Lacks, type (.\), type (.+)
+  , type (.\/), type (.\\), type (.//)
   , Forall, Switch(..)
   -- * Record Construction
   , empty
@@ -36,15 +37,15 @@ module Data.Row
   , type (.-), (.-)
   -- ** Query
   , type (.!), (.!)
-  -- ** Disjoint union
+  -- ** Union
   , (.+), Disjoint, pattern (:+)
+  , (.//)
   -- * Variant construction
   , pattern IsJust
   -- ** Restriction
-  , diversify, type (.\/)
+  , diversify
   -- ** Destruction
   , impossible, trial, trial', multiTrial
-  , type (.\\)
   -- * Labels
   , labels
   )
