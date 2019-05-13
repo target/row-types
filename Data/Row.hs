@@ -42,7 +42,7 @@ module Data.Row
   , (.//)
   -- * Variant construction
   , pattern IsJust
-  -- ** Restriction
+  -- ** Expansion
   , diversify
   -- ** Destruction
   , impossible, trial, trial', multiTrial
