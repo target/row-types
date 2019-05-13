@@ -492,9 +492,27 @@ type family LacksR (l :: Symbol) (r :: [LT k]) (r_orig :: [LT k]) :: Constraint 
                                     :<>: TL.Text " already exists in " :<>: ShowType r)
   LacksR l (l' :-> _ ': x) r = Ifte (l <=.? l') Unconstrained (LacksR l x r)
 
+
+-- * Various row-type merges
+-- The difference between Merge, MinJoinR, and ConstUnionR comes down to how
+-- duplicates are handled.  In Merge, the two given row-types must be entirely
+-- unique.  Even the same entry in both row-types is forbidden.  In MinJoinR, this
+-- final restriction is relaxed, allowing two row-types that have no conflicts to
+-- be merged in the logical way.  ConstUnionR is the most liberal, allowing any
+-- two row-types to be merged together, and whenever there is a conflict, favoring
+-- the left argument.
+--
+-- As examples of use, Merge (which is part of the `.+` operator) is used when appending
+-- two records.  MinJoinR (which is part of the `.\/` operator) is used when
+-- diversifying a variant.  ConstUnionR (which is part of the `.//` operator) is
+-- used when doing record overwrite.
+
 type family Merge (l :: [LT k]) (r :: [LT k]) where
   Merge '[] r = r
   Merge l '[] = l
+  Merge (h :-> a ': tl)   (h :-> a ': tr) =
+    TypeError (TL.Text "The label " :<>: ShowType h :<>: TL.Text " (of type "
+          :$$: ShowType a :<>: TL.Text ") has duplicate assignments.")
   Merge (h :-> a ': tl)   (h :-> b ': tr) =
     TypeError (TL.Text "The label " :<>: ShowType h :<>: TL.Text " has conflicting assignments."
           :$$: TL.Text "Its type is both " :<>: ShowType a :<>: TL.Text " and " :<>: ShowType b :<>: TL.Text ".")
