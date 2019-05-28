@@ -1,7 +1,7 @@
 Row-Types
 =======
 
-[![Build Status](https://api.travis-ci.org/target/row-types.svg?branch=master)](https://travis-ci.org/target/row-types)
+[![Build Status](https://api.travis-ci.org/target/row-types.svg?branch=master)](https://travis-ci.org/target/row-types/branches)
 [![Hackage](https://img.shields.io/hackage/v/row-types.svg)](https://hackage.haskell.org/package/row-types)
 
 Row-types is a library of open records and variants for Haskell using closed
