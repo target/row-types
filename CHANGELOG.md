@@ -1,6 +1,9 @@
-## 0.3.0.0 [2019-02-07]
-- Add mapHas entailment connecting `Map f r .! l` to `r .! l`
-- Change `Forall2` to `BiForall`
+## 0.3.0.0 [2019-05-28]
+- Added `HasField` and `AsConstructor` instances (from generic-lens) for `Rec` and `Var` respectively.
+- Added record-overwrite function `.//`.
+- Added `Generic` instances for Rec and Var.
+- Added mapHas entailment connecting `Map f r .! l` to `r .! l`.
+- Changed `Forall2` to `BiForall`.
   - Added `BiConstraint` type class for use  with `BiForall`.
 - Added `Ap` type family that functions as `ap` over rows using zipping.
   - Added `mapF` to map a function over a record with an `Ap` row.
