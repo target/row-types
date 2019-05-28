@@ -38,6 +38,8 @@ module Data.Row.Records
   -- * Combine
   -- ** Disjoint union
   , type (.+), (.+), Disjoint, pattern (:+)
+  -- ** Overwrite
+  , type (.//), (.//)
   -- * Native Conversion
   -- $native
   , toNative, toNativeExact, fromNative
@@ -209,6 +211,20 @@ infixl 6 .+
 (.+) :: Rec l -> Rec r -> Rec (l .+ r)
 OR l .+ OR r = OR $ M.unionWith (error "Impossible") l r
 
+-- | Record overwrite.
+--
+-- The operation @r .// r'@ creates a new record such that:
+--
+-- - Any label that is in both @r@ and @r'@ is in the resulting record with the
+--   type and value given by the fields in @r@,
+--
+-- - Any label that is only found in @r@ is in the resulting record.
+--
+-- - Any label that is only found in @r'@ is in the resulting record.
+--
+-- This can be thought of as @r@ "overwriting" @r'@.
+(.//) :: Rec r -> Rec r' -> Rec (r .// r')
+OR l .// OR r = OR $ M.union l r
 
 -- | A pattern version of record union, for use in pattern matching.
 {-# COMPLETE (:+) #-}
