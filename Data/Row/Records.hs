@@ -70,23 +70,24 @@ import Prelude hiding (map, sequence, zip)
 
 import Control.DeepSeq (NFData(..), deepseq)
 
-import Data.Constraint ((\\))
-import Data.Dynamic
-import Data.Functor.Compose
-import Data.Functor.Const
-import Data.Functor.Identity
-import Data.Functor.Product
-import Data.Hashable
-import Data.HashMap.Lazy (HashMap)
-import qualified Data.HashMap.Lazy as M
-import qualified Data.List as L
-import Data.Monoid (Endo(..), appEndo)
-import Data.Proxy
-import Data.String (IsString)
-import Data.Text (Text)
+import           Data.Constraint              ((\\))
+import           Data.Dynamic
+import           Data.Functor.Compose
+import           Data.Functor.Const
+import           Data.Functor.Identity
+import           Data.Functor.Product
+import           Data.Generics.Product.Fields (HasField(..), HasField'(..))
+import           Data.Hashable
+import           Data.HashMap.Lazy            (HashMap)
+import qualified Data.HashMap.Lazy            as M
+import qualified Data.List                    as L
+import           Data.Monoid                  (Endo(..), appEndo)
+import           Data.Proxy
+import           Data.String                  (IsString)
+import           Data.Text                    (Text)
 
 import qualified GHC.Generics as G
-import GHC.TypeLits
+import           GHC.TypeLits
 
 import Unsafe.Coerce
 
@@ -651,3 +652,27 @@ instance (FromNative l ρ₁, FromNative r ρ₂, ρ ≈ ρ₁ .+ ρ₂)
 -- | Convert a Haskell record to a row-types Rec.
 fromNative :: forall t ρ. (G.Generic t, FromNative (G.Rep t) ρ) => t -> Rec ρ
 fromNative = fromNative' . G.from
+
+
+{--------------------------------------------------------------------
+  Generic-lens compatibility
+--------------------------------------------------------------------}
+
+-- | Every field in a row-types based record has a 'HasField' instance.
+instance {-# OVERLAPPING #-}
+  ( KnownSymbol name
+  , r' .! name ≈ b
+  , r  .! name ≈ a
+  , r' ~ Modify name b r
+  , r  ~ Modify name a r')
+  => HasField name (Rec r) (Rec r') a b where
+  field = focus (Label @name)
+  {-# INLINE field #-}
+
+instance {-# OVERLAPPING #-}
+  ( KnownSymbol name
+  , r .! name ≈ a
+  , r ~ Modify name a r)
+  => HasField' name (Rec r) a where
+  field' = focus (Label @name)
+  {-# INLINE field' #-}

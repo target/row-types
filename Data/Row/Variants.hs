@@ -45,22 +45,24 @@ module Data.Row.Variants
   )
 where
 
-import Prelude hiding (zip, map, sequence)
+import Prelude hiding (map, sequence, zip)
 
 import Control.Applicative
-import Control.Arrow ((<<<), (+++), left, right)
-import Control.DeepSeq (NFData(..), deepseq)
+import Control.Arrow       ((<<<), (+++), left, right)
+import Control.DeepSeq     (NFData(..), deepseq)
 
 import Data.Functor.Compose
 import Data.Functor.Identity
 import Data.Functor.Product
-import Data.Maybe (fromMaybe)
+import Data.Generics.Sum.Constructors (AsConstructor(..), AsConstructor'(..))
+import Data.Maybe                     (fromMaybe)
+import Data.Profunctor                (Choice(..), Profunctor(..))
 import Data.Proxy
-import Data.String (IsString)
-import Data.Text (Text)
+import Data.String                    (IsString)
+import Data.Text                      (Text)
 
 import qualified GHC.Generics as G
-import GHC.TypeLits
+import           GHC.TypeLits
 
 import Unsafe.Coerce
 
@@ -140,7 +142,7 @@ update (toKey -> l') a (OneOf l x) = OneOf l $ if l == l' then HideType a else x
 
 -- | If the variant exists at the given label, focus on the value associated with it.
 -- Otherwise, do nothing.
-focus ::
+focus :: forall l r r' a b p f.
   ( AllUniqueLabels r
   , AllUniqueLabels r'
   , KnownSymbol l
@@ -148,10 +150,17 @@ focus ::
   , r' .! l ≈ b
   , r' ≈ (r .- l) .\/ (l .== b)
   , Applicative f
-  ) => Label l -> (a -> f b) -> Var r -> f (Var r')
-focus (toKey -> l') f (OneOf l (HideType x))
-  | l == l'   = OneOf l . HideType <$> f (unsafeCoerce x)
-  | otherwise = pure (OneOf l (HideType x))
+  , Choice p
+  ) => Label l -> p a (f b) -> p (Var r) (f (Var r'))
+focus (toKey -> l) =
+  dimap unwrap rewrap . left'
+  where
+    unwrap :: Var r -> Either a (Var r')
+    unwrap (OneOf l' (HideType x))
+      | l == l'   = Left (unsafeCoerce x)
+      | otherwise = Right (OneOf l' (HideType x))
+    rewrap :: Either (f b) (Var r') -> f (Var r')
+    rewrap = either (fmap $ OneOf l . HideType) pure
 
 -- | Rename the given label.
 rename :: (KnownSymbol l, KnownSymbol l') => Label l -> Label l' -> Var r -> Var (Rename l l' r)
@@ -494,3 +503,29 @@ instance (FromNativeExact l ρ₁, FromNativeExact r ρ₂, ρ ≈ ρ₁ .+ ρ�
 -- | Convert a Haskell record to a row-types Var.
 fromNativeExact :: forall t ρ. (G.Generic t, FromNativeExact (G.Rep t) ρ) => t -> Var ρ
 fromNativeExact = fromNativeExact' . G.from
+
+
+{--------------------------------------------------------------------
+  Generic-lens compatibility
+--------------------------------------------------------------------}
+
+-- | Every possibility of a row-types based variant has an 'AsConstructor' instance.
+instance {-# OVERLAPPING #-}
+  ( AllUniqueLabels r
+  , AllUniqueLabels r'
+  , KnownSymbol name
+  , r  .! name ≈ a
+  , r' .! name ≈ b
+  , r' ≈ (r .- name) .\/ (name .== b))
+  => AsConstructor name (Var r) (Var r') a b where
+  _Ctor = focus (Label @name)
+  {-# INLINE _Ctor #-}
+
+instance {-# OVERLAPPING #-}
+  ( AllUniqueLabels r
+  , KnownSymbol name
+  , r  .! name ≈ a
+  , r ≈ (r .- name) .\/ (name .== a))
+  => AsConstructor' name (Var r) a where
+  _Ctor' = focus (Label @name)
+  {-# INLINE _Ctor' #-}
