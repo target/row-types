@@ -20,21 +20,23 @@ module Data.Row.Internal
   , HideType(..)
   -- * Row Operations
   , Extend, Modify, Rename
-  , type (.\), type (.!), type (.-), type (.+), type (.\\), type (.==)
-  , type (.\/)
-  , Lacks, HasType
-  -- * Row Classes
-  , Labels, labels, labels'
+  , type (.==), type (.!), type (.-), type (.\\)
+  -- $merges
+  , type (.+), type (.\/), type (.//)
+  -- * Row Constraints
+  , Lacks, type (.\), HasType
   , Forall(..)
   , BiForall(..)
   , BiConstraint
   , Unconstrained1
   , Unconstrained2
+  , WellBehaved, AllUniqueLabels
+  , Ap, Zip, Map, Subset, Disjoint
   -- * Helper functions
+  , Labels, labels, labels'
   , show'
   , toKey
   , type (≈)
-  , WellBehaved, AllUniqueLabels, Ap, Zip, Map, Subset, Disjoint
 
   , mapForall
   , freeForall
@@ -139,21 +141,48 @@ infixl 6 .-
 type family (r :: Row k) .- (s :: Symbol) :: Row k where
   R r .- l = R (Remove l r)
 
+infixl 6 .\\ {- This comment needed to appease CPP -}
+-- | Type level Row difference.  That is, @l '.\\' r@ is the row remaining after
+-- removing any matching elements of @r@ from @l@.
+type family (l :: Row k) .\\ (r :: Row k) :: Row k where
+  R l .\\ R r = R (Diff l r)
+
+-- $merges
+-- == Various row-type merges
+-- The difference between '.+' (read "append"), '.\/' (read "min-join"), and
+-- '.\\' (read "const-union") comes down to how duplicates are handled.
+-- In '.+', the two given row-types must be entirely unique.  Even the same
+-- entry in both row-types is forbidden.  In '.\/', this final restriction is
+-- relaxed, allowing two row-types that have no conflicts to be merged in the
+-- logical way.  The '.\\' operator is the most liberal, allowing any two row-types
+-- to be merged together, and whenever there is a conflict, favoring the left argument.
+--
+-- As examples of use:
+--
+-- - '.+' is used when appending two records, assuring that those two records are
+--   entirely disjoint.
+--
+-- - '.\/' is used when diversifying a variant, allowing some extension to the
+--   row-type so long as no original types have changed.
+--
+-- - './/' is used when doing record overwrite, allowing data in a record to
+-- totally overwrite what was previously there.
+
 infixl 6 .+
 -- | Type level Row append
 type family (l :: Row k) .+ (r :: Row k) :: Row k where
   R l .+ R r = R (Merge l r)
 
-infixl 6 .\\ {- This comment needed to appease CPP -}
--- | Type level Row difference.  That is, @l .\\\\ r@ is the row remaining after
--- removing any matching elements of @r@ from @l@.
-type family (l :: Row k) .\\ (r :: Row k) :: Row k where
-  R l .\\ R r = R (Diff l r)
-
 infixl 6 .\/
 -- | The minimum join of the two rows.
 type family (l :: Row k) .\/ (r :: Row k) where
   R l .\/ R r = R (MinJoinR l r)
+
+infixl 6 .//
+-- | The overwriting union, where the left row overwrites the types of the right
+-- row where the labels overlap.
+type family (l :: Row k) .// (r :: Row k) where
+  R l .// R r = R (ConstUnionR l r)
 
 
 {--------------------------------------------------------------------
@@ -486,9 +515,13 @@ type family LacksR (l :: Symbol) (r :: [LT k]) (r_orig :: [LT k]) :: Constraint 
                                     :<>: TL.Text " already exists in " :<>: ShowType r)
   LacksR l (l' :-> _ ': x) r = Ifte (l <=.? l') Unconstrained (LacksR l x r)
 
+
 type family Merge (l :: [LT k]) (r :: [LT k]) where
   Merge '[] r = r
   Merge l '[] = l
+  Merge (h :-> a ': tl)   (h :-> a ': tr) =
+    TypeError (TL.Text "The label " :<>: ShowType h :<>: TL.Text " (of type "
+          :$$: ShowType a :<>: TL.Text ") has duplicate assignments.")
   Merge (h :-> a ': tl)   (h :-> b ': tr) =
     TypeError (TL.Text "The label " :<>: ShowType h :<>: TL.Text " has conflicting assignments."
           :$$: TL.Text "Its type is both " :<>: ShowType a :<>: TL.Text " and " :<>: ShowType b :<>: TL.Text ".")
@@ -509,6 +542,16 @@ type family MinJoinR (l :: [LT k]) (r :: [LT k]) where
       Ifte (CmpSymbol hl hr == 'LT)
       (hl :-> al ': MinJoinR tl (hr :-> ar ': tr))
       (hr :-> ar ': MinJoinR (hl :-> al ': tl) tr)
+
+type family ConstUnionR (l :: [LT k]) (r :: [LT k]) where
+  ConstUnionR '[] r = r
+  ConstUnionR l '[] = l
+  ConstUnionR (h :-> a ': tl)   (h :-> b ': tr) =
+      (h :-> a ': ConstUnionR tl tr)
+  ConstUnionR (hl :-> al ': tl) (hr :-> ar ': tr) =
+      Ifte (CmpSymbol hl hr == 'LT)
+      (hl :-> al ': ConstUnionR tl (hr :-> ar ': tr))
+      (hr :-> ar ': ConstUnionR (hl :-> al ': tl) tr)
 
 
 -- | Returns the left list with all of the elements from the right list removed.

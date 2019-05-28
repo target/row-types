@@ -30,6 +30,8 @@ Library
                  deepseq >= 1.4,
                  hashable >= 1.2,
                  unordered-containers >= 0.2,
+                 generic-lens >= 1.0.0.0,
+                 profunctors >= 5.0,
                  text
   Exposed-modules: Data.Row
                  , Data.Row.Internal
@@ -88,6 +90,7 @@ test-suite test
   ghc-options: -W
   other-modules: Examples
   build-depends: base >= 2 && < 6
+               , generic-lens >= 1.1.0.0
                , row-types
   Extensions: AllowAmbiguousTypes,
               DataKinds,

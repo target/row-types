@@ -38,6 +38,8 @@ module Data.Row.Records
   -- * Combine
   -- ** Disjoint union
   , type (.+), (.+), Disjoint, pattern (:+)
+  -- ** Overwrite
+  , type (.//), (.//)
   -- * Native Conversion
   -- $native
   , toNative, toNativeExact, fromNative
@@ -68,23 +70,24 @@ import Prelude hiding (map, sequence, zip)
 
 import Control.DeepSeq (NFData(..), deepseq)
 
-import Data.Constraint ((\\))
-import Data.Dynamic
-import Data.Functor.Compose
-import Data.Functor.Const
-import Data.Functor.Identity
-import Data.Functor.Product
-import Data.Hashable
-import Data.HashMap.Lazy (HashMap)
-import qualified Data.HashMap.Lazy as M
-import qualified Data.List as L
-import Data.Monoid (Endo(..), appEndo)
-import Data.Proxy
-import Data.String (IsString)
-import Data.Text (Text)
+import           Data.Constraint              ((\\))
+import           Data.Dynamic
+import           Data.Functor.Compose
+import           Data.Functor.Const
+import           Data.Functor.Identity
+import           Data.Functor.Product
+import           Data.Generics.Product.Fields (HasField(..), HasField'(..))
+import           Data.Hashable
+import           Data.HashMap.Lazy            (HashMap)
+import qualified Data.HashMap.Lazy            as M
+import qualified Data.List                    as L
+import           Data.Monoid                  (Endo(..), appEndo)
+import           Data.Proxy
+import           Data.String                  (IsString)
+import           Data.Text                    (Text)
 
 import qualified GHC.Generics as G
-import GHC.TypeLits
+import           GHC.TypeLits
 
 import Unsafe.Coerce
 
@@ -209,6 +212,20 @@ infixl 6 .+
 (.+) :: Rec l -> Rec r -> Rec (l .+ r)
 OR l .+ OR r = OR $ M.unionWith (error "Impossible") l r
 
+-- | Record overwrite.
+--
+-- The operation @r .// r'@ creates a new record such that:
+--
+-- - Any label that is in both @r@ and @r'@ is in the resulting record with the
+--   type and value given by the fields in @r@,
+--
+-- - Any label that is only found in @r@ is in the resulting record.
+--
+-- - Any label that is only found in @r'@ is in the resulting record.
+--
+-- This can be thought of as @r@ "overwriting" @r'@.
+(.//) :: Rec r -> Rec r' -> Rec (r .// r')
+OR l .// OR r = OR $ M.union l r
 
 -- | A pattern version of record union, for use in pattern matching.
 {-# COMPLETE (:+) #-}
@@ -635,3 +652,27 @@ instance (FromNative l ρ₁, FromNative r ρ₂, ρ ≈ ρ₁ .+ ρ₂)
 -- | Convert a Haskell record to a row-types Rec.
 fromNative :: forall t ρ. (G.Generic t, FromNative (G.Rep t) ρ) => t -> Rec ρ
 fromNative = fromNative' . G.from
+
+
+{--------------------------------------------------------------------
+  Generic-lens compatibility
+--------------------------------------------------------------------}
+
+-- | Every field in a row-types based record has a 'HasField' instance.
+instance {-# OVERLAPPING #-}
+  ( KnownSymbol name
+  , r' .! name ≈ b
+  , r  .! name ≈ a
+  , r' ~ Modify name b r
+  , r  ~ Modify name a r')
+  => HasField name (Rec r) (Rec r') a b where
+  field = focus (Label @name)
+  {-# INLINE field #-}
+
+instance {-# OVERLAPPING #-}
+  ( KnownSymbol name
+  , r .! name ≈ a
+  , r ~ Modify name a r)
+  => HasField' name (Rec r) a where
+  field' = focus (Label @name)
+  {-# INLINE field' #-}
