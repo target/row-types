@@ -1,3 +1,4 @@
+{-# LANGUAGE FunctionalDependencies #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Data.Row.Records
@@ -53,7 +54,7 @@ module Data.Row.Records
   -- ** Fold
   , Forall, erase, eraseWithLabels, eraseZip, eraseToHashMap
   -- ** Zip
-  , Zip, zip
+  , Zip, zip, ZipWith, zipWith
   -- ** Sequence
   , sequence, sequence'
   -- ** Compose
@@ -67,7 +68,7 @@ module Data.Row.Records
   )
 where
 
-import Prelude hiding (map, sequence, zip)
+import Prelude hiding (map, sequence, zip, zipWith)
 
 import Control.DeepSeq (NFData(..), deepseq)
 
@@ -304,7 +305,7 @@ eraseToHashMap f r = M.fromList $ eraseWithLabels @c f r
 
 -- | RMap is used internally as a type level lambda for defining record maps.
 newtype RMap (f :: * -> *) (ρ :: Row *) = RMap { unRMap :: Rec (Map f ρ) }
-newtype RMap2 (f :: * -> *) (g :: * -> *) (ρ :: Row *) = RMap2 { unRMap2 :: Rec (Map f (Map g ρ)) }
+newtype RMapMap (f :: * -> *) (g :: * -> *) (ρ :: Row *) = RMapMap { unRMapMap :: Rec (Map f (Map g ρ)) }
 
 -- | A function to map over a record given a constraint.
 map :: forall c f r. Forall r c => (forall a. c a => a -> f a) -> Rec r -> Rec (Map f r)
@@ -380,10 +381,10 @@ sequence = sequence' @_ @_ @Unconstrained1
 -- | A version of 'compose' in which the constraint for 'Forall' can be chosen.
 compose' :: forall c (f :: * -> *) (g :: * -> *) (r :: Row *) . Forall r c
         => Rec (Map f (Map g r)) -> Rec (Map (Compose f g) r)
-compose' = unRMap . metamorph @_ @r @c @(RMap2 f g) @(RMap (Compose f g)) @(Compose f g) Proxy doNil doUncons doCons . RMap2
+compose' = unRMap . metamorph @_ @r @c @(RMapMap f g) @(RMap (Compose f g)) @(Compose f g) Proxy doNil doUncons doCons . RMapMap
   where
     doNil _ = RMap empty
-    doUncons l (RMap2 r) = (Compose $ r .! l, RMap2 $ unsafeRemove l r)
+    doUncons l (RMapMap r) = (Compose $ r .! l, RMapMap $ unsafeRemove l r)
     doCons l v (RMap r) = RMap $ unsafeInjectFront l v r
 
 -- | Convert from a record where two functors have been mapped over the types to
@@ -395,11 +396,11 @@ compose = compose' @Unconstrained1 @f @g @r
 -- | A version of 'uncompose' in which the constraint for 'Forall' can be chosen.
 uncompose' :: forall c (f :: * -> *) (g :: * -> *) r . Forall r c
            => Rec (Map (Compose f g) r) -> Rec (Map f (Map g r))
-uncompose' = unRMap2 . metamorph @_ @r @c @(RMap (Compose f g)) @(RMap2 f g) @(Compose f g) Proxy doNil doUncons doCons . RMap
+uncompose' = unRMapMap . metamorph @_ @r @c @(RMap (Compose f g)) @(RMapMap f g) @(Compose f g) Proxy doNil doUncons doCons . RMap
   where
-    doNil _ = RMap2 empty
+    doNil _ = RMapMap empty
     doUncons l (RMap r) = (r .! l, RMap $ unsafeRemove l r)
-    doCons l (Compose v) (RMap2 r) = RMap2 $ unsafeInjectFront l v r
+    doCons l (Compose v) (RMapMap r) = RMapMap $ unsafeInjectFront l v r
 
 -- | Convert from a record where the composition of two functors have been mapped
 -- over the types to one where the two functors are mapped individually one at a
@@ -411,15 +412,23 @@ uncompose = uncompose' @Unconstrained1 @f @g @r
 
 -- | RZipPair is used internally as a type level lambda for zipping records.
 newtype RecPair  (ρ1 :: Row *) (ρ2 :: Row *) = RecPair  (Rec ρ1, Rec ρ2)
-newtype RZipPair (ρ1 :: Row *) (ρ2 :: Row *) = RZipPair { unRZipPair :: Rec (Zip ρ1 ρ2) }
+newtype RZipPair (f :: * -> * -> *) (ρ1 :: Row *) (ρ2 :: Row *) = RZipPair { unRZipPair :: Rec (ZipWith f ρ1 ρ2) }
 
 -- | Zips together two records that have the same set of labels.
 zip :: forall r1 r2. BiForall r1 r2 Unconstrained2 => Rec r1 -> Rec r2 -> Rec (Zip r1 r2)
-zip r1 r2 = unRZipPair $ biMetamorph @_ @_ @r1 @r2 @Unconstrained2 @RecPair @RZipPair @(,) Proxy doNil doUncons doCons $ RecPair (r1, r2)
+zip = zipWith @Unconstrained2 @(,) (,)
+
+-- | Zips together two records that have the same set of labels.
+zipWith :: forall c f r1 r2. BiForall r1 r2 c
+  => (forall a b. c a b => a -> b -> f a b)
+  -> Rec r1 -> Rec r2 -> Rec (ZipWith f r1 r2)
+zipWith f r1 r2 = unRZipPair $ biMetamorph @_ @_ @r1 @r2 @c @RecPair @(RZipPair f) @(,) Proxy doNil doUncons doCons $ RecPair (r1, r2)
   where
     doNil _ = RZipPair empty
     doUncons l (RecPair (r1, r2)) = ((r1 .! l, r2 .! l), RecPair (unsafeRemove l r1, unsafeRemove l r2))
-    doCons l (v1, v2) (RZipPair r) = RZipPair $ unsafeInjectFront l (v1, v2) r
+    doCons :: forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1 τ2)
+           => Label ℓ -> (τ1, τ2) -> RZipPair f ('R ρ1) ('R ρ2) -> RZipPair f ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2))
+    doCons l (v1, v2) (RZipPair r) = RZipPair $ unsafeInjectFront l (f v1 v2) r
 
 -- | A helper function for unsafely adding an element to the front of a record.
 -- This can cause the resulting record to be malformed, for instance, if the record

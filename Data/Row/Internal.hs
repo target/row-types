@@ -31,7 +31,7 @@ module Data.Row.Internal
   , Unconstrained1
   , Unconstrained2
   , WellBehaved, AllUniqueLabels
-  , Ap, Zip, Map, Subset, Disjoint
+  , Ap, Zip, Map, ZipWith, Subset, Disjoint
   -- * Helper functions
   , Labels, labels, labels'
   , show'
@@ -448,6 +448,18 @@ type family MapR (f :: a -> b) (r :: [LT a]) :: [LT b] where
   MapR f '[] = '[]
   MapR f (l :-> v ': t) = l :-> f v ': MapR f t
 
+-- | Map a type level function over a Row.
+type family ZipWith (f :: a -> b -> c) (r1 :: Row a) (r2 :: Row b) :: Row c where
+  ZipWith f (R r1) (R r2) = R (ZipWithR f r1 r2)
+
+type family ZipWithR (f :: a -> b -> c) (r1 :: [LT a]) (r2 :: [LT b]) :: [LT c] where
+  ZipWithR f '[] '[] = '[]
+  ZipWithR f (l :-> a ': t1) (l :-> b ': t2) = l :-> f a b ': ZipWithR f t1 t2
+  ZipWithR _ (l :-> t1 ': r1) _ = TypeError (TL.Text "Row types with different label sets cannot be zipped"
+                                  :$$: TL.Text "For one, the label " :<>: ShowType l :<>: TL.Text " is not in both lists.")
+  ZipWithR _ '[] (l :-> t ': r) = TypeError (TL.Text "Row types with different label sets cannot be zipped"
+                                  :$$: TL.Text "For one, the label " :<>: ShowType l :<>: TL.Text " is not in both lists.")
+
 -- | Take two rows with the same labels, and apply the type operator from the
 -- first row to the type of the second.
 type family Ap (fs :: Row (a -> b)) (r :: Row a) :: Row b where
@@ -461,16 +473,7 @@ type family ApR (fs :: [LT (a -> b)]) (r :: [LT a]) :: [LT b] where
 -- | Zips two rows together to create a Row of the pairs.
 --   The two rows must have the same set of labels.
 type family Zip (r1 :: Row *) (r2 :: Row *) where
-  Zip (R r1) (R r2) = R (ZipR r1 r2)
-
-type family ZipR (r1 :: [LT *]) (r2 :: [LT *]) where
-  ZipR '[] '[] = '[]
-  ZipR (l :-> t1 ': r1) (l :-> t2 ': r2) =
-    l :-> (t1, t2) ': ZipR r1 r2
-  ZipR (l :-> t1 ': r1) _ = TypeError (TL.Text "Row types with different label sets cannot be zipped"
-                                  :$$: TL.Text "For one, the label " :<>: ShowType l :<>: TL.Text " is not in both lists.")
-  ZipR '[] (l :-> t ': r) = TypeError (TL.Text "Row types with different label sets cannot be zipped"
-                                  :$$: TL.Text "For one, the label " :<>: ShowType l :<>: TL.Text " is not in both lists.")
+  Zip r1 r2 = ZipWith (,) r1 r2
 
 type family Inject (l :: LT k) (r :: [LT k]) where
   Inject (l :-> t) '[] = (l :-> t ': '[])
