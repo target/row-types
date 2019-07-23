@@ -43,6 +43,7 @@ module Data.Row.Records
   -- * Native Conversion
   -- $native
   , toNative, toNativeExact, fromNative
+  , ToNative, ToNativeExact, FromNative
   -- * Dynamic Conversion
   , toDynamicMap, fromDynamicMap
   -- * Row operations
