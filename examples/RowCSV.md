@@ -7,15 +7,16 @@ _by Daniel Winograd-Cort_
 
 Oleg Grenrus wrote a recent post titled
 ["Fancy types for CSV library"](http://oleg.fi/gists/posts/2019-07-15-fancy-types-for-cassava.html).
-In it, he shows how to use vectors and other _fancy types_ to make CSV encoding and
-decoding more type safe (as compared to `cassava`).  It's a clever idea that uses
-an ordered vector of encoded fields (with length at the type level) as an intermediate
-data type.  Thus, for encoding, one encodes their chosen data types into these vectors
-and then encodes the vectors into csv text.  For decoding, one decodes the csv text
-into vectors and then decodes those vectors into the data types.  Some trouble arises
-during decoding---perhaps the order of values in the csv input is different from
-the order in the data type, or perhaps there are missing fields in the csv input---and
-Oleg describes some nice tricks to deal with these problems.
+In it, he shows how to use vectors and other _fancy types_ to make CSV encoding
+and decoding more type safe (as compared to `cassava`).  It's a clever idea that
+uses an ordered vector of encoded fields (with length at the type level) as an
+intermediate data type.  Thus, for encoding, one encodes their chosen data types
+into these vectors and then encodes the vectors into csv text.  For decoding,
+one decodes the csv text into vectors and then decodes those vectors into the
+data types.  Some trouble arises during decoding---perhaps the order of values
+in the csv input is different from the order in the data type, or perhaps there
+are missing fields in the csv input---and Oleg describes some nice tricks to
+deal with these problems.
 
 At the end of the article, Oleg writes:
 
@@ -23,14 +24,14 @@ At the end of the article, Oleg writes:
 > Not really.
 >
 > For example vinyl's Rec type is essentially the same as NP. Even if there were
-> anonymous records in Haskell, so toRecord could be implemented directly using a
-> built-in function, it would remove only a single problem from many. At it's not
-> much, as toRecord is generically derivable.
+> anonymous records in Haskell, so toRecord could be implemented directly using
+> a built-in function, it would remove only a single problem from many. At it's
+> not much, as toRecord is generically derivable.
 
-I disagree with this conclusion, and in this post, I'll show how simple the whole
-process of csv encoding and decoding can be with the row-types library.  In fact,
-not only is the code short and clear, but it has even more type safety than Oleg's
-version.
+I disagree with this conclusion, and in this post, I'll show how simple the
+whole process of csv encoding and decoding can be with the row-types library.
+In fact, not only is the code short and clear, but it has even more type safety
+than Oleg's version.
 
 ## Example
 
@@ -87,11 +88,11 @@ input = T.unlines
     ]
 ```
 
-Here we have a simple record of programming language information.  We have a list
-of a few languages, and we also have a sample CSV input.  Note that the CSV input
-has extra fields, and it even has a missing website fields for one of the entries.
-We will see that since the `PL` type doesn't have a `website` field, it won't matter
-that the CSV data is missing that field.
+Here we have a simple record of programming language information.  We have a
+list of a few languages, and we also have a sample CSV input.  Note that the CSV
+input has extra fields, and it even has a missing website fields for one of the
+entries. We will see that since the `PL` type doesn't have a `website` field, it
+won't matter that the CSV data is missing that field.
 
 ## Encoding to CSV
 
@@ -108,9 +109,9 @@ Rec.fromNative <$> pls
 [#name .== "Haskell" .+ #person .== "Simon" .+ #year .== 1990,#name .== "Scala" .+ #person .== "Martin" .+ #year .== 2004,#name .== "Idris" .+ #person .== "Edwin" .+ #year .== 2009,#name .== "Perl" .+ #person .== "Larry" .+ #year .== 1987]
 ```
 
-The ordering in row-types comes down to lexicographical ordering
-by field name, which is why it's different here than in `PL`, but it's not something
-we need to worry about because row-types are automatically normalized.
+The ordering in row-types comes down to lexicographical ordering by field name,
+which is why it's different here than in `PL`, but it's not something we need to
+worry about because row-types are automatically normalized.
 
 For the individual fields, let's use the same `ToField` class that Oleg uses:
 
@@ -130,14 +131,15 @@ recToCSV rs = T.unlines $ map (T.intercalate ",")
   : map (Rec.erase @ToField toField) rs
 ```
 
-Let's walk through this line by line.  The first line is the type signature, where
-we demand that each field of the row-type `ρ` have a `ToField` instance.  The second
-line should look pretty familiar: we stick commas between fields and turn a list of
-`Text`s into a `Text`.  In the third line, we create the CSV header; the function `labels`
-returns the field names of a row type, and it only needs type arguments to work.
-The last line is where the individual records are encoded.  The `erase` function is
-applied to each record in the input list; `erase` erases the field name information
-and maps the given function over the values, returning a simple list of results.
+Let's walk through this line by line.  The first line is the type signature,
+where we demand that each field of the row-type `ρ` have a `ToField` instance.
+The second line should look pretty familiar: we stick commas between fields and
+turn a list of `Text`s into a `Text`.  In the third line, we create the CSV
+header; the function `labels` returns the field names of a row type, and it only
+needs type arguments to work. The last line is where the individual records are
+encoded.  The `erase` function is applied to each record in the input list;
+`erase` erases the field name information and maps the given function over the
+values, returning a simple list of results.
 
 Lastly, we can make a general `toCSV` function by composing `fromNative` and `recToCSV`:
 
@@ -182,30 +184,29 @@ recFromCSV s = case map (T.splitOn ",") (T.lines s) of
       makeField val l = let lookupList = zip header val
         in maybe (Left $ "Missing field " ++ show l) fromField $ L.lookup (T.pack $ show l) lookupList
 ```
-Let's walk through this one line by line too.
-In the type signature, we're demanding that the extensible record that we're parsing
-have unique labels for every field---it wouldn't make sense to have two different
-fields with the same name---and that each field has a `FromField` instance.
-The second line is just dealing with commas and lines, and the third line is dealing
-with bad input.
-On the fourth line, we separate the header from the rest of the lines.  We then call
-the inner function `makeRecord` on each of the lines and sequence the results.
-The sixth line defines `makeRecord`, which uses the `fromLabelsA` (`A` for Applicative)
-functions to construct a row-type record based on its field names.  This in turn
-uses the `makeField` function, which takes the csv line and the label and returns
-either a `Left` error message if parsing fails or a `Right` value if it succeeds.
-Parsing is simply looking  up the field name (`T.pack $ show l`) in the line and
-calling `fromField` on it.
+Let's walk through this one line by line too. In the type signature, we're
+demanding that the extensible record that we're parsing have unique labels for
+every field---it wouldn't make sense to have two different fields with the same
+name---and that each field has a `FromField` instance. The second line is just
+dealing with commas and lines, and the third line is dealing with bad input. On
+the fourth line, we separate the header from the rest of the lines.  We then
+call the inner function `makeRecord` on each of the lines and sequence the
+results. The sixth line defines `makeRecord`, which uses the `fromLabelsA` (`A`
+for Applicative) function to construct a row-type record based on its field
+names.  This in turn uses the `makeField` function, which takes the csv line and
+the label and returns either a `Left` error message if parsing fails or a
+`Right` value if it succeeds. Parsing is simply looking  up the field name
+(`T.pack $ show l`) in the line and calling `fromField` on it.
 
 Of course, we could probably do something smarter here than doing a lookup in a
 linked list---using a `Map` comes to mind---but we're going for simplicity over
 efficiency for now.
 
-Lastly, we can convert a value of type `Rec ρ` to a native Haskell data type with
-the row-types built-in `toNative`.  (We will go one step further and use the restricted
-function `toNativeExact`, which forces the record to have the exact same fields as
-the native data type, because this helps with type inference.)
-This lets us write a general `fromCSV` function:
+Lastly, we can convert a value of type `Rec ρ` to a native Haskell data type
+with the row-types built-in `toNative`.  (We will go one step further and use
+the restricted function `toNativeExact`, which forces the record to have the
+exact same fields as the native data type, because this helps with type
+inference.) This lets us write a general `fromCSV` function:
 
 ```haskell
 fromCSV :: forall t ρ.
@@ -231,19 +232,20 @@ PL {name = "Idris", year = 2009, person = "Edwin"}
 
 ## The Difficult Part
 
-There isn't one!  Notice that our first implementation of `recFromCSV` was perfectly
-able to handle data with missing fields and reordered columns, and it didn't
-require any extra work on our part.
+There isn't one!  Notice that our first implementation of `recFromCSV` was
+perfectly able to handle data with missing fields and reordered columns, and it
+didn't require any extra work on our part.
 
 ## Conclusions and Extensions
 
-Oleg claims that row-types would not simplify anything in CSV encoding and decoding,
-but I must disagree.  Not only did the row-types library give us free `fromNative`
-and `toNative` functions and heterogeneous type safety, but it handled all of the
-difficult cases of missing data and reordered columns for free as well.
+Oleg claims that row-types would not simplify anything in CSV encoding and
+decoding, but I must disagree.  Not only did the row-types library give us free
+`fromNative` and `toNative` functions and heterogeneous type safety, but it
+handled all of the difficult cases of missing data and reordered columns for
+free as well.
 
-Furthermore, if one thinks of the row-type record as an intermediate data type as
-described in the introduction, then we can extend this CSV parsing to incorporate the
-ideas of [type surgery](TypeSurgery.html) as well.  Instead of needing
-a `FromField` class, one could very simply lift the `Text` from the CSV into structured
-records and then do surgery on them from there.
+Furthermore, if one thinks of the row-type record as an intermediate data type
+as described in the introduction, then we can extend this CSV parsing to
+incorporate the ideas of [type surgery](TypeSurgery.html) as well.  Instead of
+needing a `FromField` class, one could very simply lift the `Text` from the CSV
+into structured row-types records and then do surgery on them from there.
