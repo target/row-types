@@ -47,7 +47,7 @@ version.
 {-# LANGUAGE OverloadedStrings #-}
 module RowCSV where
 
-import GHC.Generics
+import GHC.Generics (Generic)
 
 import Data.Text (Text)
 import qualified Data.Text    as T
@@ -142,11 +142,11 @@ and maps the given function over the values, returning a simple list of results.
 Lastly, we can make a general `toCSV` function by composing `fromNative` and `recToCSV`:
 
 ```haskell
-toCSV :: forall ρ t. (Forall ρ ToField, Generic t, Rec.FromNative (Rep t) ρ) => [t] -> Text
+toCSV :: forall ρ t. (Forall ρ ToField, Rec.FromNative t ρ) => [t] -> Text
 toCSV = recToCSV @ρ . fmap Rec.fromNative
 ```
 
-The type is a little messy because of Generic, but that's it.  We can do a sanity check with:
+We can do a sanity check with:
 
 ```
 *Main> T.putStr $ toCSV pls
@@ -209,7 +209,7 @@ This lets us write a general `fromCSV` function:
 
 ```haskell
 fromCSV :: forall t ρ.
-  (AllUniqueLabels ρ, Forall ρ FromField, Generic t, Rec.ToNativeExact (Rep t) ρ)
+  (AllUniqueLabels ρ, Forall ρ FromField, Rec.ToNativeExact t ρ)
   => Text -> Either String [t]
 fromCSV = fmap (fmap Rec.toNativeExact) . recFromCSV @ρ
 ```

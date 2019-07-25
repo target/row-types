@@ -28,6 +28,7 @@ module Data.Row.Variants
   -- * Native Conversion
   -- $native
   , toNative, fromNative, fromNativeExact
+  , ToNative, FromNative, FromNativeExact
   -- * Row operations
   -- ** Map
   , Map, map, map', transform, transform'
@@ -425,83 +426,89 @@ instance {-# OVERLAPPABLE #-}
 
 -- | Conversion helper to bring a variant back into a Haskell type. Note that the
 -- native Haskell type must be an instance of 'Generic'.
-class ToNative a ρ where
+class ToNativeG a ρ where
   toNative' :: Var ρ -> a x
 
-instance ToNative cs ρ => ToNative (G.D1 m cs) ρ where
+instance ToNativeG cs ρ => ToNativeG (G.D1 m cs) ρ where
   toNative' = G.M1 . toNative'
 
-instance ToNative G.V1 Empty where
+instance ToNativeG G.V1 Empty where
   toNative' = impossible
 
 instance (KnownSymbol name, ρ ≈ name .== t)
-    => ToNative (G.C1 ('G.MetaCons name fixity sels)
+    => ToNativeG (G.C1 ('G.MetaCons name fixity sels)
                 (G.S1 m (G.Rec0 t))) ρ where
   toNative' = G.M1 . G.M1 . G.K1 . snd . unSingleton
 
-instance ( ToNative l ρ₁, ToNative r ρ₂, ρ₂ ≈ ρ .\\ ρ₁, ρ ≈ ρ₁ .+ ρ₂
+instance ( ToNativeG l ρ₁, ToNativeG r ρ₂, ρ₂ ≈ ρ .\\ ρ₁, ρ ≈ ρ₁ .+ ρ₂
          , AllUniqueLabels ρ₁, Forall ρ₂ Unconstrained1)
-    => ToNative (l G.:+: r) ρ where
+    => ToNativeG (l G.:+: r) ρ where
   toNative' v = case multiTrial @ρ₁ @ρ v of
     Left  v' -> G.L1 $ toNative' @_ @ρ₁ v'
     Right v' -> G.R1 $ toNative' @_ @ρ₂ v'
 
+type ToNative t ρ = (G.Generic t, ToNativeG (G.Rep t) ρ)
+
 -- | Convert a variant to a native Haskell type.
-toNative :: forall t ρ. (G.Generic t, ToNative (G.Rep t) ρ) => Var ρ -> t
+toNative :: ToNative t ρ => Var ρ -> t
 toNative = G.to . toNative'
 
 -- | Conversion helper to turn a Haskell variant into a row-types extensible
 -- variant. Note that the native Haskell type must be an instance of 'Generic'.
-class FromNative a ρ where
+class FromNativeG a ρ where
   fromNative' :: a x -> Var ρ
 
-instance FromNative cs ρ => FromNative (G.D1 m cs) ρ where
+instance FromNativeG cs ρ => FromNativeG (G.D1 m cs) ρ where
   fromNative' (G.M1 v) = fromNative' v
 
-instance FromNative G.V1 ρ where
+instance FromNativeG G.V1 ρ where
   fromNative' = \ case
 
 instance (KnownSymbol name, ρ .! name ≈ t, AllUniqueLabels ρ)
-    => FromNative (G.C1 ('G.MetaCons name fixity sels)
+    => FromNativeG (G.C1 ('G.MetaCons name fixity sels)
                   (G.S1 m (G.Rec0 t))) ρ where
   fromNative' (G.M1 (G.M1 (G.K1 x))) = IsJust (Label @name) x
 
-instance (FromNative l ρ, FromNative r ρ)
-    => FromNative (l G.:+: r) ρ where
+instance (FromNativeG l ρ, FromNativeG r ρ)
+    => FromNativeG (l G.:+: r) ρ where
   -- Ideally, we would use 'diversify' here instead of 'unsafeCoerce', but it
   -- makes the constraints really hairy.
   fromNative' (G.L1 x) = unsafeCoerce $ fromNative' @l @ρ x
   fromNative' (G.R1 y) = unsafeCoerce $ fromNative' @r @ρ y
 
+type FromNative t ρ = (G.Generic t, FromNativeG (G.Rep t) ρ)
+
 -- | Convert a Haskell record to a row-types Var.
-fromNative :: forall t ρ. (G.Generic t, FromNative (G.Rep t) ρ) => t -> Var ρ
+fromNative :: FromNative t ρ => t -> Var ρ
 fromNative = fromNative' . G.from
 
 -- | Conversion helper to turn a Haskell variant into a row-types extensible
 -- variant. Note that the native Haskell type must be an instance of 'Generic'.
-class FromNativeExact a ρ where
+class FromNativeExactG a ρ where
   fromNativeExact' :: a x -> Var ρ
 
-instance FromNativeExact cs ρ => FromNativeExact (G.D1 m cs) ρ where
+instance FromNativeExactG cs ρ => FromNativeExactG (G.D1 m cs) ρ where
   fromNativeExact' (G.M1 v) = fromNativeExact' v
 
-instance FromNativeExact G.V1 Empty where
+instance FromNativeExactG G.V1 Empty where
   fromNativeExact' = \ case
 
 instance (KnownSymbol name, ρ ≈ name .== t)
-    => FromNativeExact (G.C1 ('G.MetaCons name fixity sels)
+    => FromNativeExactG (G.C1 ('G.MetaCons name fixity sels)
                        (G.S1 m (G.Rec0 t))) ρ where
   fromNativeExact' (G.M1 (G.M1 (G.K1 x))) = IsJust (Label @name) x
 
-instance (FromNativeExact l ρ₁, FromNativeExact r ρ₂, ρ ≈ ρ₁ .+ ρ₂)
-    => FromNativeExact (l G.:+: r) ρ where
+instance (FromNativeExactG l ρ₁, FromNativeExactG r ρ₂, ρ ≈ ρ₁ .+ ρ₂)
+    => FromNativeExactG (l G.:+: r) ρ where
   -- Ideally, we would use 'diversify' here instead of 'unsafeCoerce', but it
   -- makes the constraints really hairy.
   fromNativeExact' (G.L1 x) = unsafeCoerce $ fromNativeExact' @l @ρ₁ x
   fromNativeExact' (G.R1 y) = unsafeCoerce $ fromNativeExact' @r @ρ₂ y
 
+type FromNativeExact t ρ = (G.Generic t, FromNativeExactG (G.Rep t) ρ)
+
 -- | Convert a Haskell record to a row-types Var.
-fromNativeExact :: forall t ρ. (G.Generic t, FromNativeExact (G.Rep t) ρ) => t -> Var ρ
+fromNativeExact :: FromNativeExact t ρ => t -> Var ρ
 fromNativeExact = fromNativeExact' . G.from
 
 
