@@ -4,7 +4,7 @@
 --
 -- This module implements extensible records using closed type famillies.
 --
--- See Examples.hs for examples.
+-- See Examples.lhs for examples.
 --
 -- Lists of (label,type) pairs are kept sorted thereby ensuring
 -- that { x = 0, y = 0 } and { y = 0, x = 0 } have the same type.
