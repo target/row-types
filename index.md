@@ -16,4 +16,5 @@ Also, check out these posts about cool things you can do with row-types:
 - [Typed Errors Done Better](examples/TypedErrors.html)
 
 
-Available on [Hackage](https://hackage.haskell.org/package/row-types)
+Available on [Hackage](https://hackage.haskell.org/package/row-types).\
+Source available on [GitHub](https://github.com/target/row-types/).

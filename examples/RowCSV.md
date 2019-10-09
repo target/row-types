@@ -177,12 +177,13 @@ And with just this class, we're immediately ready to parse the csv data:
 recFromCSV :: forall ρ. (AllUniqueLabels ρ, Forall ρ FromField) => Text -> Either String [Rec ρ]
 recFromCSV s = case map (T.splitOn ",") (T.lines s) of
   [] -> Left "No Input"
-  header:vals -> sequence $ makeRecord <$> vals
+  header:vals -> traverse makeRecord vals
     where
       makeRecord s = Rec.fromLabelsA @FromField @(Either String) @ρ (makeField s)
       makeField :: (KnownSymbol l, FromField a) => [Text] -> Label l -> Either String a
-      makeField val l = let lookupList = zip header val
-        in maybe (Left $ "Missing field " ++ show l) fromField $ L.lookup (T.pack $ show l) lookupList
+      makeField val l =
+        maybe (Left $ "Missing field " ++ show l) fromField $
+          L.lookup (T.pack $ show l) (zip header val)
 ```
 Let's walk through this one line by line too. In the type signature, we're
 demanding that the extensible record that we're parsing have unique labels for
@@ -190,8 +191,8 @@ every field---it wouldn't make sense to have two different fields with the same
 name---and that each field has a `FromField` instance. The second line is just
 dealing with commas and lines, and the third line is dealing with bad input. On
 the fourth line, we separate the header from the rest of the lines.  We then
-call the inner function `makeRecord` on each of the lines and sequence the
-results. The sixth line defines `makeRecord`, which uses the `fromLabelsA` (`A`
+`traverse` each of the lines with the inner function `makeRecord`.
+The sixth line defines `makeRecord`, which uses the `fromLabelsA` (`A`
 for Applicative) function to construct a row-type record based on its field
 names.  This in turn uses the `makeField` function, which takes the csv line and
 the label and returns either a `Left` error message if parsing fails or a
