@@ -1,3 +1,7 @@
+## 0.3.1.0 [2020-01-29]
+- Added "native" classes as exports for `Records` and `Variants` (e.g., `ToNative`, `FromNative`)
+- Added more example hs files.
+
 ## 0.3.0.0 [2019-05-28]
 - Added `HasField` and `AsConstructor` instances (from generic-lens) for `Rec` and `Var` respectively.
 - Added record-overwrite function `.//`.
