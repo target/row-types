@@ -146,18 +146,14 @@ from the OR, we go to and from the native type using |Rec.toNative| and
 \item In place of |modifyRField @"payload" defString|, we do a lensy operation
   to change the record.  In this case, we could write
   |over (Rec.focus #payload) defString|.
-\item Finally, we convert back to a Haskell native type with |Rec.toNativeExact|.
-  Note that |toNativeExact| is a restricted version of |toNative| that forces the
-  native type and the record to have the exact same fields while |toNative| allows
-  the record to have extraneous fields.  As such, |toNativeExact| often improves
-  type inference.
+\item Finally, we convert back to a Haskell native type with |Rec.toNative|.
 \end{itemize}
 The full code looks like:
 \begin{code}
 instance FromJSON RecToy where
   parseJSON :: Value -> Parser RecToy
   parseJSON
-    = fmap  ( Rec.toNativeExact
+    = fmap  ( Rec.toNative
             . over (Rec.focus #payload) defString)
     . genericParseJSON defaultOptions{omitNothingFields=True}
 

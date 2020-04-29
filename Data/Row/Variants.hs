@@ -27,8 +27,9 @@ module Data.Row.Variants
   , type (.!), type (.-), type (.\\), type (.==)
   -- * Native Conversion
   -- $native
-  , toNative, fromNative, fromNativeExact
-  , ToNative, FromNative, FromNativeExact
+  , toNative, fromNative, fromNativeGeneral
+  , ToNative, FromNative, FromNativeGeneral
+  , NativeRow
   -- * Row operations
   -- ** Map
   , Map, map, map', transform, transform'
@@ -41,6 +42,8 @@ module Data.Row.Variants
   , compose, uncompose
   -- ** labels
   , labels
+  -- ** Coerce
+  , coerceVar
   -- ** UNSAFE operations
   , unsafeMakeVar, unsafeInjectFront
   )
@@ -49,9 +52,10 @@ where
 import Prelude hiding (map, sequence, zip)
 
 import Control.Applicative
-import Control.Arrow       ((<<<), (+++), left, right)
+import Control.Arrow       ((+++), left, right)
 import Control.DeepSeq     (NFData(..), deepseq)
 
+import Data.Coerce
 import Data.Functor.Compose
 import Data.Functor.Identity
 import Data.Functor.Product
@@ -272,7 +276,7 @@ transform' = transform @r @Unconstrained1
 sequence :: forall f r. (Forall r Unconstrained1, Applicative f) => Var (Map f r) -> f (Var r)
 sequence = getCompose . metamorph' @_ @r @Unconstrained1 @(VMap f) @(Compose f Var) @f Proxy doNil doUncons doCons . VMap
   where
-    doNil (VMap x) = impossible x
+    doNil = impossible . unVMap
     doUncons l = right VMap . flip trial l . unVMap
     doCons l (Left fx) = Compose $ unsafeMakeVar l <$> fx
     doCons _ (Right (Compose v)) = Compose $ unsafeInjectFront <$> v
@@ -291,8 +295,8 @@ sequence = getCompose . metamorph' @_ @r @Unconstrained1 @(VMap f) @(Compose f V
 compose :: forall (f :: * -> *) (g :: * -> *) r . Forall r Unconstrained1 => Var (Map f (Map g r)) -> Var (Map (Compose f g) r)
 compose = unVMap . metamorph' @_ @r @Unconstrained1 @(VMap2 f g) @(VMap (Compose f g)) Proxy doNil doUncons doCons . VMap2
   where
-    doNil (VMap2 x) = impossible x
-    doUncons l = Compose +++ VMap2 <<< flip trial l . unVMap2
+    doNil = impossible . unVMap2
+    doUncons l = (Compose +++ VMap2) . flip trial l . unVMap2
     doCons l (Left x) = VMap $ unsafeMakeVar l x
     doCons _ (Right (VMap v)) = VMap $ unsafeInjectFront v
 
@@ -302,11 +306,29 @@ compose = unVMap . metamorph' @_ @r @Unconstrained1 @(VMap2 f g) @(VMap (Compose
 uncompose :: forall (f :: * -> *) (g :: * -> *) r . Forall r Unconstrained1 => Var (Map (Compose f g) r) -> Var (Map f (Map g r))
 uncompose = unVMap2 . metamorph' @_ @r @Unconstrained1 @(VMap (Compose f g)) @(VMap2 f g) Proxy doNil doUncons doCons . VMap
   where
-    doNil (VMap x) = impossible x
+    doNil = impossible . unVMap
     doUncons l = right VMap . flip trial l . unVMap
     doCons l (Left (Compose x)) = VMap2 $ unsafeMakeVar l x
     doCons _ (Right (VMap2 v)) = VMap2 $ unsafeInjectFront v
 
+
+-- | ConstR is used as a type level lambda for coercion.
+newtype ConstR a b = ConstR { unConstR :: Var a }
+newtype FlipConstR a b = FlipConstR { unFlipConstR :: Var b }
+
+-- | Coerce a variant to a coercible representation.  The 'BiForall' in the context
+-- indicates that the type of any option in @r1@ can be coerced to the type of
+-- the corresponding option in @r2@.
+coerceVar :: forall r1 r2. BiForall r1 r2 Coercible => Var r1 -> Var r2
+coerceVar = unFlipConstR . biMetamorph' @_ @_ @r1 @r2 @Coercible @ConstR @FlipConstR @Const Proxy doNil doUncons doCons . ConstR
+  where
+    doNil = impossible . unConstR
+    doUncons l = (Const +++ ConstR) . flip trial l . unConstR
+    doCons :: forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, Coercible τ1 τ2)
+           => Label ℓ -> Either (Const τ1 τ2) (FlipConstR ('R ρ1) ('R ρ2))
+           -> FlipConstR ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2))
+    doCons l (Left (Const x)) = FlipConstR $ unsafeMakeVar l (coerce @τ1 @τ2 x)
+    doCons _ (Right (FlipConstR v)) = FlipConstR $ unsafeInjectFront v
 
 {--------------------------------------------------------------------
   Variant initialization
@@ -347,9 +369,8 @@ fromLabels mk = getCompose $ metamorph' @_ @ρ @c @(Const ()) @(Compose f Var) @
 -- very similar to a native Haskell sum type except that the tree of possibilities (':+:')
 -- that it produces will be extremely unbalanced.  I don't think this is a problem.
 -- Furthermore, because we don't want Vars to always have a trailing void option on
--- the end, we must have a special case for singleton Vars.  This means that
--- we can't use metamorph and that we must use an overlappable instance for
--- larger variants.
+-- the end, we must have a special case for singleton Vars, which means that
+-- we can't use metamorph.
 
 instance GenericVar r => G.Generic (Var r) where
   type Rep (Var r) =
@@ -357,35 +378,33 @@ instance GenericVar r => G.Generic (Var r) where
   from = G.M1 . fromVar
   to = toVar . G.unM1
 
-type family RepVar (r :: Row *) :: * -> * where
-  RepVar (R '[])                 = G.V1
-  RepVar (R (name :-> t ': '[])) = G.C1
-    ('G.MetaCons name 'G.PrefixI 'False)
-    (G.S1 ('G.MetaSel 'Nothing 'G.NoSourceUnpackedness 'G.NoSourceStrictness 'G.DecidedLazy)
-          (G.Rec0 t))
-  RepVar (R (name :-> t ': r))   = (G.C1
-    ('G.MetaCons name 'G.PrefixI 'False)
-    (G.S1 ('G.MetaSel 'Nothing 'G.NoSourceUnpackedness 'G.NoSourceStrictness 'G.DecidedLazy)
-          (G.Rec0 t)))  G.:+: RepVar (R r)
-
 class GenericVar r where
+  type RepVar (r :: Row *) :: * -> *
   fromVar :: Var r -> RepVar r x
   toVar   :: RepVar r x -> Var r
 
 instance GenericVar Empty where
+  type RepVar Empty = G.V1
   fromVar = impossible
   toVar = \case
 
 instance KnownSymbol name => GenericVar (R '[name :-> t]) where
+  type RepVar (R (name :-> t ': '[])) = G.C1
+    ('G.MetaCons name 'G.PrefixI 'False)
+    (G.S1 ('G.MetaSel 'Nothing 'G.NoSourceUnpackedness 'G.NoSourceStrictness 'G.DecidedLazy)
+          (G.Rec0 t))
   fromVar (unSingleton -> (_, a)) = G.M1 (G.M1 (G.K1 a))
   toVar (G.M1 (G.M1 (G.K1 a))) = IsJust (Label @name) a
 
-instance {-# OVERLAPPABLE #-}
-    ( GenericVar (R r)
+instance
+    ( GenericVar (R (name' :-> t' ': r'))
     , KnownSymbol name
-    , r ~ (name' :-> t' ': r') -- r is not Empty
-    , AllUniqueLabels (R (name :-> t ': r))
-    ) => GenericVar (R (name :-> t ': r)) where
+    , AllUniqueLabels (R (name :-> t ': (name' :-> t' ': r')))
+    ) => GenericVar (R (name :-> t ': (name' :-> t' ': r'))) where
+  type RepVar (R (name :-> t ': (name' :-> t' ': r'))) = (G.C1
+    ('G.MetaCons name 'G.PrefixI 'False)
+    (G.S1 ('G.MetaSel 'Nothing 'G.NoSourceUnpackedness 'G.NoSourceStrictness 'G.DecidedLazy)
+          (G.Rec0 t)))  G.:+: RepVar (R (name' :-> t' ': r'))
   fromVar v = case trial @name v Label of
     Left a   -> G.L1 (G.M1 (G.M1 (G.K1 a)))
     Right v' -> G.R1 (fromVar v')
@@ -401,10 +420,10 @@ instance {-# OVERLAPPABLE #-}
 -- 'Var's and regular Haskell data types ("native" types) that have the same
 -- number of constructors such that each constructor has one field and the same
 -- name as one of the options of the 'Var', which has the same type as that field.
--- That said, they do not compose to form the identity because 'fromNative' allows
--- constructors to be added: a variant with excess options can still be transformed
--- to a native type, but when the native type is converted to a variant, the
--- options are exactly transformed.  The only requirement is that
+-- As expected, they compose to form the identity.  Alternatively, one may use
+-- 'fromNativeGeneral', which allows a variant with excess options to  still be
+-- transformed to a native type.  Because of this, 'fromNativeGeneral' requires a type
+-- application (although 'fromNative' does not).  The only requirement is that
 -- the native Haskell data type be an instance of 'Generic'.
 --
 -- For example, consider the following simple data type:
@@ -417,99 +436,104 @@ instance {-# OVERLAPPABLE #-}
 -- Dog {age = 3}
 -- >>> V.fromNative $ Dog 3 :: Var ("Dog" .== Int .+ "Cat" .== Int)
 -- {Dog=3}
---
--- The 'fromNativeExact' function is a more restricted version of 'fromNative' that
--- does not allow options to be added; in other words, the options in the variant
--- must exactly match the constructors in the data type.  Because of this,
--- 'fromNativeExact' and 'toNative' compose to form the identity function.
+
+type family NativeRow t where
+  NativeRow t = NativeRowG (G.Rep t)
+
+type family NativeRowG t where
+  NativeRowG (G.M1 G.D m cs) = NativeRowG cs
+  NativeRowG G.V1 = Empty
+  NativeRowG (l G.:+: r) = NativeRowG l .+ NativeRowG r
+  NativeRowG (G.C1 ('G.MetaCons name fixity sels) (G.S1 m (G.Rec0 t))) = name .== t
 
 
 -- | Conversion helper to bring a variant back into a Haskell type. Note that the
 -- native Haskell type must be an instance of 'Generic'.
-class ToNativeG a ρ where
-  toNative' :: Var ρ -> a x
+class ToNativeG a where
+  toNative' :: Var (NativeRowG a) -> a x
 
-instance ToNativeG cs ρ => ToNativeG (G.D1 m cs) ρ where
+instance ToNativeG cs => ToNativeG (G.D1 m cs) where
   toNative' = G.M1 . toNative'
 
-instance ToNativeG G.V1 Empty where
+instance ToNativeG G.V1 where
   toNative' = impossible
 
-instance (KnownSymbol name, ρ ≈ name .== t)
+instance (KnownSymbol name)
     => ToNativeG (G.C1 ('G.MetaCons name fixity sels)
-                (G.S1 m (G.Rec0 t))) ρ where
+                (G.S1 m (G.Rec0 t))) where
   toNative' = G.M1 . G.M1 . G.K1 . snd . unSingleton
 
-instance ( ToNativeG l ρ₁, ToNativeG r ρ₂, ρ₂ ≈ ρ .\\ ρ₁, ρ ≈ ρ₁ .+ ρ₂
-         , AllUniqueLabels ρ₁, Forall ρ₂ Unconstrained1)
-    => ToNativeG (l G.:+: r) ρ where
-  toNative' v = case multiTrial @ρ₁ @ρ v of
-    Left  v' -> G.L1 $ toNative' @_ @ρ₁ v'
-    Right v' -> G.R1 $ toNative' @_ @ρ₂ v'
+instance ( ToNativeG l, ToNativeG r, (NativeRowG l .+ NativeRowG r) .\\ NativeRowG l ≈ NativeRowG r
+         , AllUniqueLabels (NativeRowG l), Forall (NativeRowG r) Unconstrained1)
+    => ToNativeG (l G.:+: r) where
+  toNative' v = case multiTrial @(NativeRowG l) @(NativeRowG (l G.:+: r)) v of
+    Left  v' -> G.L1 $ toNative' v'
+    Right v' -> G.R1 $ toNative' v'
 
-type ToNative t ρ = (G.Generic t, ToNativeG (G.Rep t) ρ)
+type ToNative t = (G.Generic t, ToNativeG (G.Rep t))
 
 -- | Convert a variant to a native Haskell type.
-toNative :: ToNative t ρ => Var ρ -> t
+toNative :: ToNative t => Var (NativeRow t) -> t
 toNative = G.to . toNative'
 
+
 -- | Conversion helper to turn a Haskell variant into a row-types extensible
 -- variant. Note that the native Haskell type must be an instance of 'Generic'.
-class FromNativeG a ρ where
-  fromNative' :: a x -> Var ρ
+class FromNativeG a where
+  fromNative' :: a x -> Var (NativeRowG a)
 
-instance FromNativeG cs ρ => FromNativeG (G.D1 m cs) ρ where
+instance FromNativeG cs => FromNativeG (G.D1 m cs) where
   fromNative' (G.M1 v) = fromNative' v
 
-instance FromNativeG G.V1 ρ where
+instance FromNativeG G.V1 where
   fromNative' = \ case
 
-instance (KnownSymbol name, ρ .! name ≈ t, AllUniqueLabels ρ)
+instance KnownSymbol name
     => FromNativeG (G.C1 ('G.MetaCons name fixity sels)
-                  (G.S1 m (G.Rec0 t))) ρ where
+                       (G.S1 m (G.Rec0 t))) where
   fromNative' (G.M1 (G.M1 (G.K1 x))) = IsJust (Label @name) x
 
-instance (FromNativeG l ρ, FromNativeG r ρ)
-    => FromNativeG (l G.:+: r) ρ where
+instance (FromNativeG l, FromNativeG r) => FromNativeG (l G.:+: r) where
   -- Ideally, we would use 'diversify' here instead of 'unsafeCoerce', but it
   -- makes the constraints really hairy.
-  fromNative' (G.L1 x) = unsafeCoerce $ fromNative' @l @ρ x
-  fromNative' (G.R1 y) = unsafeCoerce $ fromNative' @r @ρ y
+  fromNative' (G.L1 x) = unsafeCoerce $ fromNative' @l x
+  fromNative' (G.R1 y) = unsafeCoerce $ fromNative' @r y
 
-type FromNative t ρ = (G.Generic t, FromNativeG (G.Rep t) ρ)
+type FromNative t = (G.Generic t, FromNativeG (G.Rep t))
 
 -- | Convert a Haskell record to a row-types Var.
-fromNative :: FromNative t ρ => t -> Var ρ
+fromNative :: FromNative t => t -> Var (NativeRow t)
 fromNative = fromNative' . G.from
+
 
 -- | Conversion helper to turn a Haskell variant into a row-types extensible
 -- variant. Note that the native Haskell type must be an instance of 'Generic'.
-class FromNativeExactG a ρ where
-  fromNativeExact' :: a x -> Var ρ
+class FromNativeGeneralG a ρ where
+  fromNativeGeneral' :: a x -> Var ρ
 
-instance FromNativeExactG cs ρ => FromNativeExactG (G.D1 m cs) ρ where
-  fromNativeExact' (G.M1 v) = fromNativeExact' v
+instance FromNativeGeneralG cs ρ => FromNativeGeneralG (G.D1 m cs) ρ where
+  fromNativeGeneral' (G.M1 v) = fromNativeGeneral' v
 
-instance FromNativeExactG G.V1 Empty where
-  fromNativeExact' = \ case
+instance FromNativeGeneralG G.V1 ρ where
+  fromNativeGeneral' = \ case
 
-instance (KnownSymbol name, ρ ≈ name .== t)
-    => FromNativeExactG (G.C1 ('G.MetaCons name fixity sels)
-                       (G.S1 m (G.Rec0 t))) ρ where
-  fromNativeExact' (G.M1 (G.M1 (G.K1 x))) = IsJust (Label @name) x
+instance (KnownSymbol name, ρ .! name ≈ t, AllUniqueLabels ρ)
+    => FromNativeGeneralG (G.C1 ('G.MetaCons name fixity sels)
+                  (G.S1 m (G.Rec0 t))) ρ where
+  fromNativeGeneral' (G.M1 (G.M1 (G.K1 x))) = IsJust (Label @name) x
 
-instance (FromNativeExactG l ρ₁, FromNativeExactG r ρ₂, ρ ≈ ρ₁ .+ ρ₂)
-    => FromNativeExactG (l G.:+: r) ρ where
+instance (FromNativeGeneralG l ρ, FromNativeGeneralG r ρ)
+    => FromNativeGeneralG (l G.:+: r) ρ where
   -- Ideally, we would use 'diversify' here instead of 'unsafeCoerce', but it
   -- makes the constraints really hairy.
-  fromNativeExact' (G.L1 x) = unsafeCoerce $ fromNativeExact' @l @ρ₁ x
-  fromNativeExact' (G.R1 y) = unsafeCoerce $ fromNativeExact' @r @ρ₂ y
+  fromNativeGeneral' (G.L1 x) = unsafeCoerce $ fromNativeGeneral' @l @ρ x
+  fromNativeGeneral' (G.R1 y) = unsafeCoerce $ fromNativeGeneral' @r @ρ y
 
-type FromNativeExact t ρ = (G.Generic t, FromNativeExactG (G.Rep t) ρ)
+type FromNativeGeneral t ρ = (G.Generic t, FromNativeGeneralG (G.Rep t) ρ)
 
 -- | Convert a Haskell record to a row-types Var.
-fromNativeExact :: FromNativeExact t ρ => t -> Var ρ
-fromNativeExact = fromNativeExact' . G.from
+fromNativeGeneral :: FromNativeGeneral t ρ => t -> Var ρ
+fromNativeGeneral = fromNativeGeneral' . G.from
 
 
 {--------------------------------------------------------------------

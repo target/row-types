@@ -29,7 +29,7 @@ module Data.Row
   , Var, Rec, Row, Empty, type (≈)
   , HasType, Lacks, type (.\), type (.+)
   , type (.\/), type (.\\), type (.//)
-  , Forall, Switch(..)
+  , BiForall, Forall, Switch(..)
   -- * Record Construction
   , empty
   , type (.==), (.==), pattern (:==)
