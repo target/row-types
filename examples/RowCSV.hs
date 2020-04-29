@@ -60,7 +60,7 @@ recToCSV rs = T.unlines $ map (T.intercalate ",")
   : map (Rec.erase @ToField toField) rs
 
 
-toCSV :: forall ρ t. (Rec.FromNative t ρ, Forall ρ ToField) => [t] -> Text
+toCSV :: forall ρ t. (Rec.FromNative t, Rec.NativeRow t ≈ ρ, Forall ρ ToField) => [t] -> Text
 toCSV = recToCSV @ρ . fmap Rec.fromNative
 
 
@@ -84,9 +84,9 @@ recFromCSV s = case map (T.splitOn ",") (T.lines s) of
           L.lookup (T.pack $ show l) (zip header val)
 
 
-fromCSV :: forall t ρ. (AllUniqueLabels ρ, Rec.ToNativeExact t ρ, Forall ρ FromField)
+fromCSV :: forall t ρ. (Rec.ToNative t, ρ ≈ Rec.NativeRow t, AllUniqueLabels ρ, Forall ρ FromField)
         => Text -> Either String [t]
-fromCSV = fmap (fmap Rec.toNativeExact) . recFromCSV @ρ
+fromCSV = fmap (fmap Rec.toNative) . recFromCSV @ρ
 
 
 main = case fromCSV @PL input of

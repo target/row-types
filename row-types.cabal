@@ -1,18 +1,19 @@
+cabal-version:       3.0
+
 Name:                row-types
-Version:             0.3.1.0
+Version:             0.4.0.0
 License:             MIT
 License-file:        LICENSE
 Author:              Daniel Winograd-Cort, Matthew Farkas-Dyck
-Maintainer:          daniel.winograd-cort@target.com, matthew.farkas-dyck@target.com
+Maintainer:          dwincort@gmail.com
 Build-Type:          Simple
-Cabal-Version:       >=1.8
 Category:            Data, Data Structures
 Synopsis:	           Open Records and Variants
 Description:
   This package uses closed type families and type literals to implement open
   records and variants.
   The core is based off of the <https://hackage.haskell.org/package/CTRex CTRex>
-  package, but it additionally includes polymorphic variants and a number of
+  package, but it also includes polymorphic variants and a number of
   additional functions.  That said, it is not a proper superset of CTRex as it
   specifically forbids records from having more than one element of the same
   label.
@@ -24,85 +25,94 @@ extra-source-files:
   LICENSE
   NOTICE
 
-Library
-  Build-Depends: base >= 2 && < 5,
-                 constraints,
-                 deepseq >= 1.4,
-                 hashable >= 1.2,
-                 unordered-containers >= 0.2,
-                 generic-lens >= 1.0.0.0,
-                 profunctors >= 5.0,
-                 text
-  Exposed-modules: Data.Row
-                 , Data.Row.Internal
-                 , Data.Row.Records
-                 , Data.Row.Variants
-                 , Data.Row.Switch
-  ghc-options: -W
-  Extensions: AllowAmbiguousTypes,
-              ConstraintKinds,
-              DataKinds,
-              EmptyCase,
-              EmptyDataDecls,
-              FlexibleContexts,
-              FlexibleInstances,
-              GADTs,
-              InstanceSigs,
-              KindSignatures,
-              LambdaCase,
-              MultiParamTypeClasses,
-              OverloadedLabels,
-              PatternGuards,
-              PatternSynonyms,
-              PolyKinds,
-              RankNTypes,
-              ScopedTypeVariables,
-              TypeApplications,
-              TypeFamilies,
-              TypeOperators,
-              TupleSections,
-              ViewPatterns,
-              UndecidableInstances
+
+common common-settings
+  ghc-options: -Wall -Wno-name-shadowing -Wno-type-defaults -Wno-unticked-promoted-constructors
+  default-extensions:
+    AllowAmbiguousTypes,
+    ConstraintKinds,
+    DataKinds,
+    EmptyCase,
+    EmptyDataDecls,
+    FlexibleContexts,
+    FlexibleInstances,
+    GADTs,
+    InstanceSigs,
+    KindSignatures,
+    LambdaCase,
+    MultiParamTypeClasses,
+    OverloadedLabels,
+    PatternGuards,
+    PatternSynonyms,
+    PolyKinds,
+    RankNTypes,
+    ScopedTypeVariables,
+    TypeApplications,
+    TypeFamilies,
+    TypeOperators,
+    TupleSections,
+    ViewPatterns,
+    UndecidableInstances
+
+
+library
+  import: common-settings
+  Build-Depends:
+    base >= 2 && < 5,
+    constraints,
+    deepseq >= 1.4,
+    generic-lens >= 1.0.0.0,
+    hashable >= 1.2,
+    profunctors >= 5.0,
+    text,
+    unordered-containers >= 0.2
+  Exposed-modules:
+    Data.Row,
+    Data.Row.Internal,
+    Data.Row.Records,
+    Data.Row.Variants,
+    Data.Row.Switch
+  hs-source-dirs:
+    src
+
+
+library row-types-aeson
+  import: common-settings
+  visibility: public
+  Build-Depends:
+    aeson,
+    base >= 2 && < 5,
+    row-types,
+    text
+  Exposed-modules:
+    Data.Row.Aeson
+  hs-source-dirs:
+    src/aeson
+
 
 benchmark perf
+  import: common-settings
   type: exitcode-stdio-1.0
   main-is: Main.hs
   hs-source-dirs:
       benchmarks/perf
-  ghc-options: -W
-  build-depends: base >= 2 && < 6
-               , row-types
-               , deepseq >= 1.4
-               , criterion >= 1.1
-  Extensions: AllowAmbiguousTypes,
-              DataKinds,
-              OverloadedLabels,
-              RankNTypes,
-              ScopedTypeVariables,
-              TypeApplications,
-              TypeFamilies,
-              TypeOperators
+  build-depends:
+    base >= 2 && < 6,
+    row-types,
+    deepseq >= 1.4,
+    criterion >= 1.1
+
 
 test-suite test
+  import: common-settings
   type: exitcode-stdio-1.0
   main-is: Main.hs
   hs-source-dirs: tests, examples
-  ghc-options: -W
   other-modules: Examples
-  build-depends: base >= 2 && < 6
-               , generic-lens >= 1.1.0.0
-               , row-types
-  Extensions: AllowAmbiguousTypes,
-              DataKinds,
-              FlexibleContexts,
-              OverloadedLabels,
-              PatternSynonyms,
-              RankNTypes,
-              ScopedTypeVariables,
-              TypeApplications,
-              TypeFamilies,
-              TypeOperators,
-              ViewPatterns
+  build-depends:
+    base >= 2 && < 6,
+    generic-lens >= 1.1.0.0,
+    row-types
 
 
 source-repository head
