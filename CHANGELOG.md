@@ -5,6 +5,8 @@
 - Exposed `BiForall` in `Data.Row`, `Data.Row.Records`, and `Data.Row.Variants`
 - (Internal) Rewrote internal `Generic` code to use an associated type family instead of a standalone one.
 
+Note: GHC 8.2 and earlier are no longer supported in row-types 0.4.0.0.
+
 ## 0.3.1.0 [2020-01-29]
 - Added "native" classes as exports for `Records` and `Variants` (e.g., `ToNative`, `FromNative`)
 - Added more example hs files.
