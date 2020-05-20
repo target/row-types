@@ -144,7 +144,7 @@ values, returning a simple list of results.
 Lastly, we can make a general `toCSV` function by composing `fromNative` and `recToCSV`:
 
 ```haskell
-toCSV :: forall ρ t. (Forall ρ ToField, Rec.FromNative t ρ) => [t] -> Text
+toCSV :: forall ρ t. (Rec.FromNative t, Rec.NativeRow t ≈ ρ, Forall ρ ToField) => [t] -> Text
 toCSV = recToCSV @ρ . fmap Rec.fromNative
 ```
 
@@ -204,16 +204,14 @@ linked list---using a `Map` comes to mind---but we're going for simplicity over
 efficiency for now.
 
 Lastly, we can convert a value of type `Rec ρ` to a native Haskell data type
-with the row-types built-in `toNative`.  (We will go one step further and use
-the restricted function `toNativeExact`, which forces the record to have the
-exact same fields as the native data type, because this helps with type
-inference.) This lets us write a general `fromCSV` function:
+with the row-types built-in `toNative`. This lets us write a general `fromCSV`
+function:
 
 ```haskell
 fromCSV :: forall t ρ.
-  (AllUniqueLabels ρ, Forall ρ FromField, Rec.ToNativeExact t ρ)
+  (Rec.ToNative t, ρ ≈ Rec.NativeRow t, AllUniqueLabels ρ, Forall ρ FromField)
   => Text -> Either String [t]
-fromCSV = fmap (fmap Rec.toNativeExact) . recFromCSV @ρ
+fromCSV = fmap (fmap Rec.toNative) . recFromCSV @ρ
 ```
 
 We can do a sanity check with:

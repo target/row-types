@@ -1,3 +1,10 @@
+## 0.4.0.0 [2020-05-20]
+- Renamed `toNative` to `toNativeGeneral` and `toNativeExact` to `toNative` for records and likewise for `fromNative` for variants.
+- Added a type family `NativeRow` which, when given any generic type that can go through `fromNative`, is equal to the row-type of the resulting record/variant.  Note that `NativeRow` is defined separately (and differently!) for records vs variants, so it is exported at the `Data.Row.Records`/`Variants` level but not at `Data.Row`.
+- Added `coerceRec` and `coerceVar` to coerce the row-types of records and variants respectively.
+- Exposed `BiForall` in `Data.Row`, `Data.Row.Records`, and `Data.Row.Variants`
+- (Internal) Rewrote internal `Generic` code to use an associated type family instead of a standalone one.
+
 ## 0.3.1.0 [2020-01-29]
 - Added "native" classes as exports for `Records` and `Variants` (e.g., `ToNative`, `FromNative`)
 - Added more example hs files.

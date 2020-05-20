@@ -124,18 +124,14 @@ from the OR, we can go to and from the native type using `Rec.toNative` and
   to change the record.  In this case, we could write
   `over (Rec.focus #payload) defString`.
 
-- Finally, we convert back to a Haskell native type with `Rec.toNativeExact`.
-  Note that `toNativeExact` is a restricted version of `toNative` that forces the
-  native type and the record to have the exact same fields while `toNative` allows
-  the record to have extraneous fields.  As such, `toNativeExact` often improves
-  type inference.
+- Finally, we convert back to a Haskell native type with `Rec.toNative`.
 
 The full code looks like:
 ```haskell
 instance FromJSON RecToy where
   parseJSON :: Value -> Parser RecToy
   parseJSON
-    = fmap ( Rec.toNativeExact
+    = fmap ( Rec.toNative
            . over (Rec.focus #payload) defString)
     . genericParseJSON defaultOptions{omitNothingFields=True}
 ```

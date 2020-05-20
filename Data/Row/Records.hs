@@ -42,8 +42,9 @@ module Data.Row.Records
   , type (.//), (.//)
   -- * Native Conversion
   -- $native
-  , toNative, toNativeExact, fromNative
-  , ToNative, ToNativeExact, FromNative
+  , fromNative, toNative, toNativeGeneral
+  , FromNative, ToNative, ToNativeGeneral
+  , NativeRow
   -- * Dynamic Conversion
   , toDynamicMap, fromDynamicMap
   -- * Row operations
@@ -51,7 +52,7 @@ module Data.Row.Records
   , Map, map, map', mapF
   , transform, transform'
   -- ** Fold
-  , Forall, erase, eraseWithLabels, eraseZip, eraseToHashMap
+  , BiForall, Forall, erase, eraseWithLabels, eraseZip, eraseToHashMap
   -- ** Zip
   , Zip, zip
   -- ** Sequence
@@ -62,6 +63,8 @@ module Data.Row.Records
   , compose', uncompose'
   -- ** Labels
   , labels, labels'
+  -- ** Coerce
+  , coerceRec
   -- ** UNSAFE operations
   , unsafeRemove, unsafeInjectFront
   )
@@ -71,6 +74,7 @@ import Prelude hiding (map, sequence, zip)
 
 import Control.DeepSeq (NFData(..), deepseq)
 
+import           Data.Coerce
 import           Data.Constraint              ((\\))
 import           Data.Dynamic
 import           Data.Functor.Compose
@@ -321,7 +325,7 @@ newtype RecAp (ϕ :: Row (k -> *)) (ρ :: Row k) = RecAp (Rec (Ap ϕ ρ))
 newtype App (f :: k -> *) (a :: k) = App (f a)
 
 -- | A function to map over a Ap record given constraints.
-mapF :: forall c g (ϕ :: Row (k -> *)) (ρ :: Row k). BiForall ϕ ρ c
+mapF :: forall k c g (ϕ :: Row (k -> *)) (ρ :: Row k). BiForall ϕ ρ c
      => (forall f a. (c f a) => f a -> f (g a))
      -> Rec (Ap ϕ ρ)
      -> Rec (Ap ϕ (Map g ρ))
@@ -407,6 +411,23 @@ uncompose' = unRMap2 . metamorph @_ @r @c @(RMap (Compose f g)) @(RMap2 f g) @(C
 uncompose :: forall (f :: * -> *) (g :: * -> *) r . Forall r Unconstrained1
           => Rec (Map (Compose f g) r) -> Rec (Map f (Map g r))
 uncompose = uncompose' @Unconstrained1 @f @g @r
+
+
+-- | Coerce a record to a coercible representation.  The 'BiForall' in the context
+-- indicates that the type of every field in @r1@ can be coerced to the type of
+-- the corresponding fields in @r2@.
+--
+-- Internally, this is implemented just with `unsafeCoerce`, but we provide the
+-- following implementation as a proof:
+-- > newtype ConstR a b = ConstR (Rec a)
+-- > newtype FlipConstR a b = FlipConstR { unFlipConstR :: Rec b }
+-- > coerceRec = unFlipConstR . biMetamorph @_ @_ @r1 @r2 @Coercible @ConstR @FlipConstR @Const Proxy doNil doUncons doCons . ConstR
+-- >   where
+-- >     doNil _ = FlipConstR empty
+-- >     doUncons l (ConstR r) = (Const (r .! l), ConstR (unsafeRemove l r))
+-- >     doCons l (Const v) (FlipConstR r) = FlipConstR $ unsafeInjectFront l (coerce v) r
+coerceRec :: forall r1 r2. BiForall r1 r2 Coercible => Rec r1 -> Rec r2
+coerceRec = unsafeCoerce
 
 
 -- | RZipPair is used internally as a type level lambda for zipping records.
@@ -497,9 +518,8 @@ fromDynamicMap m = fromLabelsA @Typeable
 -- very similar to a native Haskell record except that the tree of pairs (':*:')
 -- that it produces will be extremely unbalanced.  I don't think this is a problem.
 -- Furthermore, because we don't want Recs to always have a trailing unit on
--- the end, we must have a special case for singleton Recs.  This means that
--- we can't use metamorph and that we must use an overlappable instance for
--- larger records.
+-- the end, we must have a special case for singleton Recs, which means that
+-- we can't use metamorph.
 
 instance GenericRec r => G.Generic (Rec r) where
   type Rep (Rec r) =
@@ -509,32 +529,30 @@ instance GenericRec r => G.Generic (Rec r) where
   from = G.M1 . G.M1 . fromRec
   to = toRec . G.unM1 . G.unM1
 
-type family RepRec (r :: Row *) :: * -> * where
-  RepRec (R '[])                 = G.U1
-  RepRec (R (name :-> t ': '[])) = G.S1
-    ('G.MetaSel ('Just name) 'G.NoSourceUnpackedness 'G.NoSourceStrictness 'G.DecidedLazy)
-    (G.Rec0 t)
-  RepRec (R (name :-> t ': r))   = (G.S1
-    ('G.MetaSel ('Just name) 'G.NoSourceUnpackedness 'G.NoSourceStrictness 'G.DecidedLazy)
-    (G.Rec0 t)) G.:*: RepRec (R r)
-
 class GenericRec r where
+  type RepRec (r :: Row *) :: * -> *
   fromRec :: Rec r -> RepRec r x
   toRec   :: RepRec r x -> Rec r
 
 instance GenericRec Empty where
+  type RepRec (R '[]) = G.U1
   fromRec _ = G.U1
   toRec _ = empty
 
 instance KnownSymbol name => GenericRec (R '[name :-> t]) where
+  type RepRec (R (name :-> t ': '[])) = G.S1
+    ('G.MetaSel ('Just name) 'G.NoSourceUnpackedness 'G.NoSourceStrictness 'G.DecidedLazy)
+    (G.Rec0 t)
   fromRec (_ :== a) = G.M1 (G.K1 a)
   toRec (G.M1 (G.K1 a)) = (Label @name) :== a
 
-instance {-# OVERLAPPABLE #-}
-    ( GenericRec (R r)
+instance
+    ( GenericRec (R (name' :-> t' ': r'))
     , KnownSymbol name
-    , r ~ (name' :-> t' ': r') -- r is not Empty
-    ) => GenericRec (R (name :-> t ': r)) where
+    ) => GenericRec (R (name :-> t ': (name' :-> t' ': r'))) where
+  type RepRec (R (name :-> t ': (name' :-> t' ': r')))   = (G.S1
+    ('G.MetaSel ('Just name) 'G.NoSourceUnpackedness 'G.NoSourceStrictness 'G.DecidedLazy)
+    (G.Rec0 t)) G.:*: RepRec (R (name' :-> t' ': r'))
   fromRec r = G.M1 (G.K1 (r .! Label @name)) G.:*: fromRec (unsafeRemove @name Label r)
   toRec (G.M1 (G.K1 a) G.:*: r) = unsafeInjectFront (Label @name) a (toRec r)
 
@@ -547,11 +565,10 @@ instance {-# OVERLAPPABLE #-}
 -- $native
 -- The 'toNative' and 'fromNative' functions allow one to convert between
 -- 'Rec's and regular Haskell data types ("native" types) that have a single constructor and any
--- number of named fields with the same names and types as the 'Rec'.  That
--- said, they do not compose to form the identity because 'toNative' allows
--- fields to be dropped: a record with excess fields can still be transformed
--- to a native type, but when the native type is converted to a record, the
--- fields are exactly transformed.  Because of this, 'toNative' requires a type
+-- number of named fields with the same names and types as the 'Rec'.  As expected,
+-- they compose to form the identity.  Alternatively, one may use 'toNativeGeneral',
+-- which allows fields to be dropped when a record has excess fields compared
+-- to the native type.  Because of this, 'toNativeGeneral' requires a type
 -- application (although 'fromNative' does not).  The only requirement is that
 -- the native Haskell data type be an instance of 'Generic'.
 --
@@ -565,100 +582,103 @@ instance {-# OVERLAPPABLE #-}
 -- Person {name = "Alice", age = 7}
 -- >>> fromNative $ Person "Bob" 9
 -- { age=9, name="Bob" }
---
--- The 'toNativeExact' function is a more restricted version of 'toNative' that
--- does not allow fields to be dropped; in other words, the fields in the record
--- must exactly match the fields in the data type.  Because of this, 'toNativeExact'
--- and 'fromNative' compose to form the identity function.
 
+type family NativeRow t where
+  NativeRow t = NativeRowG (G.Rep t)
 
--- | Conversion helper to bring a record back into a Haskell type. Note that the
--- native Haskell type must be an instance of 'Generic'.
-class ToNativeG a ρ where
-  toNative' :: Rec ρ -> a x
-
-instance ToNativeG cs ρ => ToNativeG (G.D1 m cs) ρ where
-  toNative' xs = G.M1 $ toNative' xs
-
-instance ToNativeG cs ρ => ToNativeG (G.C1 m cs) ρ where
-  toNative' xs = G.M1 $ toNative' xs
-
-instance ToNativeG G.U1 ρ where
-  toNative' _ = G.U1
-
-instance (KnownSymbol name, ρ .! name ≈ t)
-    => ToNativeG (G.S1 ('G.MetaSel ('Just name) p s l) (G.Rec0 t)) ρ where
-  toNative' r = G.M1 $ G.K1 $ r .! (Label @name)
-
-instance (ToNativeG l ρ, ToNativeG r ρ)
-    => ToNativeG (l G.:*: r) ρ where
-  toNative' r = toNative' r G.:*: toNative' r
-
-type ToNative t ρ = (G.Generic t, ToNativeG (G.Rep t) ρ)
-
--- | Convert a record to a native Haskell type.
-toNative :: ToNative t ρ => Rec ρ -> t
-toNative = G.to . toNative'
-
-
--- | Conversion helper to bring a record back into a Haskell type. Note that the
--- native Haskell type must be an instance of 'Generic'.
-class ToNativeExactG a ρ where
-  toNativeExact' :: Rec ρ -> a x
-
-instance ToNativeExactG cs ρ => ToNativeExactG (G.D1 m cs) ρ where
-  toNativeExact' xs = G.M1 $ toNativeExact' xs
-
-instance ToNativeExactG cs ρ => ToNativeExactG (G.C1 m cs) ρ where
-  toNativeExact' xs = G.M1 $ toNativeExact' xs
-
-instance ToNativeExactG G.U1 Empty where
-  toNativeExact' _ = G.U1
-
-instance (KnownSymbol name, ρ ≈ name .== t)
-    => ToNativeExactG (G.S1 ('G.MetaSel ('Just name) p s l) (G.Rec0 t)) ρ where
-  toNativeExact' r = G.M1 $ G.K1 $ r .! (Label @name)
-
-instance (ToNativeExactG l ρ₁, ToNativeExactG r ρ₂, ρ ≈ ρ₁ .+ ρ₂, Disjoint ρ₁ ρ₂)
-    => ToNativeExactG (l G.:*: r) ρ where
-  toNativeExact' r = toNativeExact' r1 G.:*: toNativeExact' r2
-    where
-      (r1 :: Rec ρ₁) :+ (r2 :: Rec ρ₂) = r
-
-type ToNativeExact t ρ = (G.Generic t, ToNativeExactG (G.Rep t) ρ)
-
--- | Convert a record to an exactly matching native Haskell type.
-toNativeExact :: ToNativeExact t ρ => Rec ρ -> t
-toNativeExact = G.to . toNativeExact'
+type family NativeRowG t where
+  NativeRowG (G.M1 G.D m cs) = NativeRowG cs
+  NativeRowG (G.M1 G.C m cs) = NativeRowG cs
+  NativeRowG G.U1 = Empty
+  NativeRowG (l G.:*: r) = NativeRowG l .+ NativeRowG r
+  NativeRowG (G.M1 G.S ('G.MetaSel ('Just name) p s l) (G.Rec0 t)) = name .== t
 
 
 -- | Conversion helper to turn a Haskell record into a row-types extensible
 -- record. Note that the native Haskell type must be an instance of 'Generic'.
-class FromNativeG a ρ where
-  fromNative' :: a x -> Rec ρ
+class FromNativeG a where
+  fromNative' :: a x -> Rec (NativeRowG a)
 
-instance FromNativeG cs ρ => FromNativeG (G.D1 m cs) ρ where
+instance FromNativeG cs => FromNativeG (G.D1 m cs) where
   fromNative' (G.M1 xs) = fromNative' xs
 
-instance FromNativeG cs ρ => FromNativeG (G.C1 m cs) ρ where
+instance FromNativeG cs => FromNativeG (G.C1 m cs) where
   fromNative' (G.M1 xs) = fromNative' xs
 
-instance FromNativeG G.U1 Empty where
+instance FromNativeG G.U1 where
   fromNative' G.U1 = empty
 
-instance (KnownSymbol name, ρ ≈ name .== t)
-    => FromNativeG (G.S1 ('G.MetaSel ('Just name) p s l) (G.Rec0 t)) ρ where
+instance KnownSymbol name => FromNativeG (G.S1 ('G.MetaSel ('Just name) p s l) (G.Rec0 t)) where
   fromNative' (G.M1 (G.K1 x)) =  (Label @name) .== x
 
-instance (FromNativeG l ρ₁, FromNativeG r ρ₂, ρ ≈ ρ₁ .+ ρ₂)
-    => FromNativeG (l G.:*: r) ρ where
-  fromNative' (x G.:*: y) = fromNative' @l @ρ₁ x .+ fromNative' @r @ρ₂ y
+instance (FromNativeG l, FromNativeG r) => FromNativeG (l G.:*: r) where
+  fromNative' (x G.:*: y) = fromNative' @l x .+ fromNative' @r y
 
-type FromNative t ρ = (G.Generic t, FromNativeG (G.Rep t) ρ)
+type FromNative t = (G.Generic t, FromNativeG (G.Rep t))
 
 -- | Convert a Haskell record to a row-types Rec.
-fromNative :: FromNative t ρ => t -> Rec ρ
+fromNative :: FromNative t => t -> Rec (NativeRow t)
 fromNative = fromNative' . G.from
+
+
+-- | Conversion helper to bring a record back into a Haskell type. Note that the
+-- native Haskell type must be an instance of 'Generic'.
+class ToNativeG a where
+  toNative' :: Rec (NativeRowG a) -> a x
+
+instance ToNativeG cs => ToNativeG (G.D1 m cs) where
+  toNative' xs = G.M1 $ toNative' xs
+
+instance ToNativeG cs => ToNativeG (G.C1 m cs) where
+  toNative' xs = G.M1 $ toNative' xs
+
+instance ToNativeG G.U1 where
+  toNative' _ = G.U1
+
+instance (KnownSymbol name) => ToNativeG (G.S1 ('G.MetaSel ('Just name) p s l) (G.Rec0 t)) where
+  toNative' r = G.M1 $ G.K1 $ r .! (Label @name)
+
+instance (ToNativeG l, ToNativeG r, Disjoint (NativeRowG l) (NativeRowG r))
+    => ToNativeG (l G.:*: r) where
+  toNative' r = toNative' r1 G.:*: toNative' r2
+    where
+      (r1 :: Rec (NativeRowG l)) :+ (r2 :: Rec (NativeRowG r)) = r
+
+type ToNative t = (G.Generic t, ToNativeG (G.Rep t))
+
+-- | Convert a record to an exactly matching native Haskell type.
+toNative :: ToNative t => Rec (NativeRow t) -> t
+toNative = G.to . toNative'
+
+
+
+-- | Conversion helper to bring a record back into a Haskell type. Note that the
+-- native Haskell type must be an instance of 'Generic'.
+class ToNativeGeneralG a ρ where
+  toNativeGeneral' :: Rec ρ -> a x
+
+instance ToNativeGeneralG cs ρ => ToNativeGeneralG (G.D1 m cs) ρ where
+  toNativeGeneral' xs = G.M1 $ toNativeGeneral' xs
+
+instance ToNativeGeneralG cs ρ => ToNativeGeneralG (G.C1 m cs) ρ where
+  toNativeGeneral' xs = G.M1 $ toNativeGeneral' xs
+
+instance ToNativeGeneralG G.U1 ρ where
+  toNativeGeneral' _ = G.U1
+
+instance (KnownSymbol name, ρ .! name ≈ t)
+    => ToNativeGeneralG (G.S1 ('G.MetaSel ('Just name) p s l) (G.Rec0 t)) ρ where
+  toNativeGeneral' r = G.M1 $ G.K1 $ r .! (Label @name)
+
+instance (ToNativeGeneralG l ρ, ToNativeGeneralG r ρ)
+    => ToNativeGeneralG (l G.:*: r) ρ where
+  toNativeGeneral' r = toNativeGeneral' r G.:*: toNativeGeneral' r
+
+type ToNativeGeneral t ρ = (G.Generic t, ToNativeGeneralG (G.Rep t) ρ)
+
+-- | Convert a record to a native Haskell type.
+toNativeGeneral :: ToNativeGeneral t ρ => Rec ρ -> t
+toNativeGeneral = G.to . toNativeGeneral'
 
 
 {--------------------------------------------------------------------
