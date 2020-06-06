@@ -4,8 +4,10 @@ License:             MIT
 License-file:        LICENSE
 Author:              Daniel Winograd-Cort, Matthew Farkas-Dyck
 Maintainer:          dwincort@gmail.com
+homepage:            https://github.com/target/row-types
 Build-Type:          Simple
-Cabal-Version:       >=1.8
+Cabal-Version:       >=1.10
+Tested-With:         GHC == 8.4, GHC == 8.6, GHC == 8.8
 Category:            Data, Data Structures
 Synopsis:	           Open Records and Variants
 Description:
@@ -25,44 +27,23 @@ extra-source-files:
   NOTICE
 
 Library
-  Build-Depends: base >= 2 && < 5,
-                 constraints,
-                 deepseq >= 1.4,
-                 hashable >= 1.2,
-                 unordered-containers >= 0.2,
-                 generic-lens >= 1.0.0.0,
-                 profunctors >= 5.0,
-                 text
-  Exposed-modules: Data.Row
-                 , Data.Row.Internal
-                 , Data.Row.Records
-                 , Data.Row.Variants
-                 , Data.Row.Switch
+  Build-Depends:
+    base >= 2 && < 5,
+    constraints,
+    deepseq >= 1.4,
+    hashable >= 1.2,
+    unordered-containers >= 0.2,
+    generic-lens >= 1.0.0.0,
+    profunctors >= 5.0,
+    text
+  Exposed-modules:
+      Data.Row
+    , Data.Row.Internal
+    , Data.Row.Records
+    , Data.Row.Variants
+    , Data.Row.Switch
   ghc-options: -W
-  Extensions: AllowAmbiguousTypes,
-              ConstraintKinds,
-              DataKinds,
-              EmptyCase,
-              EmptyDataDecls,
-              FlexibleContexts,
-              FlexibleInstances,
-              GADTs,
-              InstanceSigs,
-              KindSignatures,
-              LambdaCase,
-              MultiParamTypeClasses,
-              OverloadedLabels,
-              PatternGuards,
-              PatternSynonyms,
-              PolyKinds,
-              RankNTypes,
-              ScopedTypeVariables,
-              TypeApplications,
-              TypeFamilies,
-              TypeOperators,
-              TupleSections,
-              ViewPatterns,
-              UndecidableInstances
+  default-language: Haskell2010
 
 benchmark perf
   type: exitcode-stdio-1.0
@@ -74,7 +55,8 @@ benchmark perf
                , row-types
                , deepseq >= 1.4
                , criterion >= 1.1
-  Extensions: AllowAmbiguousTypes,
+  default-language: Haskell2010
+  default-extensions: AllowAmbiguousTypes,
               DataKinds,
               OverloadedLabels,
               RankNTypes,
@@ -92,7 +74,8 @@ test-suite test
   build-depends: base >= 2 && < 6
                , generic-lens >= 1.1.0.0
                , row-types
-  Extensions: AllowAmbiguousTypes,
+  default-language: Haskell2010
+  default-extensions: AllowAmbiguousTypes,
               DataKinds,
               FlexibleContexts,
               OverloadedLabels,

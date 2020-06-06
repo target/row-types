@@ -1,3 +1,20 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE EmptyCase #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE UndecidableInstances #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Data.Row.Variants
@@ -318,6 +335,7 @@ uncompose = unVMap2 . metamorph' @_ @r @Unconstrained1 @(VMap (Compose f g)) @(V
 --
 -- Internally, this is implemented just with `unsafeCoerce`, but we provide the
 -- following implementation as a proof:
+--
 -- > newtype ConstR a b = ConstR { unConstR :: Var a }
 -- > newtype FlipConstR a b = FlipConstR { unFlipConstR :: Var b }
 -- > coerceVar = unFlipConstR . biMetamorph' @_ @_ @r1 @r2 @Coercible @ConstR @FlipConstR @Const Proxy doNil doUncons doCons . ConstR

@@ -1,3 +1,17 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE UndecidableInstances #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Data.Row.Records
@@ -419,6 +433,7 @@ uncompose = uncompose' @Unconstrained1 @f @g @r
 --
 -- Internally, this is implemented just with `unsafeCoerce`, but we provide the
 -- following implementation as a proof:
+--
 -- > newtype ConstR a b = ConstR (Rec a)
 -- > newtype FlipConstR a b = FlipConstR { unFlipConstR :: Rec b }
 -- > coerceRec = unFlipConstR . biMetamorph @_ @_ @r1 @r2 @Coercible @ConstR @FlipConstR @Const Proxy doNil doUncons doCons . ConstR
