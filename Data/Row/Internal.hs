@@ -43,6 +43,7 @@ module Data.Row.Internal
   , BiConstraint
   , Unconstrained1
   , Unconstrained2
+  , FlipConst(..)
   , WellBehaved, AllUniqueLabels
   , Ap, Zip, Map, Subset, Disjoint
   -- * Helper functions
@@ -60,6 +61,7 @@ module Data.Row.Internal
   )
 where
 
+import Data.Bifunctor (Bifunctor(..))
 import Data.Constraint
 import Data.Functor.Const
 import Data.Proxy
@@ -222,156 +224,71 @@ type (l :: Symbol) .== (a :: k) = Extend l a Empty
 --------------------------------------------------------------------}
 
 -- | Any structure over a row in which every element is similarly constrained can
---   be metamorphized into another structure over the same row.
+-- be metamorphized into another structure over the same row.
 class Forall (r :: Row k) (c :: k -> Constraint) where
-  -- | A metamorphism is an unfold followed by a fold.  This one is for
-  -- product-like row-types (e.g. Rec).
-  metamorph :: forall (f :: Row k -> *) (g :: Row k -> *) (h :: k -> *).
-               Proxy h
+  -- | A metamorphism is an anamorphism (an unfold) followed by a catamorphism (a fold).
+  -- The parameter 'p' describes the output of the unfold and the input of the fold.
+  -- For records, @p = (,)@, because every entry in the row will unfold to a value paired
+  -- with the rest of the record.
+  -- For variants, @p = Either@, because there will either be a value or future types to
+  -- explore.
+  -- 'Const' can be useful when you want an arbitrary type from the row, and
+  -- 'FlipConst' can be useful when the types in the row are unnecessary.
+  metamorph :: forall (p :: * -> * -> *) (f :: Row k -> *) (g :: Row k -> *) (h :: k -> *). Bifunctor p
+            => Proxy (Proxy h, Proxy p)
             -> (f Empty -> g Empty)
                -- ^ The way to transform the empty element
-            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> f ('R (ℓ :-> τ ': ρ)) -> (h τ, f ('R ρ)))
+            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> f ('R (ℓ :-> τ ': ρ)) -> p (h τ) (f ('R ρ)))
                -- ^ The unfold
-            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> h τ -> g ('R ρ) -> g ('R (ℓ :-> τ ': ρ)))
+            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> p (h τ) (g ('R ρ)) -> g ('R (ℓ :-> τ ': ρ)))
                -- ^ The fold
             -> f r  -- ^ The input structure
             -> g r
-
-  -- | A metamorphism is an unfold followed by a fold.  This one is for
-  -- sum-like row-types (e.g. Var).
-  metamorph' :: forall (f :: Row k -> *) (g :: Row k -> *) (h :: k -> *).
-               Proxy h
-            -> (f Empty -> g Empty)
-               -- ^ The way to transform the empty element
-            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> f ('R (ℓ :-> τ ': ρ)) -> Either (h τ) (f ('R ρ)))
-               -- ^ The unfold
-            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> Either (h τ) (g ('R ρ)) -> g ('R (ℓ :-> τ ': ρ)))
-               -- ^ The fold
-            -> f r  -- ^ The input structure
-            -> g r
-
--- | This data type is used to for its ability to existentially bind a type
--- variable.  Particularly, it says that for the type 'a', there exists a 't'
--- such that 'a ~ f t' and 'c t' holds.
-data As c f a where
-  As :: forall c f a t. (a ~ f t, c t) => As c f a
-
--- | A class to capture the idea of 'As' so that it can be partially applied in
--- a context.
-class IsA c f a where
-  as :: As c f a
-
-instance c a => IsA c f (f a) where
-  as = As
-
--- | An internal type used by the 'metamorph' in 'mapForall'.
-newtype MapForall c f (r :: Row k) = MapForall { unMapForall :: Dict (Forall (Map f r) (IsA c f)) }
-
--- | This allows us to derive a `Forall (Map f r) ..` from a `Forall r ..`.
-mapForall :: forall f c ρ. Forall ρ c :- Forall (Map f ρ) (IsA c f)
-mapForall = Sub $ unMapForall $ metamorph @_ @ρ @c @(Const ()) @(MapForall c f) @(Const ()) Proxy empty uncons cons $ Const ()
-  where empty :: Const () Empty -> MapForall c f Empty
-        empty _ = MapForall Dict
-
-        uncons :: forall l t r. (KnownSymbol l, c t)
-               => Label l -> Const () ('R (l :-> t ': r)) -> (Const () t, Const () ('R r))
-        uncons _ _ = (Const (), Const ())
-
-        cons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
-             => Label ℓ -> Const () τ -> MapForall c f ('R ρ)
-             -> MapForall c f ('R (ℓ :-> τ ': ρ))
-        cons _ _ (MapForall Dict) = MapForall Dict
-
--- | Map preserves uniqueness of labels.
-uniqueMap :: forall f ρ. AllUniqueLabels ρ :- AllUniqueLabels (Map f ρ)
-uniqueMap = Sub $ UNSAFE.unsafeCoerce @(Dict Unconstrained) Dict
-
--- | Allow any 'Forall` over a row-type, be usable for 'Unconstrained1'.
-freeForall :: forall r c. Forall r c :- Forall r Unconstrained1
-freeForall = Sub $ UNSAFE.unsafeCoerce @(Dict (Forall r c)) Dict
-
--- | This allows us to derive `Map f r .! l ≈ f t` from `r .! l ≈ t`
-mapHas :: forall f r l t. (r .! l ≈ t) :- (Map f r .! l ≈ f t)
-mapHas = Sub $ UNSAFE.unsafeCoerce $ Dict @(r .! l ≈ t)
 
 instance Forall (R '[]) c where
   {-# INLINE metamorph #-}
   metamorph _ empty _ _ = empty
-  {-# INLINE metamorph' #-}
-  metamorph' _ empty _ _ = empty
 
 instance (KnownSymbol ℓ, c τ, Forall ('R ρ) c) => Forall ('R (ℓ :-> τ ': ρ) :: Row k) c where
-  metamorph :: forall (f :: Row k -> *) (g :: Row k -> *) (h :: k -> *).
-               Proxy h
-            -> (f Empty -> g Empty)
-               -- ^ The way to transform the empty element
-            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> f ('R (ℓ :-> τ ': ρ)) -> (h τ, f ('R ρ)))
-               -- ^ The unfold
-            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> h τ -> g ('R ρ) -> g ('R (ℓ :-> τ ': ρ)))
-               -- ^ The fold
-            -> f ('R (ℓ :-> τ ': ρ))  -- ^ The input structure
-            -> g ('R (ℓ :-> τ ': ρ))
   {-# INLINE metamorph #-}
-  metamorph _ empty uncons cons r = cons Label t $ metamorph @_ @('R ρ) @c @_ @_ @h Proxy empty uncons cons r'
-    where (t, r') = uncons Label r
-  metamorph' :: forall (f :: Row k -> *) (g :: Row k -> *) (h :: k -> *).
-               Proxy h
-            -> (f Empty -> g Empty)
-               -- ^ The way to transform the empty element
-            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> f ('R (ℓ :-> τ ': ρ)) -> Either (h τ) (f ('R ρ)))
-               -- ^ The unfold
-            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> Either (h τ) (g ('R ρ)) -> g ('R (ℓ :-> τ ': ρ)))
-               -- ^ The fold
-            -> f ('R (ℓ :-> τ ': ρ))  -- ^ The input structure
-            -> g ('R (ℓ :-> τ ': ρ))
-  {-# INLINE metamorph' #-}
-  metamorph' _ empty uncons cons r = cons Label $ metamorph' @_ @('R ρ) @c @_ @_ @h Proxy empty uncons cons <$> uncons Label r
+  metamorph h empty uncons cons =
+    cons (Label @ℓ) . second (metamorph @_ @('R ρ) @c h empty uncons cons) . uncons (Label @ℓ)
+
 
 -- | Any structure over two rows in which the elements of each row satisfy some
 --   constraints can be metamorphized into another structure over both of the
 --   rows.
 class BiForall (r1 :: Row k1) (r2 :: Row k2) (c :: k1 -> k2 -> Constraint) where
-  -- | A metamorphism is a fold followed by an unfold.  This one is for
-  -- product-like row-types.
-  biMetamorph :: forall (f :: Row k1 -> Row k2 -> *) (g :: Row k1 -> Row k2 -> *)
-                        (h :: k1 -> k2 -> *).
-                 Proxy h
+  -- | A metamorphism is an anamorphism (an unfold) followed by a catamorphism (a fold).
+  biMetamorph :: forall (p :: * -> * -> *) (f :: Row k1 -> Row k2 -> *) (g :: Row k1 -> Row k2 -> *)
+                        (h :: k1 -> k2 -> *). Bifunctor p
+              => Proxy (Proxy h, Proxy p)
               -> (f Empty Empty -> g Empty Empty)
               -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1 τ2)
                   => Label ℓ
                   -> f ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2))
-                  -> (h τ1 τ2, f ('R ρ1) ('R ρ2)))
+                  -> p (h τ1 τ2) (f ('R ρ1) ('R ρ2)))
               -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1 τ2)
-                  => Label ℓ -> h τ1 τ2 -> g ('R ρ1) ('R ρ2) -> g ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)))
+                  => Label ℓ -> p (h τ1 τ2) (g ('R ρ1) ('R ρ2)) -> g ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)))
               -> f r1 r2 -> g r1 r2
 
-  -- | A metamorphism is a fold followed by an unfold.  This one is for
-  -- sum-like row-types.
-  biMetamorph' :: forall (f :: Row k1 -> Row k2 -> *) (g :: Row k1 -> Row k2 -> *)
-                         (h :: k1 -> k2 -> *).
-                  Proxy h
-               -> (f Empty Empty -> g Empty Empty)
-               -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1 τ2)
-                   => Label ℓ
-                   -> f ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2))
-                   -> Either (h τ1 τ2) (f ('R ρ1) ('R ρ2)))
-               -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1 τ2)
-                   => Label ℓ -> Either (h τ1 τ2) (g ('R ρ1) ('R ρ2)) -> g ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)))
-               -> f r1 r2 -> g r1 r2
 
 instance BiForall (R '[]) (R '[]) c1 where
   {-# INLINE biMetamorph #-}
   biMetamorph _ empty _ _ = empty
-  biMetamorph' _ empty _ _ = empty
 
 instance (KnownSymbol ℓ, c τ1 τ2, BiForall ('R ρ1) ('R ρ2) c)
       => BiForall ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)) c where
   {-# INLINE biMetamorph #-}
-  biMetamorph h empty uncons cons r = cons (Label @ℓ) t $ biMetamorph @_ @_ @('R ρ1) @('R ρ2) @c h empty uncons cons r'
-    where (t, r') = uncons (Label @ℓ) r
-  {-# INLINE biMetamorph' #-}
-  biMetamorph' h empty uncons cons r =
-    cons (Label @ℓ) $ biMetamorph' @_ @_ @('R ρ1) @('R ρ2) @c h empty uncons cons <$> uncons (Label @ℓ) r
+  biMetamorph h empty uncons cons =
+    cons (Label @ℓ) . second (biMetamorph @_ @_ @('R ρ1) @('R ρ2) @c h empty uncons cons) . uncons (Label @ℓ)
+
+
+newtype FlipConst a b = FlipConst { getFlipConst :: b }
+
+instance Bifunctor FlipConst where
+  bimap _ g (FlipConst b) = FlipConst (g b)
+
 
 -- | A null constraint
 class Unconstrained
@@ -396,14 +313,58 @@ type family Labels (r :: Row a) where
 
 -- | Return a list of the labels in a row type.
 labels :: forall ρ c s. (IsString s, Forall ρ c) => [s]
-labels = getConst $ metamorph @_ @ρ @c @(Const ()) @(Const [s]) @(Const ()) Proxy (const $ Const []) doUncons doCons (Const ())
-  where doUncons _ _ = (Const (), Const ())
-        doCons l _ (Const c) = Const $ show' l : c
+labels = getConst $ metamorph @_ @ρ @c @FlipConst @(Const ()) @(Const [s]) @Proxy Proxy (const $ Const []) doUncons doCons (Const ())
+  where doUncons _ _ = FlipConst $ Const ()
+        doCons l (FlipConst (Const c)) = Const $ show' l : c
 
 -- | Return a list of the labels in a row type and is specialized to the 'Unconstrained1' constraint.
 labels' :: forall ρ s. (IsString s, Forall ρ Unconstrained1) => [s]
 labels' = labels @ρ @Unconstrained1
 
+
+-- | This data type is used to for its ability to existentially bind a type
+-- variable.  Particularly, it says that for the type 'a', there exists a 't'
+-- such that 'a ~ f t' and 'c t' holds.
+data As c f a where
+  As :: forall c f a t. (a ~ f t, c t) => As c f a
+
+-- | A class to capture the idea of 'As' so that it can be partially applied in
+-- a context.
+class IsA c f a where
+  as :: As c f a
+
+instance c a => IsA c f (f a) where
+  as = As
+
+-- | An internal type used by the 'metamorph' in 'mapForall'.
+newtype MapForall c f (r :: Row k) = MapForall { unMapForall :: Dict (Forall (Map f r) (IsA c f)) }
+
+-- | This allows us to derive a `Forall (Map f r) ..` from a `Forall r ..`.
+mapForall :: forall f c ρ. Forall ρ c :- Forall (Map f ρ) (IsA c f)
+mapForall = Sub $ unMapForall $ metamorph @_ @ρ @c @(,) @(Const ()) @(MapForall c f) @(Const ()) Proxy empty uncons cons $ Const ()
+  where empty :: Const () Empty -> MapForall c f Empty
+        empty _ = MapForall Dict
+
+        uncons :: forall l t r. (KnownSymbol l, c t)
+               => Label l -> Const () ('R (l :-> t ': r)) -> (Const () t, Const () ('R r))
+        uncons _ _ = (Const (), Const ())
+
+        cons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
+             => Label ℓ -> (Const () τ, MapForall c f ('R ρ))
+             -> MapForall c f ('R (ℓ :-> τ ': ρ))
+        cons _ (_, MapForall Dict) = MapForall Dict
+
+-- | Map preserves uniqueness of labels.
+uniqueMap :: forall f ρ. AllUniqueLabels ρ :- AllUniqueLabels (Map f ρ)
+uniqueMap = Sub $ UNSAFE.unsafeCoerce @(Dict Unconstrained) Dict
+
+-- | Allow any 'Forall` over a row-type, be usable for 'Unconstrained1'.
+freeForall :: forall r c. Forall r c :- Forall r Unconstrained1
+freeForall = Sub $ UNSAFE.unsafeCoerce @(Dict (Forall r c)) Dict
+
+-- | This allows us to derive `Map f r .! l ≈ f t` from `r .! l ≈ t`
+mapHas :: forall f r l t. (r .! l ≈ t) :- (Map f r .! l ≈ f t)
+mapHas = Sub $ UNSAFE.unsafeCoerce $ Dict @(r .! l ≈ t)
 
 {--------------------------------------------------------------------
   Convenient type families and classes
