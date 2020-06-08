@@ -323,7 +323,7 @@ map f = unRMap . metamorph @_ @r @c @(,) @Rec @(RMap f) @Identity Proxy doNil do
     doUncons l r = (Identity $ r .! l, unsafeRemove l r)
     doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FrontExtends ℓ τ ρ)
            => Label ℓ -> (Identity τ, RMap f ('R ρ)) -> RMap f ('R (ℓ :-> τ ': ρ))
-    doCons l (Identity v, RMap r) = case mapPreservesLabels @ℓ @τ @('R ρ) @f of
+    doCons l (Identity v, RMap r) = case mapExtendSwap @ℓ @τ @('R ρ) @f of
       Dict -> RMap (extend l (f v) r)
 
 newtype RFMap (g :: k1 -> k2) (ϕ :: Row (k2 -> *)) (ρ :: Row k1) = RFMap { unRFMap :: Rec (Ap ϕ (Map g ρ)) }
@@ -341,7 +341,7 @@ mapF f = unRFMap . biMetamorph @_ @_ @ϕ @ρ @c @(,) @RecAp @(RFMap g) @App Prox
     doUncons l (RecAp r) = (App $ r .! l, RecAp $ unsafeRemove l r)
     doCons :: forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1 τ2, FrontExtends ℓ τ1 ρ1, FrontExtends ℓ τ2 ρ2)
            => Label ℓ -> (App τ1 τ2, RFMap g ('R ρ1) ('R ρ2)) -> RFMap g ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2))
-    doCons l (App v, RFMap r) = case (mapPreservesLabels @ℓ @τ2 @('R ρ2) @g, apPreservesLabels @_ @ℓ @(g τ2) @(Map g ('R ρ2)) @τ1 @('R ρ1)) of
+    doCons l (App v, RFMap r) = case (mapExtendSwap @ℓ @τ2 @('R ρ2) @g, apExtendSwap @_ @ℓ @(g τ2) @(Map g ('R ρ2)) @τ1 @('R ρ1)) of
       (Dict, Dict) -> RFMap (extend l (f @τ1 @τ2 v) r)
 
 -- | A function to map over a record given no constraint.
@@ -359,7 +359,7 @@ transform f = unRMap . metamorph @_ @r @c @(,) @(RMap f) @(RMap g) @f Proxy doNi
     doUncons l (RMap r) = (r .! l, RMap $ unsafeRemove l r)
     doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FrontExtends ℓ τ ρ)
            => Label ℓ -> (f τ, RMap g ('R ρ)) -> RMap g ('R (ℓ :-> τ ': ρ))
-    doCons l (v, RMap r) = case mapPreservesLabels @ℓ @τ @('R ρ) @g of
+    doCons l (v, RMap r) = case mapExtendSwap @ℓ @τ @('R ρ) @g of
       Dict -> RMap (extend l (f v) r)
 
 -- | A version of 'transform' for when there is no constraint.
@@ -398,7 +398,7 @@ compose' = unRMap . metamorph @_ @r @c @(,) @(RMap2 f g) @(RMap (Compose f g)) @
     doUncons l (RMap2 r) = (Compose $ r .! l, RMap2 $ unsafeRemove l r)
     doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FrontExtends ℓ τ ρ)
            => Label ℓ -> (Compose f g τ, RMap (Compose f g) ('R ρ)) -> RMap (Compose f g) ('R (ℓ :-> τ ': ρ))
-    doCons l (v, RMap r) = case mapPreservesLabels @ℓ @τ @('R ρ) @(Compose f g) of
+    doCons l (v, RMap r) = case mapExtendSwap @ℓ @τ @('R ρ) @(Compose f g) of
       Dict -> RMap $ extend l v r
 
 -- | Convert from a record where two functors have been mapped over the types to
@@ -416,7 +416,7 @@ uncompose' = unRMap2 . metamorph @_ @r @c @(,) @(RMap (Compose f g)) @(RMap2 f g
     doUncons l (RMap r) = (r .! l, RMap $ unsafeRemove l r)
     doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FrontExtends ℓ τ ρ)
            => Label ℓ -> (Compose f g τ, RMap2 f g ('R ρ)) -> RMap2 f g ('R (ℓ :-> τ ': ρ))
-    doCons l (Compose v, RMap2 r) = case (mapPreservesLabels @ℓ @τ @('R ρ) @g, mapPreservesLabels @ℓ @(g τ) @(Map g ('R ρ)) @f) of
+    doCons l (Compose v, RMap2 r) = case (mapExtendSwap @ℓ @τ @('R ρ) @g, mapExtendSwap @ℓ @(g τ) @(Map g ('R ρ)) @f) of
       (Dict, Dict) -> RMap2 $ extend l v r
 
 -- | Convert from a record where the composition of two functors have been mapped
@@ -457,7 +457,7 @@ zip r1 r2 = unRZipPair $ biMetamorph @_ @_ @r1 @r2 @Unconstrained2 @(,) @RecPair
     doUncons l (RecPair (r1, r2)) = ((r1 .! l, r2 .! l), RecPair (unsafeRemove l r1, unsafeRemove l r2))
     doCons :: forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, FrontExtends ℓ τ1 ρ1, FrontExtends ℓ τ2 ρ2)
            => Label ℓ -> ((τ1, τ2), RZipPair ('R ρ1) ('R ρ2)) -> RZipPair ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2))
-    doCons l ((v1, v2), RZipPair r) = case zipPreservesLabels @ℓ @τ1 @('R ρ1) @τ2 @('R ρ2) of
+    doCons l ((v1, v2), RZipPair r) = case zipExtendSwap @ℓ @τ1 @('R ρ1) @τ2 @('R ρ2) of
       Dict -> RZipPair $ extend l (v1, v2) r
 
 -- | A helper function for unsafely adding an element to the front of a record.

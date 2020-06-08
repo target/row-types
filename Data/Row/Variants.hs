@@ -270,7 +270,7 @@ map f = unVMap . metamorph @_ @r @c @Either @Var @(VMap f) @Identity Proxy doNil
     doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FrontExtends ℓ τ ρ)
            => Label ℓ -> Either (Identity τ) (VMap f ('R ρ)) -> VMap f ('R (ℓ :-> τ ': ρ))
     doCons l (Left (Identity x)) = VMap $ unsafeMakeVar l $ f x
-    doCons l (Right (VMap v)) = case mapPreservesLabels @ℓ @τ @('R ρ) @f of
+    doCons l (Right (VMap v)) = case mapExtendSwap @ℓ @τ @('R ρ) @f of
       Dict -> VMap $ extend @(f τ) l v
 
 -- | A function to map over a variant given no constraint.
@@ -289,7 +289,7 @@ transform f = unVMap . metamorph @_ @r @c @Either @(VMap f) @(VMap g) @f Proxy d
     doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FrontExtends ℓ τ ρ)
            => Label ℓ -> Either (f τ) (VMap g ('R ρ)) -> VMap g ('R (ℓ :-> τ ': ρ))
     doCons l (Left x) = VMap $ unsafeMakeVar l $ f x
-    doCons l (Right (VMap v)) = case mapPreservesLabels @ℓ @τ @('R ρ) @g of
+    doCons l (Right (VMap v)) = case mapExtendSwap @ℓ @τ @('R ρ) @g of
       Dict -> VMap $ extend @(g τ) l v
 
 -- | A form of @transformC@ that doesn't have a constraint on @a@
@@ -326,7 +326,7 @@ compose = unVMap . metamorph @_ @r @Unconstrained1 @Either @(VMap2 f g) @(VMap (
     doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, FrontExtends ℓ τ ρ)
            => Label ℓ -> Either (Compose f g τ) (VMap (Compose f g) ('R ρ)) -> VMap (Compose f g) ('R (ℓ :-> τ ': ρ))
     doCons l (Left x) = VMap $ unsafeMakeVar l x
-    doCons l (Right (VMap v)) = case mapPreservesLabels @ℓ @τ @('R ρ) @(Compose f g) of
+    doCons l (Right (VMap v)) = case mapExtendSwap @ℓ @τ @('R ρ) @(Compose f g) of
       Dict -> VMap $ extend @(Compose f g τ) l v
 
 -- | Convert from a variant where the composition of two functors have been mapped
@@ -340,7 +340,7 @@ uncompose = unVMap2 . metamorph @_ @r @Unconstrained1 @Either @(VMap (Compose f 
     doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, FrontExtends ℓ τ ρ)
            => Label ℓ -> Either (Compose f g τ) (VMap2 f g ('R ρ)) -> VMap2 f g ('R (ℓ :-> τ ': ρ))
     doCons l (Left (Compose x)) = VMap2 $ unsafeMakeVar l x
-    doCons l (Right (VMap2 v)) = case (mapPreservesLabels @ℓ @τ @('R ρ) @g, mapPreservesLabels @ℓ @(g τ) @(Map g ('R ρ)) @f) of
+    doCons l (Right (VMap2 v)) = case (mapExtendSwap @ℓ @τ @('R ρ) @g, mapExtendSwap @ℓ @(g τ) @(Map g ('R ρ)) @f) of
       (Dict, Dict) -> VMap2 $ extend @(f (g τ)) l v
 
 

@@ -57,9 +57,9 @@ module Data.Row.Internal
   , freeForall
   , uniqueMap
   , mapHas
-  , mapPreservesLabels
-  , apPreservesLabels
-  , zipPreservesLabels
+  , mapExtendSwap
+  , apExtendSwap
+  , zipExtendSwap
   , IsA(..)
   , As(..)
   )
@@ -246,7 +246,7 @@ class Forall (r :: Row k) (c :: k -> Constraint) where
                -- ^ The way to transform the empty element
             -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> f ('R (ℓ :-> τ ': ρ)) -> p (h τ) (f ('R ρ)))
                -- ^ The unfold
-            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FrontExtends ℓ τ ρ) => Label ℓ -> p (h τ) (g ('R ρ)) -> g (Extend ℓ τ ('R ρ)))
+            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FrontExtends ℓ τ ρ) => Label ℓ -> p (h τ) (g ('R ρ)) -> g ('R (ℓ :-> τ ': ρ)))
                -- ^ The fold
             -> f r  -- ^ The input structure
             -> g r
@@ -358,7 +358,7 @@ mapForall = Sub $ unMapForall $ metamorph @_ @ρ @c @(,) @(Const ()) @(MapForall
         cons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FrontExtends ℓ τ ρ)
              => Label ℓ -> (Const () τ, MapForall c f ('R ρ))
              -> MapForall c f (Extend ℓ τ ('R ρ))
-        cons _ (_, MapForall Dict) = case mapPreservesLabels @ℓ @τ @('R ρ) @f of
+        cons _ (_, MapForall Dict) = case mapExtendSwap @ℓ @τ @('R ρ) @f of
           Dict -> MapForall Dict
 
 -- | Map preserves uniqueness of labels.
@@ -374,16 +374,16 @@ mapHas :: forall f r l t. (r .! l ≈ t) :- (Map f r .! l ≈ f t)
 mapHas = Sub $ UNSAFE.unsafeCoerce $ Dict @(r .! l ≈ t)
 
 -- | Proof that the 'Map' type family preserves labels and their ordering.
-mapPreservesLabels :: forall ℓ τ r f. Dict (Extend ℓ (f τ) (Map f r) ≈ Map f (Extend ℓ τ r))
-mapPreservesLabels = UNSAFE.unsafeCoerce $ Dict @Unconstrained
+mapExtendSwap :: forall ℓ τ r f. Dict (Extend ℓ (f τ) (Map f r) ≈ Map f (Extend ℓ τ r))
+mapExtendSwap = UNSAFE.unsafeCoerce $ Dict @Unconstrained
 
 -- | Proof that the 'Ap' type family preserves labels and their ordering.
-apPreservesLabels :: forall k ℓ (τ :: k) r (f :: k -> *) fs. Dict (Extend ℓ (f τ) (Ap fs r) ≈ Ap (Extend ℓ f fs) (Extend ℓ τ r))
-apPreservesLabels = UNSAFE.unsafeCoerce $ Dict @Unconstrained
+apExtendSwap :: forall k ℓ (τ :: k) r (f :: k -> *) fs. Dict (Extend ℓ (f τ) (Ap fs r) ≈ Ap (Extend ℓ f fs) (Extend ℓ τ r))
+apExtendSwap = UNSAFE.unsafeCoerce $ Dict @Unconstrained
 
 -- | Proof that the 'Ap' type family preserves labels and their ordering.
-zipPreservesLabels :: forall ℓ τ1 r1 τ2 r2. Dict (Extend ℓ (τ1, τ2) (Zip r1 r2) ≈ Zip (Extend ℓ τ1 r1) (Extend ℓ τ2 r2))
-zipPreservesLabels = UNSAFE.unsafeCoerce $ Dict @Unconstrained
+zipExtendSwap :: forall ℓ τ1 r1 τ2 r2. Dict (Extend ℓ (τ1, τ2) (Zip r1 r2) ≈ Zip (Extend ℓ τ1 r1) (Extend ℓ τ2 r2))
+zipExtendSwap = UNSAFE.unsafeCoerce $ Dict @Unconstrained
 
 {--------------------------------------------------------------------
   Convenient type families and classes
