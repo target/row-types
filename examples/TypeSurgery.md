@@ -28,9 +28,14 @@ to demonstrate how to use row-types to do type surgery.
 <summary>Extensions and imports for this Literate Haskell file</summary>
 
 ```haskell
-{-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeOperators #-}
 module TypeSurgery where
 
 import qualified Data.Row.Records as Rec

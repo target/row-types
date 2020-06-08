@@ -1,8 +1,12 @@
-{-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeOperators #-}
 module RowCSV where
 
 import GHC.Generics (Generic)
