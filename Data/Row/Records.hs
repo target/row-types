@@ -89,7 +89,7 @@ import Prelude hiding (map, sequence, zip)
 import Control.DeepSeq (NFData(..), deepseq)
 
 import           Data.Coerce
-import           Data.Constraint              ((\\))
+import           Data.Constraint              (Dict(..), (\\))
 import           Data.Dynamic
 import           Data.Functor.Compose
 import           Data.Functor.Const
@@ -279,17 +279,8 @@ unsafeRemove _ (OR m) = OR m
 {--------------------------------------------------------------------
   Folds and maps
 --------------------------------------------------------------------}
--- An easier type synonym for a pair where both elements are the same type.
-type IPair = Product Identity Identity
-
--- Construct an IPair.
-iPair :: τ -> τ -> IPair τ
-iPair = (. Identity) . Pair . Identity
-
--- Destruct an IPair.  Easily used with ViewPatterns.
-unIPair :: IPair τ -> (τ, τ)
-unIPair (Pair (Identity x) (Identity y)) = (x,y)
-
+-- An easy type synonym for a pair where both elements are the same type.
+newtype Pair' a = Pair' { unPair' :: (a,a) }
 
 -- | A standard fold
 erase :: forall c ρ b. Forall ρ c => (forall a. c a => a -> b) -> Rec ρ -> [b]
@@ -306,13 +297,13 @@ eraseWithLabels f = getConst . metamorph @_ @ρ @c @(,) @Rec @(Const [(s,b)]) @I
 
 -- | A fold over two row type structures at once
 eraseZip :: forall c ρ b. Forall ρ c => (forall a. c a => a -> a -> b) -> Rec ρ -> Rec ρ -> [b]
-eraseZip f x y = getConst $ metamorph @_ @ρ @c @(,) @(Product Rec Rec) @(Const [b]) @IPair Proxy (const $ Const []) doUncons doCons (Pair x y)
-  where doUncons l (Pair r1 r2) = (iPair a b, Pair r1' r2')
+eraseZip f x y = getConst $ metamorph @_ @ρ @c @(,) @(Product Rec Rec) @(Const [b]) @Pair' Proxy (const $ Const []) doUncons doCons (Pair x y)
+  where doUncons l (Pair r1 r2) = (Pair' (a, b), Pair r1' r2')
           where (a, r1') = (r1 .! l, unsafeRemove l r1)
                 (b, r2') = (r2 .! l, unsafeRemove l r2)
         doCons :: forall ℓ τ ρ. c τ
-               => Label ℓ -> (IPair τ, Const [b] ('R ρ)) -> Const [b] ('R (ℓ :-> τ ': ρ))
-        doCons _ (unIPair -> x, Const c) = Const $ uncurry f x : c
+               => Label ℓ -> (Pair' τ, Const [b] ('R ρ)) -> Const [b] ('R (ℓ :-> τ ': ρ))
+        doCons _ (unPair' -> x, Const c) = Const $ uncurry f x : c
 
 -- | Turns a record into a 'HashMap' from values representing the labels to
 --   the values of the record.
@@ -330,9 +321,10 @@ map f = unRMap . metamorph @_ @r @c @(,) @Rec @(RMap f) @Identity Proxy doNil do
   where
     doNil _ = RMap empty
     doUncons l r = (Identity $ r .! l, unsafeRemove l r)
-    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
+    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FrontExtends ℓ τ ρ)
            => Label ℓ -> (Identity τ, RMap f ('R ρ)) -> RMap f ('R (ℓ :-> τ ': ρ))
-    doCons l (Identity v, RMap r) = RMap (unsafeInjectFront l (f v) r)
+    doCons l (Identity v, RMap r) = case mapPreservesLabels @ℓ @τ @('R ρ) @f of
+      Dict -> RMap (extend l (f v) r)
 
 newtype RFMap (g :: k1 -> k2) (ϕ :: Row (k2 -> *)) (ρ :: Row k1) = RFMap { unRFMap :: Rec (Ap ϕ (Map g ρ)) }
 newtype RecAp (ϕ :: Row (k -> *)) (ρ :: Row k) = RecAp (Rec (Ap ϕ ρ))
@@ -347,9 +339,10 @@ mapF f = unRFMap . biMetamorph @_ @_ @ϕ @ρ @c @(,) @RecAp @(RFMap g) @App Prox
   where
     doNil _ = RFMap empty
     doUncons l (RecAp r) = (App $ r .! l, RecAp $ unsafeRemove l r)
-    doCons :: forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1 τ2)
+    doCons :: forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1 τ2, FrontExtends ℓ τ1 ρ1, FrontExtends ℓ τ2 ρ2)
            => Label ℓ -> (App τ1 τ2, RFMap g ('R ρ1) ('R ρ2)) -> RFMap g ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2))
-    doCons l (App v, RFMap r) = RFMap (unsafeInjectFront l (f @τ1 @τ2 v) r)
+    doCons l (App v, RFMap r) = case (mapPreservesLabels @ℓ @τ2 @('R ρ2) @g, apPreservesLabels @_ @ℓ @(g τ2) @(Map g ('R ρ2)) @τ1 @('R ρ1)) of
+      (Dict, Dict) -> RFMap (extend l (f @τ1 @τ2 v) r)
 
 -- | A function to map over a record given no constraint.
 map' :: forall f r. Forall r Unconstrained1 => (forall a. a -> f a) -> Rec r -> Rec (Map f r)
@@ -364,9 +357,10 @@ transform f = unRMap . metamorph @_ @r @c @(,) @(RMap f) @(RMap g) @f Proxy doNi
   where
     doNil _ = RMap empty
     doUncons l (RMap r) = (r .! l, RMap $ unsafeRemove l r)
-    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
+    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FrontExtends ℓ τ ρ)
            => Label ℓ -> (f τ, RMap g ('R ρ)) -> RMap g ('R (ℓ :-> τ ': ρ))
-    doCons l (v, RMap r) = RMap (unsafeInjectFront l (f v) r)
+    doCons l (v, RMap r) = case mapPreservesLabels @ℓ @τ @('R ρ) @g of
+      Dict -> RMap (extend l (f v) r)
 
 -- | A version of 'transform' for when there is no constraint.
 transform' :: forall r (f :: * -> *) (g :: * -> *). Forall r Unconstrained1 => (forall a. f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
@@ -379,7 +373,7 @@ sequence' = getCompose . metamorph @_ @r @c @(,) @(RMap f) @(Compose f Rec) @f P
   where
     doNil _ = Compose (pure empty)
     doUncons l (RMap r) = (r .! l, RMap $ unsafeRemove l r)
-    doCons l (fv, Compose fr) = Compose $ unsafeInjectFront l <$> fv <*> fr
+    doCons l (fv, Compose fr) = Compose $ extend l <$> fv <*> fr
 
 -- | Applicative sequencing over a record.
 sequence :: forall f r. (Forall r Unconstrained1, Applicative f)
@@ -402,7 +396,10 @@ compose' = unRMap . metamorph @_ @r @c @(,) @(RMap2 f g) @(RMap (Compose f g)) @
   where
     doNil _ = RMap empty
     doUncons l (RMap2 r) = (Compose $ r .! l, RMap2 $ unsafeRemove l r)
-    doCons l (v, RMap r) = RMap $ unsafeInjectFront l v r
+    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FrontExtends ℓ τ ρ)
+           => Label ℓ -> (Compose f g τ, RMap (Compose f g) ('R ρ)) -> RMap (Compose f g) ('R (ℓ :-> τ ': ρ))
+    doCons l (v, RMap r) = case mapPreservesLabels @ℓ @τ @('R ρ) @(Compose f g) of
+      Dict -> RMap $ extend l v r
 
 -- | Convert from a record where two functors have been mapped over the types to
 -- one where the composition of the two functors is mapped over the types.
@@ -417,7 +414,10 @@ uncompose' = unRMap2 . metamorph @_ @r @c @(,) @(RMap (Compose f g)) @(RMap2 f g
   where
     doNil _ = RMap2 empty
     doUncons l (RMap r) = (r .! l, RMap $ unsafeRemove l r)
-    doCons l (Compose v, RMap2 r) = RMap2 $ unsafeInjectFront l v r
+    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FrontExtends ℓ τ ρ)
+           => Label ℓ -> (Compose f g τ, RMap2 f g ('R ρ)) -> RMap2 f g ('R (ℓ :-> τ ': ρ))
+    doCons l (Compose v, RMap2 r) = case (mapPreservesLabels @ℓ @τ @('R ρ) @g, mapPreservesLabels @ℓ @(g τ) @(Map g ('R ρ)) @f) of
+      (Dict, Dict) -> RMap2 $ extend l v r
 
 -- | Convert from a record where the composition of two functors have been mapped
 -- over the types to one where the two functors are mapped individually one at a
@@ -440,7 +440,7 @@ uncompose = uncompose' @Unconstrained1 @f @g @r
 -- >   where
 -- >     doNil _ = FlipConstR empty
 -- >     doUncons l (ConstR r) = (Const (r .! l), ConstR (unsafeRemove l r))
--- >     doCons l (Const v, FlipConstR r) = FlipConstR $ unsafeInjectFront l (coerce v) r
+-- >     doCons l (Const v, FlipConstR r) = FlipConstR $ extend l (coerce v) r
 coerceRec :: forall r1 r2. BiForall r1 r2 Coercible => Rec r1 -> Rec r2
 coerceRec = unsafeCoerce
 
@@ -455,12 +455,14 @@ zip r1 r2 = unRZipPair $ biMetamorph @_ @_ @r1 @r2 @Unconstrained2 @(,) @RecPair
   where
     doNil _ = RZipPair empty
     doUncons l (RecPair (r1, r2)) = ((r1 .! l, r2 .! l), RecPair (unsafeRemove l r1, unsafeRemove l r2))
-    doCons l ((v1, v2), RZipPair r) = RZipPair $ unsafeInjectFront l (v1, v2) r
+    doCons :: forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, FrontExtends ℓ τ1 ρ1, FrontExtends ℓ τ2 ρ2)
+           => Label ℓ -> ((τ1, τ2), RZipPair ('R ρ1) ('R ρ2)) -> RZipPair ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2))
+    doCons l ((v1, v2), RZipPair r) = case zipPreservesLabels @ℓ @τ1 @('R ρ1) @τ2 @('R ρ2) of
+      Dict -> RZipPair $ extend l (v1, v2) r
 
 -- | A helper function for unsafely adding an element to the front of a record.
 -- This can cause the resulting record to be malformed, for instance, if the record
 -- already contains labels that are lexicographically before the given label.
--- Realistically, this function should only be used when writing calls to 'metamorph'.
 unsafeInjectFront :: KnownSymbol l => Label l -> a -> Rec (R r) -> Rec (R (l :-> a ': r))
 unsafeInjectFront (toKey -> a) b (OR m) = OR $ M.insert a (HideType b) m
 {-# INLINE unsafeInjectFront #-}
@@ -492,9 +494,9 @@ fromLabelsA :: forall c f ρ. (Applicative f, Forall ρ c, AllUniqueLabels ρ)
 fromLabelsA mk = getCompose $ metamorph @_ @ρ @c @FlipConst @(Const ()) @(Compose f Rec) @Proxy Proxy doNil doUncons doCons (Const ())
   where doNil _ = Compose $ pure empty
         doUncons _ _ = FlipConst $ Const ()
-        doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
+        doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FrontExtends ℓ τ ρ)
                => Label ℓ -> FlipConst (Proxy τ) (Compose f Rec ('R ρ)) -> Compose f Rec ('R (ℓ :-> τ ': ρ))
-        doCons l (FlipConst (Compose r)) = Compose $ unsafeInjectFront l <$> mk l <*> r
+        doCons l (FlipConst (Compose r)) = Compose $ extend l <$> mk @ℓ @τ l <*> r
 
 -- | Initialize a record that is produced by a `Map`.
 fromLabelsMapA :: forall c f g ρ. (Applicative f, Forall ρ c, AllUniqueLabels ρ)
@@ -563,13 +565,13 @@ instance KnownSymbol name => GenericRec (R '[name :-> t]) where
 
 instance
     ( GenericRec (R (name' :-> t' ': r'))
-    , KnownSymbol name
+    , KnownSymbol name, Extend name t ('R (name' :-> t' ': r')) ≈ 'R (name :-> t ': (name' :-> t' ': r'))
     ) => GenericRec (R (name :-> t ': (name' :-> t' ': r'))) where
   type RepRec (R (name :-> t ': (name' :-> t' ': r')))   = (G.S1
     ('G.MetaSel ('Just name) 'G.NoSourceUnpackedness 'G.NoSourceStrictness 'G.DecidedLazy)
     (G.Rec0 t)) G.:*: RepRec (R (name' :-> t' ': r'))
   fromRec r = G.M1 (G.K1 (r .! Label @name)) G.:*: fromRec (unsafeRemove @name Label r)
-  toRec (G.M1 (G.K1 a) G.:*: r) = unsafeInjectFront (Label @name) a (toRec r)
+  toRec (G.M1 (G.K1 a) G.:*: r) = extend @_ @name @('R (name' :-> t' ': r')) Label a (toRec r)
 
 {--------------------------------------------------------------------
   Native data type compatibility

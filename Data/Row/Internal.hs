@@ -52,10 +52,14 @@ module Data.Row.Internal
   , toKey
   , type (≈)
 
+  , FrontExtends
   , mapForall
   , freeForall
   , uniqueMap
   , mapHas
+  , mapPreservesLabels
+  , apPreservesLabels
+  , zipPreservesLabels
   , IsA(..)
   , As(..)
   )
@@ -223,6 +227,8 @@ type (l :: Symbol) .== (a :: k) = Extend l a Empty
   Constrained record operations
 --------------------------------------------------------------------}
 
+type FrontExtends ℓ τ ρ = Extend ℓ τ ('R ρ) ≈ 'R (ℓ :-> τ ': ρ)
+
 -- | Any structure over a row in which every element is similarly constrained can
 -- be metamorphized into another structure over the same row.
 class Forall (r :: Row k) (c :: k -> Constraint) where
@@ -240,7 +246,7 @@ class Forall (r :: Row k) (c :: k -> Constraint) where
                -- ^ The way to transform the empty element
             -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> f ('R (ℓ :-> τ ': ρ)) -> p (h τ) (f ('R ρ)))
                -- ^ The unfold
-            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ) => Label ℓ -> p (h τ) (g ('R ρ)) -> g ('R (ℓ :-> τ ': ρ)))
+            -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FrontExtends ℓ τ ρ) => Label ℓ -> p (h τ) (g ('R ρ)) -> g (Extend ℓ τ ('R ρ)))
                -- ^ The fold
             -> f r  -- ^ The input structure
             -> g r
@@ -249,7 +255,7 @@ instance Forall (R '[]) c where
   {-# INLINE metamorph #-}
   metamorph _ empty _ _ = empty
 
-instance (KnownSymbol ℓ, c τ, Forall ('R ρ) c) => Forall ('R (ℓ :-> τ ': ρ) :: Row k) c where
+instance (KnownSymbol ℓ, c τ, Forall ('R ρ) c, FrontExtends ℓ τ ρ) => Forall ('R (ℓ :-> τ ': ρ) :: Row k) c where
   {-# INLINE metamorph #-}
   metamorph h empty uncons cons =
     cons (Label @ℓ) . second (metamorph @_ @('R ρ) @c h empty uncons cons) . uncons (Label @ℓ)
@@ -268,7 +274,7 @@ class BiForall (r1 :: Row k1) (r2 :: Row k2) (c :: k1 -> k2 -> Constraint) where
                   => Label ℓ
                   -> f ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2))
                   -> p (h τ1 τ2) (f ('R ρ1) ('R ρ2)))
-              -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1 τ2)
+              -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1 τ2, FrontExtends ℓ τ1 ρ1, FrontExtends ℓ τ2 ρ2)
                   => Label ℓ -> p (h τ1 τ2) (g ('R ρ1) ('R ρ2)) -> g ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)))
               -> f r1 r2 -> g r1 r2
 
@@ -277,7 +283,7 @@ instance BiForall (R '[]) (R '[]) c1 where
   {-# INLINE biMetamorph #-}
   biMetamorph _ empty _ _ = empty
 
-instance (KnownSymbol ℓ, c τ1 τ2, BiForall ('R ρ1) ('R ρ2) c)
+instance (KnownSymbol ℓ, c τ1 τ2, BiForall ('R ρ1) ('R ρ2) c, FrontExtends ℓ τ1 ρ1, FrontExtends ℓ τ2 ρ2)
       => BiForall ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2)) c where
   {-# INLINE biMetamorph #-}
   biMetamorph h empty uncons cons =
@@ -349,10 +355,11 @@ mapForall = Sub $ unMapForall $ metamorph @_ @ρ @c @(,) @(Const ()) @(MapForall
                => Label l -> Const () ('R (l :-> t ': r)) -> (Const () t, Const () ('R r))
         uncons _ _ = (Const (), Const ())
 
-        cons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
+        cons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FrontExtends ℓ τ ρ)
              => Label ℓ -> (Const () τ, MapForall c f ('R ρ))
-             -> MapForall c f ('R (ℓ :-> τ ': ρ))
-        cons _ (_, MapForall Dict) = MapForall Dict
+             -> MapForall c f (Extend ℓ τ ('R ρ))
+        cons _ (_, MapForall Dict) = case mapPreservesLabels @ℓ @τ @('R ρ) @f of
+          Dict -> MapForall Dict
 
 -- | Map preserves uniqueness of labels.
 uniqueMap :: forall f ρ. AllUniqueLabels ρ :- AllUniqueLabels (Map f ρ)
@@ -365,6 +372,18 @@ freeForall = Sub $ UNSAFE.unsafeCoerce @(Dict (Forall r c)) Dict
 -- | This allows us to derive `Map f r .! l ≈ f t` from `r .! l ≈ t`
 mapHas :: forall f r l t. (r .! l ≈ t) :- (Map f r .! l ≈ f t)
 mapHas = Sub $ UNSAFE.unsafeCoerce $ Dict @(r .! l ≈ t)
+
+-- | Proof that the 'Map' type family preserves labels and their ordering.
+mapPreservesLabels :: forall ℓ τ r f. Dict (Extend ℓ (f τ) (Map f r) ≈ Map f (Extend ℓ τ r))
+mapPreservesLabels = UNSAFE.unsafeCoerce $ Dict @Unconstrained
+
+-- | Proof that the 'Ap' type family preserves labels and their ordering.
+apPreservesLabels :: forall k ℓ (τ :: k) r (f :: k -> *) fs. Dict (Extend ℓ (f τ) (Ap fs r) ≈ Ap (Extend ℓ f fs) (Extend ℓ τ r))
+apPreservesLabels = UNSAFE.unsafeCoerce $ Dict @Unconstrained
+
+-- | Proof that the 'Ap' type family preserves labels and their ordering.
+zipPreservesLabels :: forall ℓ τ1 r1 τ2 r2. Dict (Extend ℓ (τ1, τ2) (Zip r1 r2) ≈ Zip (Extend ℓ τ1 r1) (Extend ℓ τ2 r2))
+zipPreservesLabels = UNSAFE.unsafeCoerce $ Dict @Unconstrained
 
 {--------------------------------------------------------------------
   Convenient type families and classes
