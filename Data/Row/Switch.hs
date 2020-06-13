@@ -49,5 +49,5 @@ instance (KnownSymbol l, Switch (R v) (R r) b)
       => Switch (R (l :-> a ': v)) (R (l :-> (a -> b) ': r)) b where
   switch v r = case trial v l of
     Left x  -> (r .! l) x
-    Right v -> switch v (unsafeRemove l r)
+    Right v -> switch v (lazyRemove l r)
     where l = Label @l

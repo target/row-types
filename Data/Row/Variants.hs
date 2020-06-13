@@ -73,7 +73,7 @@ import Control.Arrow       ((+++), left, right)
 import Control.DeepSeq     (NFData(..), deepseq)
 
 import Data.Coerce
-import Data.Constraint (Dict(..))
+import Data.Constraint                ((\\))
 import Data.Functor.Compose
 import Data.Functor.Identity
 import Data.Functor.Product
@@ -127,11 +127,6 @@ instance Forall r NFData => NFData (Var r) where
   Basic Operations
 --------------------------------------------------------------------}
 
--- | An unsafe way to make a Variant.  This function does not guarantee that
--- the labels are all unique.
-unsafeMakeVar :: forall r l. KnownSymbol l => Label l -> r .! l -> Var r
-unsafeMakeVar (toKey -> l) = OneOf l . HideType
-
 -- | A Variant with no options is uninhabited.
 impossible :: Var Empty -> a
 impossible _ = error "Impossible! Somehow, a variant of nothing was produced."
@@ -148,7 +143,7 @@ unSingleton (OneOf _ (HideType x)) = (l, unsafeCoerce x) where l = Label @l
 -- when in a pattern position or construct one in an expression position.
 pattern IsJust :: forall l r. (AllUniqueLabels r, KnownSymbol l) => Label l -> r .! l -> Var r
 pattern IsJust l a <- (isJustHelper @l -> (l, Just a)) where
-        IsJust l a = unsafeMakeVar l a
+        IsJust (toKey -> l) = OneOf l . HideType
 
 isJustHelper :: forall l r. KnownSymbol l => Var r -> (Label l, Maybe (r .! l))
 isJustHelper v = (l, view l v) where l = Label @l
@@ -239,7 +234,7 @@ eraseWithLabels :: forall c ρ s b. (Forall ρ c, IsString s) => (forall a. c a 
 eraseWithLabels f = getConst . metamorph @_ @ρ @c @Either @Var @(Const (s,b)) @Identity Proxy impossible doUncons doCons
   where doUncons l = left Identity . flip trial l
         doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
-               => Label ℓ -> Either (Identity τ) (Const (s,b) ('R ρ)) -> Const (s,b) ('R (ℓ :-> τ ': ρ))
+               => Label ℓ -> Either (Identity τ) (Const (s,b) ρ) -> Const (s,b) (Extend ℓ τ ρ)
         doCons l (Left (Identity x)) = Const (show' l, f x)
         doCons _ (Right (Const c)) = Const c
 
@@ -247,8 +242,8 @@ eraseWithLabels f = getConst . metamorph @_ @ρ @c @Either @Var @(Const (s,b)) @
 eraseZip :: forall c ρ b. Forall ρ c => (forall a. c a => a -> a -> b) -> Var ρ -> Var ρ -> Maybe b
 eraseZip f x y = getConst $ metamorph @_ @ρ @c @Either @(Product Var Var) @(Const (Maybe b)) @(Const (Maybe b)) Proxy doNil doUncons doCons (Pair x y)
   where doNil _ = Const Nothing
-        doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ)
-                 => Label ℓ -> Product Var Var ('R (ℓ :-> τ ': ρ)) -> Either (Const (Maybe b) τ) (Product Var Var ('R ρ))
+        doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, HasType ℓ τ ρ)
+                 => Label ℓ -> Product Var Var ρ -> Either (Const (Maybe b) τ) (Product Var Var (ρ .- ℓ))
         doUncons l (Pair r1 r2) = case (trial r1 l, trial r2 l) of
           (Left a,  Left b)  -> Left $ Const $ Just $ f a b
           (Right x, Right y) -> Right $ Pair x y
@@ -267,14 +262,17 @@ map f = unVMap . metamorph @_ @r @c @Either @Var @(VMap f) @Identity Proxy doNil
   where
     doNil = impossible
     doUncons l = left Identity . flip trial l
-    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FrontExtends ℓ τ ρ)
-           => Label ℓ -> Either (Identity τ) (VMap f ('R ρ)) -> VMap f ('R (ℓ :-> τ ': ρ))
-    doCons l (Left (Identity x)) = VMap $ unsafeMakeVar l $ f x
-    doCons l (Right (VMap v)) = case mapExtendSwap @ℓ @τ @('R ρ) @f of
-      Dict -> VMap $ extend @(f τ) l v
+    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, AllUniqueLabels (Extend ℓ τ ρ))
+           => Label ℓ -> Either (Identity τ) (VMap f ρ) -> VMap f (Extend ℓ τ ρ)
+    doCons l (Left (Identity x)) = VMap $ IsJust l (f x)
+      \\ mapExtendSwap @ℓ @τ @ρ @f
+      \\ extendHas @(Map f ρ) @ℓ @(f τ)
+      \\ uniqueMap @(Extend ℓ τ ρ) @f
+    doCons l (Right (VMap v)) = VMap $ extend @(f τ) l v
+      \\ mapExtendSwap @ℓ @τ @ρ @f
 
 -- | A function to map over a variant given no constraint.
-map' :: forall f r. Forall r Unconstrained1 => (forall a. a -> f a) -> Var r -> Var (Map f r)
+map' :: forall f r. FreeForall r => (forall a. a -> f a) -> Var r -> Var (Map f r)
 map' = map @Unconstrained1
 
 -- | Lifts a natrual transformation over a variant.  In other words, it acts as a
@@ -285,26 +283,36 @@ transform :: forall r c (f :: * -> *) (g :: * -> *). Forall r c => (forall a. c 
 transform f = unVMap . metamorph @_ @r @c @Either @(VMap f) @(VMap g) @f Proxy doNil doUncons doCons . VMap
   where
     doNil = impossible . unVMap
+    doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, HasType ℓ τ ρ)
+             => Label ℓ -> VMap f ρ -> Either (f τ) (VMap f (ρ .- ℓ))
     doUncons l = right VMap . flip trial l . unVMap
-    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FrontExtends ℓ τ ρ)
-           => Label ℓ -> Either (f τ) (VMap g ('R ρ)) -> VMap g ('R (ℓ :-> τ ': ρ))
-    doCons l (Left x) = VMap $ unsafeMakeVar l $ f x
-    doCons l (Right (VMap v)) = case mapExtendSwap @ℓ @τ @('R ρ) @g of
-      Dict -> VMap $ extend @(g τ) l v
+      \\ mapHas @f @ρ @ℓ @τ
+    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, AllUniqueLabels (Extend ℓ τ ρ))
+           => Label ℓ -> Either (f τ) (VMap g ρ) -> VMap g (Extend ℓ τ ρ)
+    doCons l (Left x) = VMap $ IsJust l (f x)
+      \\ mapExtendSwap @ℓ @τ @ρ @g
+      \\ extendHas @(Map g ρ) @ℓ @(g τ)
+      \\ uniqueMap @(Extend ℓ τ ρ) @g
+    doCons l (Right (VMap v)) = VMap $ extend @(g τ) l v
+      \\ mapExtendSwap @ℓ @τ @ρ @g
 
 -- | A form of @transformC@ that doesn't have a constraint on @a@
-transform' :: forall r (f :: * -> *) (g :: * -> *) . Forall r Unconstrained1 => (forall a. f a -> g a) -> Var (Map f r) -> Var (Map g r)
+transform' :: forall r (f :: * -> *) (g :: * -> *) . FreeForall r => (forall a. f a -> g a) -> Var (Map f r) -> Var (Map g r)
 transform' = transform @r @Unconstrained1
 
 -- | Applicative sequencing over a variant
-sequence :: forall f r. (Forall r Unconstrained1, Applicative f) => Var (Map f r) -> f (Var r)
+sequence :: forall f r. (FreeForall r, Applicative f) => Var (Map f r) -> f (Var r)
 sequence = getCompose . metamorph @_ @r @Unconstrained1 @Either @(VMap f) @(Compose f Var) @f Proxy doNil doUncons doCons . VMap
   where
     doNil = impossible . unVMap
+    doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, HasType ℓ τ ρ)
+             => Label ℓ -> VMap f ρ -> Either (f τ) (VMap f (ρ .- ℓ))
     doUncons l = right VMap . flip trial l . unVMap
-    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, FrontExtends ℓ τ ρ)
-           => Label ℓ -> Either (f τ) (Compose f Var ('R ρ)) -> Compose f Var ('R (ℓ :-> τ ': ρ))
-    doCons l (Left fx) = Compose $ unsafeMakeVar l <$> fx
+      \\ mapHas @f @ρ @ℓ @τ
+    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, AllUniqueLabels (Extend ℓ τ ρ))
+           => Label ℓ -> Either (f τ) (Compose f Var ρ) -> Compose f Var (Extend ℓ τ ρ)
+    doCons l (Left fx) = Compose $ IsJust l <$> fx
+      \\ extendHas @ρ @ℓ @τ
     doCons l (Right (Compose v)) = Compose $ extend @τ l <$> v
 
 -- $compose
@@ -318,30 +326,46 @@ sequence = getCompose . metamorph @_ @r @Unconstrained1 @Either @(VMap f) @(Comp
 
 -- | Convert from a variant where two functors have been mapped over the types to
 -- one where the composition of the two functors is mapped over the types.
-compose :: forall (f :: * -> *) (g :: * -> *) r . Forall r Unconstrained1 => Var (Map f (Map g r)) -> Var (Map (Compose f g) r)
-compose = unVMap . metamorph @_ @r @Unconstrained1 @Either @(VMap2 f g) @(VMap (Compose f g)) Proxy doNil doUncons doCons . VMap2
+compose :: forall (f :: * -> *) (g :: * -> *) r . FreeForall r => Var (Map f (Map g r)) -> Var (Map (Compose f g) r)
+compose = unVMap . metamorph @_ @r @Unconstrained1 @Either @(VMap2 f g) @(VMap (Compose f g)) @(Compose f g) Proxy doNil doUncons doCons . VMap2
   where
     doNil = impossible . unVMap2
+    doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, HasType ℓ τ ρ)
+             => Label ℓ -> VMap2 f g ρ -> Either (Compose f g τ) (VMap2 f g (ρ .- ℓ))
     doUncons l = (Compose +++ VMap2) . flip trial l . unVMap2
-    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, FrontExtends ℓ τ ρ)
-           => Label ℓ -> Either (Compose f g τ) (VMap (Compose f g) ('R ρ)) -> VMap (Compose f g) ('R (ℓ :-> τ ': ρ))
-    doCons l (Left x) = VMap $ unsafeMakeVar l x
-    doCons l (Right (VMap v)) = case mapExtendSwap @ℓ @τ @('R ρ) @(Compose f g) of
-      Dict -> VMap $ extend @(Compose f g τ) l v
+      \\ mapHas @f @(Map g ρ) @ℓ @(g τ)
+      \\ mapHas @g @ρ @ℓ @τ
+    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, AllUniqueLabels (Extend ℓ τ ρ))
+           => Label ℓ -> Either (Compose f g τ) (VMap (Compose f g) ρ) -> VMap (Compose f g) (Extend ℓ τ ρ)
+    doCons l (Left x) = VMap $ IsJust l x
+      \\ mapExtendSwap @ℓ @τ @ρ @(Compose f g)
+      \\ extendHas @(Map (Compose f g) ρ) @ℓ @((Compose f g) τ)
+      \\ uniqueMap @(Extend ℓ τ ρ) @(Compose f g)
+    doCons l (Right (VMap v)) = VMap $ extend @(Compose f g τ) l v
+      \\ mapExtendSwap @ℓ @τ @ρ @(Compose f g)
 
 -- | Convert from a variant where the composition of two functors have been mapped
 -- over the types to one where the two functors are mapped individually one at a
 -- time over the types.
-uncompose :: forall (f :: * -> *) (g :: * -> *) r . Forall r Unconstrained1 => Var (Map (Compose f g) r) -> Var (Map f (Map g r))
-uncompose = unVMap2 . metamorph @_ @r @Unconstrained1 @Either @(VMap (Compose f g)) @(VMap2 f g) Proxy doNil doUncons doCons . VMap
+uncompose :: forall (f :: * -> *) (g :: * -> *) r . FreeForall r => Var (Map (Compose f g) r) -> Var (Map f (Map g r))
+uncompose = unVMap2 . metamorph @_ @r @Unconstrained1 @Either @(VMap (Compose f g)) @(VMap2 f g) @(Compose f g) Proxy doNil doUncons doCons . VMap
   where
     doNil = impossible . unVMap
+    doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, HasType ℓ τ ρ)
+             => Label ℓ -> VMap (Compose f g) ρ -> Either (Compose f g τ) (VMap (Compose f g) (ρ .- ℓ))
     doUncons l = right VMap . flip trial l . unVMap
-    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, FrontExtends ℓ τ ρ)
-           => Label ℓ -> Either (Compose f g τ) (VMap2 f g ('R ρ)) -> VMap2 f g ('R (ℓ :-> τ ': ρ))
-    doCons l (Left (Compose x)) = VMap2 $ unsafeMakeVar l x
-    doCons l (Right (VMap2 v)) = case (mapExtendSwap @ℓ @τ @('R ρ) @g, mapExtendSwap @ℓ @(g τ) @(Map g ('R ρ)) @f) of
-      (Dict, Dict) -> VMap2 $ extend @(f (g τ)) l v
+      \\ mapHas @(Compose f g) @ρ @ℓ @τ
+    doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, AllUniqueLabels (Extend ℓ τ ρ))
+           => Label ℓ -> Either (Compose f g τ) (VMap2 f g ρ) -> VMap2 f g (Extend ℓ τ ρ)
+    doCons l (Left (Compose x)) = VMap2 $ IsJust l x
+      \\ mapExtendSwap @ℓ @(g τ) @(Map g ρ) @f
+      \\ mapExtendSwap @ℓ @τ @ρ @g
+      \\ extendHas @(Map f (Map g ρ)) @ℓ @(f (g τ))
+      \\ uniqueMap @(Extend ℓ (g τ) (Map g ρ)) @f
+      \\ uniqueMap @(Extend ℓ τ ρ) @g
+    doCons l (Right (VMap2 v)) = VMap2 $ extend @(f (g τ)) l v
+      \\ mapExtendSwap @ℓ @(g τ) @(Map g ρ) @f
+      \\ mapExtendSwap @ℓ @τ @ρ @g
 
 
 -- | Coerce a variant to a coercible representation.  The 'BiForall' in the context
@@ -353,21 +377,28 @@ uncompose = unVMap2 . metamorph @_ @r @Unconstrained1 @Either @(VMap (Compose f 
 --
 -- > newtype ConstR a b = ConstR { unConstR :: Var a }
 -- > newtype FlipConstR a b = FlipConstR { unFlipConstR :: Var b }
--- > coerceVar = unFlipConstR . bimetamorph @_ @_ @r1 @r2 @Coercible @Either @ConstR @FlipConstR @Const Proxy doNil doUncons doCons . ConstR
+-- > coerceVar :: forall r1 r2. BiForall r1 r2 Coercible => Var r1 -> Var r2
+-- > coerceVar = unFlipConstR . biMetamorph @_ @_ @r1 @r2 @Coercible @Either @ConstR @FlipConstR @Const Proxy doNil doUncons doCons . ConstR
 -- >   where
 -- >     doNil = impossible . unConstR
 -- >     doUncons l = (Const +++ ConstR) . flip trial l . unConstR
--- >     doCons :: forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, Coercible τ1 τ2)
--- >            => Label ℓ -> Either (Const τ1 τ2) (FlipConstR ('R ρ1) ('R ρ2))
--- >            -> FlipConstR ('R (ℓ :-> τ1 ': ρ1)) ('R (ℓ :-> τ2 ': ρ2))
--- >     doCons l (Left (Const x)) = FlipConstR $ unsafeMakeVar l (coerce @τ1 @τ2 x)
+-- >     doCons :: forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, Coercible τ1 τ2, AllUniqueLabels (Extend ℓ τ2 ρ2))
+-- >            => Label ℓ -> Either (Const τ1 τ2) (FlipConstR ρ1 ρ2)
+-- >            -> FlipConstR (Extend ℓ τ1 ρ1) (Extend ℓ τ2 ρ2)
+-- >     doCons l (Left (Const x)) = FlipConstR $ IsJust l (coerce @τ1 @τ2 x)
+-- >       \\ extendHas @ρ2 @ℓ @τ2
 -- >     doCons l (Right (FlipConstR v)) = FlipConstR $ extend @τ2 l v
 coerceVar :: forall r1 r2. BiForall r1 r2 Coercible => Var r1 -> Var r2
 coerceVar = unsafeCoerce
 
 {--------------------------------------------------------------------
-  Variant initialization
+  Unsafe functions
 --------------------------------------------------------------------}
+
+-- | An unsafe way to make a Variant.  This function does not guarantee that
+-- the labels are all unique.
+unsafeMakeVar :: forall r l. KnownSymbol l => Label l -> r .! l -> Var r
+unsafeMakeVar (toKey -> l) = OneOf l . HideType
 
 -- | A helper function for unsafely adding an element to the front of a variant.
 -- This can cause the type of the resulting variant to be malformed, for instance,
@@ -375,6 +406,10 @@ coerceVar = unsafeCoerce
 -- given label.
 unsafeInjectFront :: forall l a r. KnownSymbol l => Var (R r) -> Var (R (l :-> a ': r))
 unsafeInjectFront = unsafeCoerce
+
+{--------------------------------------------------------------------
+  Variant initialization
+--------------------------------------------------------------------}
 
 -- | Initialize a variant from a producer function that accepts labels.  If this
 -- function returns more than one possibility, then one is chosen arbitrarily to
@@ -385,10 +420,10 @@ fromLabels mk = getCompose $ metamorph @_ @ρ @c @FlipConst @(Const ()) @(Compos
                                         Proxy doNil doUncons doCons (Const ())
   where doNil _ = Compose $ empty
         doUncons _ _ = FlipConst $ Const ()
-        doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FrontExtends ℓ τ ρ)
-               => Label ℓ -> FlipConst (Proxy τ) (Compose f Var ('R ρ)) -> Compose f Var ('R (ℓ :-> τ ': ρ))
-        doCons l (FlipConst (Compose v)) = Compose $
-          unsafeMakeVar l <$> mk l <|> extend @τ l <$> v
+        doCons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, AllUniqueLabels (Extend ℓ τ ρ))
+               => Label ℓ -> FlipConst (Proxy τ) (Compose f Var ρ) -> Compose f Var (Extend ℓ τ ρ)
+        doCons l (FlipConst (Compose v)) = Compose $ IsJust l <$> mk l <|> extend @τ l <$> v
+          \\ extendHas @ρ @ℓ @τ
 
 {--------------------------------------------------------------------
   Generic instance
