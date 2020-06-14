@@ -44,6 +44,7 @@ module Data.Row.Records
   , extend, Extend, Lacks, type (.\)
   -- ** Restriction
   , type (.-), (.-)
+  , lazyRemove
   , restrict, split
   -- ** Modification
   , update, focus, multifocus, Modify, rename, Rename
@@ -79,8 +80,6 @@ module Data.Row.Records
   , labels, labels'
   -- ** Coerce
   , coerceRec
-  -- ** UNSAFE operations
-  , lazyRemove, unsafeInjectFront
   )
 where
 
@@ -485,14 +484,6 @@ zip r1 r2 = unRZipPair $ biMetamorph @_ @_ @r1 @r2 @Unconstrained2 @(,) @RecPair
            => Label ℓ -> ((τ1, τ2), RZipPair ρ1 ρ2) -> RZipPair (Extend ℓ τ1 ρ1) (Extend ℓ τ2 ρ2)
     doCons l ((v1, v2), RZipPair r) = RZipPair $ extend l (v1, v2) r
       \\ zipExtendSwap @ℓ @τ1 @ρ1 @τ2 @ρ2
-
--- | A helper function for unsafely adding an element to the front of a record.
--- This can cause the resulting record to be malformed, for instance, if the record
--- already contains labels that are lexicographically before the given label.
-unsafeInjectFront :: KnownSymbol l => Label l -> a -> Rec (R r) -> Rec (R (l :-> a ': r))
-unsafeInjectFront (toKey -> a) b (OR m) = OR $ M.insert a (HideType b) m
-{-# INLINE unsafeInjectFront #-}
-
 
 {--------------------------------------------------------------------
   Record initialization

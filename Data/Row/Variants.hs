@@ -61,8 +61,6 @@ module Data.Row.Variants
   , labels
   -- ** Coerce
   , coerceVar
-  -- ** UNSAFE operations
-  , unsafeMakeVar, unsafeInjectFront
   )
 where
 
@@ -390,22 +388,6 @@ uncompose = unVMap2 . metamorph @_ @r @Unconstrained1 @Either @(VMap (Compose f 
 -- >     doCons l (Right (FlipConstR v)) = FlipConstR $ extend @τ2 l v
 coerceVar :: forall r1 r2. BiForall r1 r2 Coercible => Var r1 -> Var r2
 coerceVar = unsafeCoerce
-
-{--------------------------------------------------------------------
-  Unsafe functions
---------------------------------------------------------------------}
-
--- | An unsafe way to make a Variant.  This function does not guarantee that
--- the labels are all unique.
-unsafeMakeVar :: forall r l. KnownSymbol l => Label l -> r .! l -> Var r
-unsafeMakeVar (toKey -> l) = OneOf l . HideType
-
--- | A helper function for unsafely adding an element to the front of a variant.
--- This can cause the type of the resulting variant to be malformed, for instance,
--- if the variant already contains labels that are lexicographically before the
--- given label.
-unsafeInjectFront :: forall l a r. KnownSymbol l => Var (R r) -> Var (R (l :-> a ': r))
-unsafeInjectFront = unsafeCoerce
 
 {--------------------------------------------------------------------
   Variant initialization
