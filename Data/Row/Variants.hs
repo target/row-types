@@ -71,7 +71,6 @@ import Control.Arrow       ((+++), left, right)
 import Control.DeepSeq     (NFData(..), deepseq)
 
 import Data.Coerce
-import Data.Constraint                ((\\))
 import Data.Functor.Compose
 import Data.Functor.Identity
 import Data.Functor.Product
@@ -87,6 +86,7 @@ import           GHC.TypeLits
 
 import Unsafe.Coerce
 
+import Data.Row.Dictionaries
 import Data.Row.Internal
 
 {--------------------------------------------------------------------

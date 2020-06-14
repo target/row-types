@@ -39,6 +39,7 @@ Library
   Exposed-modules:
       Data.Row
     , Data.Row.Internal
+    , Data.Row.Dictionaries
     , Data.Row.Records
     , Data.Row.Variants
     , Data.Row.Switch

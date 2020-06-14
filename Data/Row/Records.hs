@@ -88,7 +88,6 @@ import Prelude hiding (map, sequence, zip)
 import Control.DeepSeq (NFData(..), deepseq)
 
 import           Data.Coerce
-import           Data.Constraint              ((\\))
 import           Data.Dynamic
 import           Data.Functor.Compose
 import           Data.Functor.Const
@@ -109,6 +108,7 @@ import           GHC.TypeLits
 
 import Unsafe.Coerce
 
+import Data.Row.Dictionaries
 import Data.Row.Internal
 
 

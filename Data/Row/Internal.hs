@@ -41,9 +41,12 @@ module Data.Row.Internal
   , Forall(..)
   , BiForall(..)
   , BiConstraint
+  , Unconstrained
   , Unconstrained1
   , Unconstrained2
   , FlipConst(..)
+  , FrontExtends(..)
+  , FrontExtendsDict(..)
   , WellBehaved, AllUniqueLabels
   , Ap, Zip, Map, Subset, Disjoint
   -- * Helper functions
@@ -51,18 +54,6 @@ module Data.Row.Internal
   , show'
   , toKey
   , type (≈)
-
-  , FrontExtends
-  , FrontExtendsDict(..)
-  , mapForall
-  , freeForall
-  , FreeForall
-  , FreeBiForall
-  , uniqueMap, uniqueAp, uniqueZip
-  , extendHas, mapHas, apHas
-  , mapExtendSwap, apExtendSwap, zipExtendSwap
-  , IsA(..)
-  , As(..)
   )
 where
 
@@ -74,8 +65,6 @@ import Data.String (IsString (fromString))
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Type.Equality (type (==))
-
-import qualified Unsafe.Coerce as UNSAFE
 
 import GHC.OverloadedLabels
 import GHC.TypeLits
@@ -338,82 +327,9 @@ labels = getConst $ metamorph @_ @ρ @c @FlipConst @(Const ()) @(Const [s]) @Pro
         doCons l (FlipConst (Const c)) = Const $ show' l : c
 
 -- | Return a list of the labels in a row type and is specialized to the 'Unconstrained1' constraint.
-labels' :: forall ρ s. (IsString s, FreeForall ρ) => [s]
+labels' :: forall ρ s. (IsString s, Forall ρ Unconstrained1) => [s]
 labels' = labels @ρ @Unconstrained1
 
-
--- | This data type is used to for its ability to existentially bind a type
--- variable.  Particularly, it says that for the type 'a', there exists a 't'
--- such that 'a ~ f t' and 'c t' holds.
-data As c f a where
-  As :: forall c f a t. (a ~ f t, c t) => As c f a
-
--- | A class to capture the idea of 'As' so that it can be partially applied in
--- a context.
-class IsA c f a where
-  as :: As c f a
-
-instance c a => IsA c f (f a) where
-  as = As
-
--- | An internal type used by the 'metamorph' in 'mapForall'.
-newtype MapForall c f (r :: Row k) = MapForall { unMapForall :: Dict (Forall (Map f r) (IsA c f)) }
-
--- | This allows us to derive a `Forall (Map f r) ..` from a `Forall r ..`.
-mapForall :: forall f c ρ. Forall ρ c :- Forall (Map f ρ) (IsA c f)
-mapForall = Sub $ unMapForall $ metamorph @_ @ρ @c @FlipConst @Proxy @(MapForall c f) @Proxy Proxy empty uncons cons $ Proxy
-  where empty _ = MapForall Dict
-        uncons _ _ = FlipConst Proxy
-        cons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FrontExtends ℓ τ ρ, AllUniqueLabels (Extend ℓ τ ρ))
-             => Label ℓ -> FlipConst (Proxy τ) (MapForall c f ρ)
-             -> MapForall c f (Extend ℓ τ ρ)
-        cons _ (FlipConst (MapForall Dict)) = case frontExtendsDict @ℓ @τ @ρ of
-          FrontExtendsDict Dict -> MapForall Dict
-            \\ mapExtendSwap @ℓ @τ @ρ @f
-            \\ uniqueMap @(Extend ℓ τ ρ) @f
-
--- | Allow any 'Forall` over a row-type, be usable for 'Unconstrained1'.
-freeForall :: forall r c. Forall r c :- Forall r Unconstrained1
-freeForall = Sub $ UNSAFE.unsafeCoerce @(Dict (Forall r c)) Dict
-
-type FreeForall r = Forall r Unconstrained1
-
-type FreeBiForall r1 r2 = BiForall r1 r2 Unconstrained2
-
-extendHas :: forall r l t. Dict (Extend l t r .! l ≈ t)
-extendHas = UNSAFE.unsafeCoerce $ Dict @Unconstrained
-
--- | This allows us to derive `Map f r .! l ≈ f t` from `r .! l ≈ t`
-mapHas :: forall f r l t. (r .! l ≈ t) :- (Map f r .! l ≈ f t, Map f r .- l ≈ Map f (r .- l))
-mapHas = Sub $ UNSAFE.unsafeCoerce $ Dict @(r .! l ≈ t)
-
--- | This allows us to derive `Ap ϕ ρ .! l ≈ f t` from `ϕ .! l ≈ f` and `ρ .! l ≈ t`
-apHas :: forall ϕ ρ l f t. (ϕ .! l ≈ f, ρ .! l ≈ t) :- (Ap ϕ ρ .! l ≈ f t, Ap ϕ ρ .- l ≈ Ap (ϕ .- l) (ρ .- l))
-apHas = Sub $ UNSAFE.unsafeCoerce $ Dict @(ϕ .! l ≈ f, ρ .! l ≈ t)
-
--- | Proof that the 'Map' type family preserves labels and their ordering.
-mapExtendSwap :: forall ℓ τ r f. Dict (Extend ℓ (f τ) (Map f r) ≈ Map f (Extend ℓ τ r))
-mapExtendSwap = UNSAFE.unsafeCoerce $ Dict @Unconstrained
-
--- | Proof that the 'Ap' type family preserves labels and their ordering.
-apExtendSwap :: forall k ℓ (τ :: k) r (f :: k -> *) fs. Dict (Extend ℓ (f τ) (Ap fs r) ≈ Ap (Extend ℓ f fs) (Extend ℓ τ r))
-apExtendSwap = UNSAFE.unsafeCoerce $ Dict @Unconstrained
-
--- | Proof that the 'Ap' type family preserves labels and their ordering.
-zipExtendSwap :: forall ℓ τ1 r1 τ2 r2. Dict (Extend ℓ (τ1, τ2) (Zip r1 r2) ≈ Zip (Extend ℓ τ1 r1) (Extend ℓ τ2 r2))
-zipExtendSwap = UNSAFE.unsafeCoerce $ Dict @Unconstrained
-
--- | Map preserves uniqueness of labels.
-uniqueMap :: forall r f. Dict (AllUniqueLabels (Map f r) ≈ AllUniqueLabels r)
-uniqueMap = UNSAFE.unsafeCoerce $ Dict @Unconstrained
-
--- | Ap preserves uniqueness of labels.
-uniqueAp :: forall r fs. Dict (AllUniqueLabels (Ap fs r) ≈ AllUniqueLabels r)
-uniqueAp = UNSAFE.unsafeCoerce $ Dict @Unconstrained
-
--- | Zip preserves uniqueness of labels.
-uniqueZip :: forall r1 r2. Dict (AllUniqueLabels (Zip r1 r2) ≈ (AllUniqueLabels r1, AllUniqueLabels r2))
-uniqueZip = UNSAFE.unsafeCoerce $ Dict @Unconstrained
 
 {--------------------------------------------------------------------
   Convenient type families and classes
