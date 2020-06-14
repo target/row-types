@@ -48,6 +48,7 @@ Library
   default-extensions:
       DataKinds
     , ExplicitForAll
+    , GADTs
     , OverloadedLabels
     , TypeApplications
     , TypeOperators
