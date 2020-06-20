@@ -159,8 +159,7 @@ We can see it work in practice:
 λ> distance (move (named "2D" origin3D) 5 12)
 13.0
 
-Note that if we were using row-types-lens and the lens library, we could write
-move as:
+Or, with lenses, we could write move as:
 
 > moveLensy p dx dy = p & #x %~ (+ dx) & #y %~ (+ dy)
 

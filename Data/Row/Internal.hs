@@ -358,7 +358,7 @@ type family Subset (r1 :: Row k) (r2 :: Row k) :: Constraint where
 type family SubsetR (r1 :: [LT k]) (r2 :: [LT k]) :: Constraint where
   SubsetR '[] _ = Unconstrained
   SubsetR x '[] = TypeError (TL.Text "One row-type is not a subset of the other."
-        :$$: TL.Text "The first contains the bindings " :<>: ShowType x
+        :$$: TL.Text "The first contains the bindings " :<>: ShowRowType x
         :<>: TL.Text " while the second does not.")
   SubsetR (l :-> a ': x) (l :-> a ': y) = SubsetR x y
   SubsetR (l :-> a ': x) (l :-> b ': y) =
@@ -447,12 +447,12 @@ type family RemoveT (l :: Symbol) (r :: [LT k]) (r_orig :: [LT k]) where
   RemoveT l (l' :-> t ': x) r = l' :-> t ': RemoveT l x r
   RemoveT l '[] r = TypeError (TL.Text "Cannot remove a label that does not occur in the row type."
                           :$$: TL.Text "The label " :<>: ShowType l :<>: TL.Text " is not in "
-                          :<>: ShowType r)
+                          :<>: ShowRowType r)
 
 type family LacksR (l :: Symbol) (r :: [LT k]) (r_orig :: [LT k]) :: Constraint where
   LacksR l '[] _ = Unconstrained
   LacksR l (l :-> t ': x) r = TypeError (TL.Text "The label " :<>: ShowType l
-                                    :<>: TL.Text " already exists in " :<>: ShowType r)
+                                    :<>: TL.Text " already exists in " :<>: ShowRowType r)
   LacksR l (l' :-> _ ': x) r = Ifte (l <=.? l') Unconstrained (LacksR l x r)
 
 
@@ -503,6 +503,11 @@ type family Diff (l :: [LT k]) (r :: [LT k]) where
     Ifte (hl <=.? hr)
     (hl :-> al ': Diff tl (hr :-> ar ': tr))
     (Diff (hl :-> al ': tl) tr)
+
+type family ShowRowType (r :: [LT k]) :: ErrorMessage where
+  ShowRowType '[] = TL.Text "Empty"
+  ShowRowType '[l ':-> t] = TL.ShowType l TL.:<>: TL.Text " .== " TL.:<>: TL.ShowType t
+  ShowRowType ((l ':-> t) ': r) = TL.ShowType l TL.:<>: TL.Text " .== " TL.:<>: TL.ShowType t TL.:<>: TL.Text " .+ " TL.:<>: ShowRowType r
 
 -- | There doesn't seem to be a (<=.?) :: Symbol -> Symbol -> Bool,
 -- so here it is in terms of other ghc-7.8 type functions
