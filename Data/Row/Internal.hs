@@ -55,6 +55,7 @@ module Data.Row.Internal
   , show'
   , toKey
   , type (≈)
+  , Optional(..)
   )
 where
 
@@ -65,12 +66,12 @@ import Data.Proxy
 import Data.String (IsString (fromString))
 import Data.Text (Text)
 import qualified Data.Text as Text
-import Data.Type.Equality (type (==))
+import Data.Type.Equality (type (==), (:~:)(Refl))
 
 import GHC.OverloadedLabels
 import GHC.TypeLits
 import qualified GHC.TypeLits as TL
-
+import qualified Unsafe.Coerce as UNSAFE
 
 
 
@@ -217,6 +218,61 @@ type (l :: Symbol) .== (a :: k) = Extend l a Empty
 {--------------------------------------------------------------------
   Constrained record operations
 --------------------------------------------------------------------}
+
+type family TypeEq (a :: k) (b :: k) :: Symbol where
+  TypeEq a a = "True"
+  TypeEq a b = "False"
+
+-- | This is a hack to get type equality without using 'Typeable'.  It relies on
+-- the fact that the type family 'TypeEq' is closed, but it still may fail when
+-- 'TypeEq' can't properly reduce (for instance, in the presence of some polymorphism).
+typeEq :: forall a b. KnownSymbol (TypeEq a b) => Maybe (a :~: b)
+typeEq = case sameSymbol (Proxy @(TypeEq a b)) (Proxy @"True") of
+  Just Refl -> Just $ UNSAFE.unsafeCoerce Refl
+  Nothing -> Nothing
+
+-- | 'Optional l a r' indicates that label 'l' _may_ point to a type 'a' in 'r'.
+-- The value 'optional' will be 'Just Dict' at runtime if it does and 'Nothing'
+-- otherwise.  This allows one to ask for optional features of a row-type.
+class Optional (l :: Symbol) (a :: k) (r :: Row k) where
+  optional :: Maybe (Dict (r .! l ≈ a))
+
+instance Optional l a Empty where
+  optional = Nothing
+
+instance (KnownSymbol l, KnownSymbol l', Optional l a ('R r), KnownSymbol (TypeEq a b)) => Optional l a ('R (l' :-> b ': r)) where
+  optional = case (cmpSymbol (Proxy @l') (Proxy @l), typeEq @a @b, optional @_ @l @a @('R r)) of
+    -- The labels are equal and the types at those labels are equal.
+    (Left Refl, Just Refl, _) -> Just Dict
+    -- The label we're looking for is deeper in the row
+    (Right (Left Refl), _, Just Dict) -> Just Dict \\ preserveGet @l @l' @b @r
+    _ -> Nothing
+
+-- | Like 'sameSymbol', but if the symbols aren't equal, this additionally provides
+-- proof of LT or GT.
+cmpSymbol :: (KnownSymbol a, KnownSymbol b)
+          => Proxy a -> Proxy b -> Either (a :~: b) (Either (CmpSymbol a b :~: 'LT) (CmpSymbol a b :~: 'GT))
+cmpSymbol x y = case compare (symbolVal x) (symbolVal y) of
+  EQ -> Left (UNSAFE.unsafeCoerce Refl)
+  LT -> Right (Left  (UNSAFE.unsafeCoerce Refl))
+  GT -> Right (Right (UNSAFE.unsafeCoerce Refl))
+
+-- | 'Get' is preserved through a row-type so long as the label isn't yet found.
+preserveGet :: forall l l' a r. ((l' <=.? l) ~ True) :- (Get l (l' :-> a ': r) ~ Get l r)
+preserveGet = Sub $ UNSAFE.unsafeCoerce $ Dict @((l' <=.? l) ~ True)
+
+
+-- instance {-# OVERLAPPING  #-} Optional l a ('R (l :-> a ': r)) where
+--   optional = Just Dict
+--
+-- instance {-# OVERLAPPABLE  #-} Optional l a ('R (l :-> b ': r)) where
+--   optional = Nothing
+--
+-- instance {-# OVERLAPPABLE #-} (Optional l a ('R r), Get l ((l' :-> b) : r) ~ Get l r) => Optional l a ('R (l' :-> b ': r)) where
+--   optional = case optional @_ @l @a @('R r) of
+--     Nothing -> Nothing
+--     Just Dict -> Just Dict
+
 
 -- | A dictionary of information that proves that extending a row-type @r@ with
 -- a label @l@ will necessarily put it to the front of the underlying row-type
