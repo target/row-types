@@ -1,6 +1,12 @@
-> {-# LANGUAGE OverloadedLabels #-}
+> {-# LANGUAGE AllowAmbiguousTypes #-}
+> {-# LANGUAGE DataKinds #-}
 > {-# LANGUAGE DeriveGeneric #-}
+> {-# LANGUAGE FlexibleContexts #-}
+> {-# LANGUAGE OverloadedLabels #-}
 > {-# LANGUAGE PartialTypeSignatures #-}
+> {-# LANGUAGE ScopedTypeVariables #-}
+> {-# LANGUAGE TypeOperators #-}
+> {-# LANGUAGE ViewPatterns #-}
 > module Examples where
 >
 > import Data.Row

@@ -50,10 +50,14 @@ to demonstrate how to use row-types to do type surgery.
 
 \iffalse
 \begin{code}
-{-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeOperators #-}
 module TypeSurgery where
 
 import Data.Row

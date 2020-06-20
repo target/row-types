@@ -45,7 +45,11 @@ As this is a Literate Haskell file, let's get the imports and pragmas out of the
 way first...
 
 \begin{code}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeOperators #-}
 module TypedErrors where
 
 import Data.Row

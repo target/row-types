@@ -1,3 +1,5 @@
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE TypeOperators #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Data.Row
@@ -29,7 +31,8 @@ module Data.Row
   , Var, Rec, Row, Empty, type (≈)
   , HasType, Lacks, type (.\), type (.+)
   , type (.\/), type (.\\), type (.//)
-  , BiForall, Forall, Switch(..)
+  , BiForall, Forall
+  , switch, caseon
   -- * Record Construction
   , empty
   , type (.==), (.==), pattern (:==)
