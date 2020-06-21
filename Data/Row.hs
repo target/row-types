@@ -31,7 +31,7 @@ module Data.Row
   , Var, Rec, Row, Empty, type (≈)
   , HasType, Lacks, type (.\), type (.+)
   , type (.\/), type (.\\), type (.//)
-  , BiForall, Forall
+  , BiForall, Forall, FreeForall, FreeBiForall
   , switch, caseon
   -- * Record Construction
   , empty
@@ -54,6 +54,7 @@ module Data.Row
   )
 where
 
+import Data.Row.Dictionaries
 import Data.Row.Variants
 import Data.Row.Records
 import Data.Row.Switch

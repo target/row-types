@@ -24,9 +24,9 @@ module Data.Row.Switch
   )
 where
 
-import Control.Arrow ((+++))
 import Data.Proxy
 
+import Data.Bifunctor (Bifunctor(..))
 import Data.Row.Internal
 import Data.Row.Records
 import Data.Row.Variants
@@ -53,8 +53,8 @@ switch v r = getConst2 $ biMetamorph @_ @_ @r @v @(AppliesTo x) @Either @SwitchD
   where
     doNil (SwitchData _ v) = impossible v
     doUncons :: forall ℓ f τ ϕ ρ. (KnownSymbol ℓ, AppliesTo x f τ, HasType ℓ f ϕ, HasType ℓ τ ρ)
-             => Label ℓ -> SwitchData ϕ ρ -> Either (Const2 x f τ) (SwitchData (ϕ .- ℓ) (ρ .- ℓ))
-    doUncons l (SwitchData r v) = (Const2 . applyTo (r .! l)) +++ (SwitchData $ lazyRemove l r) $ trial v l
+             => Label ℓ -> SwitchData ϕ ρ -> Either (SwitchData (ϕ .- ℓ) (ρ .- ℓ)) (Const2 x f τ)
+    doUncons l (SwitchData r v) = bimap (SwitchData $ lazyRemove l r) (Const2 . applyTo (r .! l)) $ trial v l
     -- doCons :: forall ℓ f τ ϕ ρ. (KnownSymbol ℓ, AppliesTo x f τ)
     --        => Label ℓ -> Either (Const2 x f τ) (Const2 x ϕ ρ) -> Const2 x (Extend ℓ f ϕ) (Extend ℓ τ ρ)
     doCons _ (Left  (Const2 x)) = Const2 x

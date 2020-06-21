@@ -45,7 +45,6 @@ module Data.Row.Internal
   , Unconstrained
   , Unconstrained1
   , Unconstrained2
-  , FlipConst(..)
   , FrontExtends(..)
   , FrontExtendsDict(..)
   , WellBehaved, AllUniqueLabels
@@ -240,17 +239,16 @@ class Forall (r :: Row k) (c :: k -> Constraint) where
   -- with the rest of the record.
   -- For variants, @p = Either@, because there will either be a value or future types to
   -- explore.
-  -- 'Const' can be useful when you want an arbitrary type from the row, and
-  -- 'FlipConst' can be useful when the types in the row are unnecessary.
+  -- 'Const' can be useful when the types in the row are unnecessary.
   metamorph :: forall (p :: * -> * -> *) (f :: Row k -> *) (g :: Row k -> *) (h :: k -> *). Bifunctor p
             => Proxy (Proxy h, Proxy p)
             -> (f Empty -> g Empty)
                -- ^ The way to transform the empty element
             -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ, HasType ℓ τ ρ)
-               => Label ℓ -> f ρ -> p (h τ) (f (ρ .- ℓ)))
+               => Label ℓ -> f ρ -> p (f (ρ .- ℓ)) (h τ))
                -- ^ The unfold
             -> (forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FrontExtends ℓ τ ρ, AllUniqueLabels (Extend ℓ τ ρ))
-               => Label ℓ -> p (h τ) (g ρ) -> g (Extend ℓ τ ρ))
+               => Label ℓ -> p (g ρ) (h τ) -> g (Extend ℓ τ ρ))
                -- ^ The fold
             -> f r  -- ^ The input structure
             -> g r
@@ -263,7 +261,7 @@ instance (KnownSymbol ℓ, c τ, Forall ('R ρ) c, FrontExtends ℓ τ ('R ρ), 
   {-# INLINE metamorph #-}
   metamorph h empty uncons cons = case frontExtendsDict @ℓ @τ @('R ρ) of
     FrontExtendsDict Dict ->
-      cons (Label @ℓ) . second (metamorph @_ @('R ρ) @c h empty uncons cons) . uncons (Label @ℓ)
+      cons (Label @ℓ) . first (metamorph @_ @('R ρ) @c h empty uncons cons) . uncons (Label @ℓ)
 
 
 -- | Any structure over two rows in which the elements of each row satisfy some
@@ -276,9 +274,9 @@ class BiForall (r1 :: Row k1) (r2 :: Row k2) (c :: k1 -> k2 -> Constraint) where
               => Proxy (Proxy h, Proxy p)
               -> (f Empty Empty -> g Empty Empty)
               -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1 τ2, HasType ℓ τ1 ρ1, HasType ℓ τ2 ρ2)
-                  => Label ℓ -> f ρ1 ρ2 -> p (h τ1 τ2) (f (ρ1 .- ℓ) (ρ2 .- ℓ)))
+                  => Label ℓ -> f ρ1 ρ2 -> p (f (ρ1 .- ℓ) (ρ2 .- ℓ)) (h τ1 τ2))
               -> (forall ℓ τ1 τ2 ρ1 ρ2. (KnownSymbol ℓ, c τ1 τ2, FrontExtends ℓ τ1 ρ1, FrontExtends ℓ τ2 ρ2, AllUniqueLabels (Extend ℓ τ1 ρ1), AllUniqueLabels (Extend ℓ τ2 ρ2))
-                  => Label ℓ -> p (h τ1 τ2) (g ρ1 ρ2) -> g (Extend ℓ τ1 ρ1) (Extend ℓ τ2 ρ2))
+                  => Label ℓ -> p (g ρ1 ρ2) (h τ1 τ2) -> g (Extend ℓ τ1 ρ1) (Extend ℓ τ2 ρ2))
               -> f r1 r2 -> g r1 r2
 
 
@@ -291,13 +289,7 @@ instance (KnownSymbol ℓ, c τ1 τ2, BiForall ('R ρ1) ('R ρ2) c, FrontExtends
   {-# INLINE biMetamorph #-}
   biMetamorph h empty uncons cons = case (frontExtendsDict @ℓ @τ1 @('R ρ1), frontExtendsDict @ℓ @τ2 @('R ρ2)) of
     (FrontExtendsDict Dict, FrontExtendsDict Dict) ->
-      cons (Label @ℓ) . second (biMetamorph @_ @_ @('R ρ1) @('R ρ2) @c h empty uncons cons) . uncons (Label @ℓ)
-
-
-newtype FlipConst a b = FlipConst { getFlipConst :: b }
-
-instance Bifunctor FlipConst where
-  bimap _ g (FlipConst b) = FlipConst (g b)
+      cons (Label @ℓ) . first (biMetamorph @_ @_ @('R ρ1) @('R ρ2) @c h empty uncons cons) . uncons (Label @ℓ)
 
 
 -- | A null constraint
@@ -323,9 +315,9 @@ type family Labels (r :: Row a) where
 
 -- | Return a list of the labels in a row type.
 labels :: forall ρ c s. (IsString s, Forall ρ c) => [s]
-labels = getConst $ metamorph @_ @ρ @c @FlipConst @(Const ()) @(Const [s]) @Proxy Proxy (const $ Const []) doUncons doCons (Const ())
-  where doUncons _ _ = FlipConst $ Const ()
-        doCons l (FlipConst (Const c)) = Const $ show' l : c
+labels = getConst $ metamorph @_ @ρ @c @Const @(Const ()) @(Const [s]) @Proxy Proxy (const $ Const []) doUncons doCons (Const ())
+  where doUncons _ _ = Const $ Const ()
+        doCons l (Const (Const c)) = Const $ show' l : c
 
 -- | Return a list of the labels in a row type and is specialized to the 'Unconstrained1' constraint.
 labels' :: forall ρ s. (IsString s, Forall ρ Unconstrained1) => [s]
