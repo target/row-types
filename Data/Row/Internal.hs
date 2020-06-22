@@ -66,7 +66,7 @@ import Data.Proxy
 import Data.String (IsString (fromString))
 import Data.Text (Text)
 import qualified Data.Text as Text
-import Data.Type.Equality (type (==), (:~:)(Refl))
+import Data.Type.Equality ((:~:)(Refl))
 
 import GHC.OverloadedLabels
 import GHC.TypeLits
@@ -229,8 +229,7 @@ instance Optional l a Empty where
   optional = Nothing
 
 instance ( KnownSymbol l, KnownSymbol l', Optional l a ('R r)
-         , Ifte (CmpSymbol l l' == 'EQ) (a ~ b) Unconstrained
-         , Ifte (l' <=.? l) (Get l r ~ Get l (l' :-> b ': r)) Unconstrained
+         , OrdCond (CmpSymbol l' l) (Get l r ~ Get l (l' :-> b ': r)) (a ~ b) Unconstrained
   ) => Optional l a ('R (l' :-> b ': r)) where
   optional = case (cmpSymbol (Proxy @l') (Proxy @l), optional @_ @l @a @('R r)) of
     -- The labels are equal and the types at those labels are equal.
@@ -393,15 +392,14 @@ type family SubsetR (r1 :: [LT k]) (r2 :: [LT k]) :: Constraint where
         :$$: TL.Text "The first contains the bindings " :<>: ShowRowType x
         :<>: TL.Text " while the second does not.")
   SubsetR (l :-> a ': x) (l :-> a ': y) = SubsetR x y
-  SubsetR (l :-> a ': x) (l :-> b ': y) =
-    TypeError (TL.Text "One row-type is not a subset of the other."
-          :$$: TL.Text "The first assigns the label " :<>: ShowType l :<>: TL.Text " to "
-          :<>: ShowType a :<>: TL.Text " while the second assigns it to " :<>: ShowType b)
   SubsetR (hl :-> al ': tl) (hr :-> ar ': tr) =
-      Ifte (hl <=.? hr)
+    OrdCond (CmpSymbol hl hr)
       (TypeError (TL.Text "One row-type is not a subset of the other."
              :$$: TL.Text "The first assigns the label " :<>: ShowType hl :<>: TL.Text " to "
              :<>: ShowType al :<>: TL.Text " while the second has no assignment for it."))
+      (TypeError (TL.Text "One row-type is not a subset of the other."
+          :$$: TL.Text "The first assigns the label " :<>: ShowType hl :<>: TL.Text " to "
+          :<>: ShowType al :<>: TL.Text " while the second assigns it to " :<>: ShowType ar))
       (SubsetR (hl :-> al ': tl) tr)
 
 -- | A type synonym for disjointness.
@@ -446,13 +444,13 @@ type family ZipR (r1 :: [LT *]) (r2 :: [LT *]) where
 
 type family Inject (l :: LT k) (r :: [LT k]) where
   Inject (l :-> t) '[] = (l :-> t ': '[])
-  Inject (l :-> t) (l :-> t' ': x) = TypeError (TL.Text "Cannot inject a label into a row type that already has that label"
-                                  :$$: TL.Text "The label " :<>: ShowType l :<>: TL.Text " was already assigned the type "
-                                  :<>: ShowType t' :<>: TL.Text " and is now trying to be assigned the type "
-                                  :<>: ShowType t :<>: TL.Text ".")
   Inject (l :-> t) (l' :-> t' ': x) =
-      Ifte (l <=.? l')
+    OrdCond (CmpSymbol l l')
       (l :-> t   ': l' :-> t' ': x)
+      (TypeError (TL.Text "Cannot inject a label into a row type that already has that label"
+            :$$: TL.Text "The label " :<>: ShowType l :<>: TL.Text " was already assigned the type "
+            :<>: ShowType t' :<>: TL.Text " and is now trying to be assigned the type "
+            :<>: ShowType t :<>: TL.Text "."))
       (l' :-> t' ': Inject (l :-> t)  x)
 
 -- | Type level Row modification helper
@@ -462,9 +460,10 @@ type family ModifyR (l :: Symbol) (a :: k) (ρ :: [LT k]) :: [LT k] where
   ModifyR l a '[] = TypeError (TL.Text "Tried to modify the label " :<>: ShowType l
                           :<>: TL.Text ", but it does not appear in the row-type.")
 
-type family Ifte (c :: Bool) (t :: k) (f :: k)   where
-  Ifte True  t f = t
-  Ifte False t f = f
+type family OrdCond (o :: Ordering) (lt :: k) (eq :: k) (gt :: k) where
+  OrdCond 'LT lt eq gt = lt
+  OrdCond 'EQ lt eq gt = eq
+  OrdCond 'GT lt eq gt = gt
 
 type family Get (l :: Symbol) (r :: [LT k]) where
   Get l '[] = TypeError (TL.Text "No such field: " :<>: ShowType l)
@@ -483,9 +482,12 @@ type family RemoveT (l :: Symbol) (r :: [LT k]) (r_orig :: [LT k]) where
 
 type family LacksR (l :: Symbol) (r :: [LT k]) (r_orig :: [LT k]) :: Constraint where
   LacksR l '[] _ = Unconstrained
-  LacksR l (l :-> t ': x) r = TypeError (TL.Text "The label " :<>: ShowType l
-                                    :<>: TL.Text " already exists in " :<>: ShowRowType r)
-  LacksR l (l' :-> _ ': x) r = Ifte (l <=.? l') Unconstrained (LacksR l x r)
+  LacksR l (l' :-> t ': x) r =
+    OrdCond (CmpSymbol l l')
+      Unconstrained
+      (TypeError (TL.Text "The label " :<>: ShowType l
+             :<>: TL.Text " already exists in " :<>: ShowRowType r))
+      (LacksR l x r)
 
 
 type family Merge (l :: [LT k]) (r :: [LT k]) where
@@ -494,35 +496,32 @@ type family Merge (l :: [LT k]) (r :: [LT k]) where
   Merge (h :-> a ': tl)   (h :-> a ': tr) =
     TypeError (TL.Text "The label " :<>: ShowType h :<>: TL.Text " (of type "
           :$$: ShowType a :<>: TL.Text ") has duplicate assignments.")
-  Merge (h :-> a ': tl)   (h :-> b ': tr) =
-    TypeError (TL.Text "The label " :<>: ShowType h :<>: TL.Text " has conflicting assignments."
-          :$$: TL.Text "Its type is both " :<>: ShowType a :<>: TL.Text " and " :<>: ShowType b :<>: TL.Text ".")
   Merge (hl :-> al ': tl) (hr :-> ar ': tr) =
-      Ifte (hl <=.? hr)
+    OrdCond (CmpSymbol hl hr)
       (hl :-> al ': Merge tl (hr :-> ar ': tr))
+      (TypeError (TL.Text "The label " :<>: ShowType hl :<>: TL.Text " has conflicting assignments."
+             :$$: TL.Text "Its type is both " :<>: ShowType al :<>: TL.Text " and " :<>: ShowType ar :<>: TL.Text "."))
       (hr :-> ar ': Merge (hl :-> al ': tl) tr)
 
 type family MinJoinR (l :: [LT k]) (r :: [LT k]) where
   MinJoinR '[] r = r
   MinJoinR l '[] = l
   MinJoinR (h :-> a ': tl)   (h :-> a ': tr) =
-      (h :-> a ': MinJoinR tl tr)
-  MinJoinR (h :-> a ': tl)   (h :-> b ': tr) =
-    TypeError (TL.Text "The label " :<>: ShowType h :<>: TL.Text " has conflicting assignments."
-          :$$: TL.Text "Its type is both " :<>: ShowType a :<>: TL.Text " and " :<>: ShowType b :<>: TL.Text ".")
+    (h :-> a ': MinJoinR tl tr)
   MinJoinR (hl :-> al ': tl) (hr :-> ar ': tr) =
-      Ifte (CmpSymbol hl hr == 'LT)
+    OrdCond (CmpSymbol hl hr)
       (hl :-> al ': MinJoinR tl (hr :-> ar ': tr))
+      (TypeError (TL.Text "The label " :<>: ShowType hl :<>: TL.Text " has conflicting assignments."
+             :$$: TL.Text "Its type is both " :<>: ShowType al :<>: TL.Text " and " :<>: ShowType ar :<>: TL.Text "."))
       (hr :-> ar ': MinJoinR (hl :-> al ': tl) tr)
 
 type family ConstUnionR (l :: [LT k]) (r :: [LT k]) where
   ConstUnionR '[] r = r
   ConstUnionR l '[] = l
-  ConstUnionR (h :-> a ': tl)   (h :-> b ': tr) =
-      (h :-> a ': ConstUnionR tl tr)
   ConstUnionR (hl :-> al ': tl) (hr :-> ar ': tr) =
-      Ifte (CmpSymbol hl hr == 'LT)
+    OrdCond (CmpSymbol hl hr)
       (hl :-> al ': ConstUnionR tl (hr :-> ar ': tr))
+      (hl :-> al ': ConstUnionR tl tr)
       (hr :-> ar ': ConstUnionR (hl :-> al ': tl) tr)
 
 
@@ -532,18 +531,15 @@ type family Diff (l :: [LT k]) (r :: [LT k]) where
   Diff l '[] = l
   Diff (l :-> al ': tl) (l :-> al ': tr) = Diff tl tr
   Diff (hl :-> al ': tl) (hr :-> ar ': tr) =
-    Ifte (hl <=.? hr)
-    (hl :-> al ': Diff tl (hr :-> ar ': tr))
-    (Diff (hl :-> al ': tl) tr)
+    OrdCond (CmpSymbol hl hr)
+      (hl :-> al ': Diff tl (hr :-> ar ': tr))
+      (Diff (hl :-> al ': tl) tr)
+      (Diff (hl :-> al ': tl) tr)
 
 type family ShowRowType (r :: [LT k]) :: ErrorMessage where
   ShowRowType '[] = TL.Text "Empty"
   ShowRowType '[l ':-> t] = TL.ShowType l TL.:<>: TL.Text " .== " TL.:<>: TL.ShowType t
   ShowRowType ((l ':-> t) ': r) = TL.ShowType l TL.:<>: TL.Text " .== " TL.:<>: TL.ShowType t TL.:<>: TL.Text " .+ " TL.:<>: ShowRowType r
-
--- | There doesn't seem to be a (<=.?) :: Symbol -> Symbol -> Bool,
--- so here it is in terms of other ghc-7.8 type functions
-type a <=.? b = (CmpSymbol a b == 'LT)
 
 -- | A lower fixity operator for type equality
 infix 4 ≈
