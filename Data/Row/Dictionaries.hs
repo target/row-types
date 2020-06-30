@@ -21,9 +21,9 @@
 
 
 module Data.Row.Dictionaries
-  ( uniqueMap, uniqueAp, uniqueZip
-  , extendHas, mapHas, apHas
-  , mapExtendSwap, apExtendSwap, zipExtendSwap
+  ( uniqueMap, uniqueAp, uniqueApSingle, uniqueZip
+  , extendHas, mapHas, apHas, apSingleHas
+  , mapExtendSwap, apExtendSwap, apSingleExtendSwap, zipExtendSwap
   , FreeForall
   , FreeBiForall
   , freeForall
@@ -93,6 +93,10 @@ mapHas = Sub $ UNSAFE.unsafeCoerce $ Dict @(r .! l ≈ t)
 apHas :: forall ϕ ρ l f t. (ϕ .! l ≈ f, ρ .! l ≈ t) :- (Ap ϕ ρ .! l ≈ f t, Ap ϕ ρ .- l ≈ Ap (ϕ .- l) (ρ .- l))
 apHas = Sub $ UNSAFE.unsafeCoerce $ Dict @(ϕ .! l ≈ f, ρ .! l ≈ t)
 
+-- | This allows us to derive `ApSingle r x .! l ≈ f x` from `r .! l ≈ f`
+apSingleHas :: forall r l f x. (r .! l ≈ f) :- (ApSingle r x .! l ≈ f x, ApSingle r x .- l ≈ ApSingle (r .- l) x)
+apSingleHas = Sub $ UNSAFE.unsafeCoerce $ Dict @(r .! l ≈ f)
+
 -- | Proof that the 'Map' type family preserves labels and their ordering.
 mapExtendSwap :: forall ℓ τ r f. Dict (Extend ℓ (f τ) (Map f r) ≈ Map f (Extend ℓ τ r))
 mapExtendSwap = UNSAFE.unsafeCoerce $ Dict @Unconstrained
@@ -100,6 +104,10 @@ mapExtendSwap = UNSAFE.unsafeCoerce $ Dict @Unconstrained
 -- | Proof that the 'Ap' type family preserves labels and their ordering.
 apExtendSwap :: forall k ℓ (τ :: k) r (f :: k -> *) fs. Dict (Extend ℓ (f τ) (Ap fs r) ≈ Ap (Extend ℓ f fs) (Extend ℓ τ r))
 apExtendSwap = UNSAFE.unsafeCoerce $ Dict @Unconstrained
+
+-- | Proof that the 'ApSingle' type family preserves labels and their ordering.
+apSingleExtendSwap :: forall k ℓ (τ :: k) r (f :: k -> *). Dict (Extend ℓ (f τ) (ApSingle r τ) ≈ ApSingle (Extend ℓ f r) τ)
+apSingleExtendSwap = UNSAFE.unsafeCoerce $ Dict @Unconstrained
 
 -- | Proof that the 'Ap' type family preserves labels and their ordering.
 zipExtendSwap :: forall ℓ τ1 r1 τ2 r2. Dict (Extend ℓ (τ1, τ2) (Zip r1 r2) ≈ Zip (Extend ℓ τ1 r1) (Extend ℓ τ2 r2))
@@ -112,6 +120,10 @@ uniqueMap = UNSAFE.unsafeCoerce $ Dict @Unconstrained
 -- | Ap preserves uniqueness of labels.
 uniqueAp :: forall r fs. Dict (AllUniqueLabels (Ap fs r) ≈ AllUniqueLabels r)
 uniqueAp = UNSAFE.unsafeCoerce $ Dict @Unconstrained
+
+-- | ApSingle preserves uniqueness of labels.
+uniqueApSingle :: forall r x. Dict (AllUniqueLabels (ApSingle r x) ≈ AllUniqueLabels r)
+uniqueApSingle = UNSAFE.unsafeCoerce $ Dict @Unconstrained
 
 -- | Zip preserves uniqueness of labels.
 uniqueZip :: forall r1 r2. Dict (AllUniqueLabels (Zip r1 r2) ≈ (AllUniqueLabels r1, AllUniqueLabels r2))

@@ -49,7 +49,7 @@ module Data.Row.Internal
   , FrontExtends(..)
   , FrontExtendsDict(..)
   , WellBehaved, AllUniqueLabels
-  , Ap, Zip, Map, Subset, Disjoint
+  , Ap, ApSingle, Zip, Map, Subset, Disjoint
   -- * Helper functions
   , Labels, labels, labels'
   , show'
@@ -397,6 +397,14 @@ type family ApR (fs :: [LT (a -> b)]) (r :: [LT a]) :: [LT b] where
   ApR '[] '[] = '[]
   ApR (l :-> f ': tf) (l :-> v ': tv) = l :-> f v ': ApR tf tv
   ApR _ _ = TypeError (TL.Text "Row types with different label sets cannot be App'd together.")
+
+-- | Take a row of type operators and apply each to the second argument.
+type family ApSingle (fs :: Row (a -> b)) (x :: a) :: Row b where
+  ApSingle (R fs) x = R (ApSingleR fs x)
+
+type family ApSingleR (fs :: [LT (a -> b)]) (x :: a) :: [LT b] where
+  ApSingleR _ '[] = '[]
+  ApSingleR (l ':-> f ': fs) x = l ':-> f x ': ApSingleR fs x
 
 -- | Zips two rows together to create a Row of the pairs.
 --   The two rows must have the same set of labels.
