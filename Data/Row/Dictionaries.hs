@@ -102,7 +102,7 @@ mapExtendSwap :: forall ℓ τ r f. Dict (Extend ℓ (f τ) (Map f r) ≈ Map f 
 mapExtendSwap = UNSAFE.unsafeCoerce $ Dict @Unconstrained
 
 -- | Proof that the 'Ap' type family preserves labels and their ordering.
-apExtendSwap :: forall k ℓ (τ :: k) r (f :: k -> *) fs. Dict (Extend ℓ (f τ) (Ap fs r) ≈ Ap (Extend ℓ f fs) (Extend ℓ τ r))
+apExtendSwap :: forall ℓ (τ :: k) r (f :: k -> *) fs. Dict (Extend ℓ (f τ) (Ap fs r) ≈ Ap (Extend ℓ f fs) (Extend ℓ τ r))
 apExtendSwap = UNSAFE.unsafeCoerce $ Dict @Unconstrained
 
 -- | Proof that the 'ApSingle' type family preserves labels and their ordering.

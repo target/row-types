@@ -403,7 +403,7 @@ type family ApSingle (fs :: Row (a -> b)) (x :: a) :: Row b where
   ApSingle (R fs) x = R (ApSingleR fs x)
 
 type family ApSingleR (fs :: [LT (a -> b)]) (x :: a) :: [LT b] where
-  ApSingleR _ '[] = '[]
+  ApSingleR '[] _ = '[]
   ApSingleR (l ':-> f ': fs) x = l ':-> f x ': ApSingleR fs x
 
 -- | Zips two rows together to create a Row of the pairs.
