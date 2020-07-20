@@ -18,7 +18,8 @@
 
 
 module Data.Row.Switch
-  ( switch
+  ( AppliesTo(..)
+  , switch
   , caseon
   )
 where
