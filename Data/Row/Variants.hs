@@ -433,7 +433,7 @@ eraseSingle f =
         doCons
     . VApS
  where
-  doNil = impossible . unsafeCoerce . unVApS
+  doNil = impossible . unVApS
 
   doUncons
     :: forall l f fs
@@ -464,7 +464,7 @@ mapSingle
 mapSingle f = unVApS . metamorph @_ @fs @c @Either @(VApS x) @(VApS y) @(FlipApp x)
              Proxy doNil doUncons doCons . VApS
  where
-  doNil = impossible . unsafeCoerce . unVApS
+  doNil = impossible . unVApS
 
   doUncons :: forall l f fs
            .  ( c f, fs .! l ≈ f, KnownSymbol l)
@@ -484,36 +484,35 @@ mapSingle f = unVApS . metamorph @_ @fs @c @Either @(VApS x) @(VApS y) @(FlipApp
 
 eraseZipSingle :: forall c fs (x :: *) (y :: *) z
                 . (Forall fs c)
-               => (forall f. c f => Either (f x, f y) (Either (Text, f x) (Text, f y)) -> z)
-               -> Var (ApSingle fs x) -> Var (ApSingle fs y) -> z
+               => (forall f. c f => f x -> f y -> z)
+               -> Var (ApSingle fs x) -> Var (ApSingle fs y) -> Maybe z
 eraseZipSingle f x y = getConst $ metamorph @_ @fs @c @Either
-    @(Product (VApS x) (VApS y)) @(Const z) @(Const z)
+    @(Product (VApS x) (VApS y)) @(Const (Maybe z)) @(Const (Maybe z))
     Proxy doNil doUncons doCons (Pair (VApS x) (VApS y))
 
   where doNil :: Product (VApS x) (VApS y) Empty
-              -> Const z (Empty :: Row (* -> *))
+              -> Const (Maybe z) (Empty :: Row (* -> *))
         doNil (Pair (VApS z) _) = Const (impossible z)
 
         doUncons :: forall l f ρ
                   . (KnownSymbol l, c f, ρ .! l ≈ f)
                  => Label l
                  -> Product (VApS x) (VApS y) ρ
-                 -> Either (Const z f)
+                 -> Either (Const (Maybe z) f)
                            (Product (VApS x) (VApS y) (ρ .- l))
-        doUncons l@(toKey -> l') (Pair (VApS r1) (VApS r2)) =
+        doUncons l (Pair (VApS r1) (VApS r2)) =
           case (
             trial r1 l \\ apSingleHas @ρ @l @f @x,
             trial r2 l \\ apSingleHas @ρ @l @f @y
           ) of
-            (Left u, Left v)   -> Left $ Const $ f @f (Left (u, v))
-            (Left u, Right _)  -> Left $ Const $ f @f (Right (Left (l', u)))
-            (Right _, Left v)  -> Left $ Const $ f @f (Right (Right (l', v)))
-            (Right u, Right v) -> Right $ Pair (VApS u) (VApS v)
+            (Left u, Left v)     -> Left $ Const $ Just $ f @f u v
+            (Right us, Right vs) -> Right (Pair (VApS us) (VApS vs))
+            _                    -> Left $ Const Nothing
 
         doCons :: forall l (τ :: * -> *) ρ
                 . Label l
-               -> Either (Const z τ) (Const z ρ)
-               -> Const z (Extend l τ ρ) -- ('R (l ':-> τ ': ρ))
+               -> Either (Const (Maybe z) τ) (Const (Maybe z) ρ)
+               -> Const (Maybe z) (Extend l τ ρ)
         doCons _ (Left (Const w))  = Const w
         doCons _ (Right (Const w)) = Const w
 
