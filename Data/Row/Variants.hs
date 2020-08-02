@@ -60,6 +60,8 @@ module Data.Row.Variants
   , compose, uncompose
   -- ** labels
   , labels
+  -- ** ApSingle functions
+  , eraseSingle, mapSingle, eraseZipSingle
   -- ** Coerce
   , coerceVar
   )
@@ -72,6 +74,7 @@ import Control.Arrow       ((+++), left, right)
 import Control.DeepSeq     (NFData(..), deepseq)
 
 import Data.Coerce
+import Data.Constraint                (Constraint)
 import Data.Functor.Compose
 import Data.Functor.Identity
 import Data.Functor.Product
@@ -407,6 +410,111 @@ fromLabels mk = getCompose $ metamorph @_ @ρ @c @FlipConst @(Const ()) @(Compos
                => Label ℓ -> FlipConst (Proxy τ) (Compose f Var ρ) -> Compose f Var (Extend ℓ τ ρ)
         doCons l (FlipConst (Compose v)) = Compose $ IsJust l <$> mk l <|> extend @τ l <$> v
           \\ extendHas @ρ @ℓ @τ
+
+{--------------------------------------------------------------------
+  Functions for variants of ApSingle
+--------------------------------------------------------------------}
+
+newtype VApS x (fs :: Row (* -> *)) = VApS { unVApS :: Var (ApSingle fs x) }
+newtype FlipApp (x :: *) (f :: * -> *) = FlipApp (f x)
+
+eraseSingle
+  :: forall (c :: (* -> *) -> Constraint) (fs :: Row (* -> *)) (x :: *) (y :: *)
+   . (Forall fs c)
+  => (forall f . (c f) => f x -> y)
+  -> Var (ApSingle fs x)
+  -> y
+eraseSingle f =
+  getConst
+    . metamorph @_ @fs @c @Either @(VApS x) @(Const y) @(FlipApp x)
+        Proxy
+        doNil
+        doUncons
+        doCons
+    . VApS
+ where
+  doNil = impossible . unVApS
+
+  doUncons
+    :: forall l f fs
+      . ( c f
+        , fs .! l ≈ f
+        , KnownSymbol l
+        )
+    => Label l
+    -> VApS x fs
+    -> Either (FlipApp x f) (VApS x (fs .- l))
+  doUncons l = (FlipApp +++ VApS) . (flip trial l \\ apSingleHas @fs @l @f @x) . unVApS
+
+  doCons
+    :: forall l f fs
+     . (c f)
+    => Label l
+    -> Either (FlipApp x f) (Const y fs)
+    -> Const y (Extend l f fs)
+  doCons _ (Left (FlipApp v)) = Const (f v)
+  doCons _ (Right (Const  y)) = Const y
+
+mapSingle
+  :: forall (c :: (* -> *) -> Constraint) (fs :: Row (* -> *)) (x :: *) (y :: *)
+   . (Forall fs c)
+  => (forall f . (c f) => f x -> f y)
+  -> Var (ApSingle fs x)
+  -> Var (ApSingle fs y)
+mapSingle f = unVApS . metamorph @_ @fs @c @Either @(VApS x) @(VApS y) @(FlipApp x)
+             Proxy doNil doUncons doCons . VApS
+ where
+  doNil = impossible . unVApS
+
+  doUncons :: forall l f fs
+           .  ( c f, fs .! l ≈ f, KnownSymbol l)
+           => Label l -> VApS x fs -> Either (FlipApp x f) (VApS x (fs .- l))
+  doUncons l = (FlipApp +++ VApS)
+             . flip (trial \\ apSingleHas @fs @l @f @x) l
+             . unVApS
+
+  doCons :: forall l f fs. (KnownSymbol l, c f)
+         => Label l
+         -> Either (FlipApp x f) (VApS y fs)
+         -> VApS y (Extend l f fs)
+  doCons (toKey -> l) (Left (FlipApp x)) = VApS . OneOf l . HideType $ f x
+  doCons l (Right (VApS v)) = VApS $
+    extend @(f y) l v
+      \\ apSingleExtendSwap @_ @l @y @fs @f
+
+eraseZipSingle :: forall c fs (x :: *) (y :: *) z
+                . (Forall fs c)
+               => (forall f. c f => f x -> f y -> z)
+               -> Var (ApSingle fs x) -> Var (ApSingle fs y) -> Maybe z
+eraseZipSingle f x y = getConst $ metamorph @_ @fs @c @Either
+    @(Product (VApS x) (VApS y)) @(Const (Maybe z)) @(Const (Maybe z))
+    Proxy doNil doUncons doCons (Pair (VApS x) (VApS y))
+
+  where doNil :: Product (VApS x) (VApS y) Empty
+              -> Const (Maybe z) (Empty :: Row (* -> *))
+        doNil (Pair (VApS z) _) = Const (impossible z)
+
+        doUncons :: forall l f ρ
+                  . (KnownSymbol l, c f, ρ .! l ≈ f)
+                 => Label l
+                 -> Product (VApS x) (VApS y) ρ
+                 -> Either (Const (Maybe z) f)
+                           (Product (VApS x) (VApS y) (ρ .- l))
+        doUncons l (Pair (VApS r1) (VApS r2)) =
+          case (
+            trial r1 l \\ apSingleHas @ρ @l @f @x,
+            trial r2 l \\ apSingleHas @ρ @l @f @y
+          ) of
+            (Left u, Left v)     -> Left $ Const $ Just $ f @f u v
+            (Right us, Right vs) -> Right (Pair (VApS us) (VApS vs))
+            _                    -> Left $ Const Nothing
+
+        doCons :: forall l (τ :: * -> *) ρ
+                . Label l
+               -> Either (Const (Maybe z) τ) (Const (Maybe z) ρ)
+               -> Const (Maybe z) (Extend l τ ρ)
+        doCons _ (Left (Const w))  = Const w
+        doCons _ (Right (Const w)) = Const w
 
 {--------------------------------------------------------------------
   Generic instance
