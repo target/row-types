@@ -30,6 +30,9 @@ module Data.Row.Dictionaries
   , mapForall
   , IsA(..)
   , As(..)
+  , ActsOn(..)
+  , As'(..)
+  , apSingleForall
   -- * Re-exports
   , Dict(..), (:-)(..), HasDict(..), (\\), withDict
   )
@@ -58,8 +61,21 @@ class IsA c f a where
 instance c a => IsA c f (f a) where
   as = As
 
+data As' c t a where
+  As' :: forall c f a t. (a ~ f t, c f) => As' c t a
+
+class ActsOn c t a where
+  actsOn :: As' c t a
+
+instance c f => ActsOn c t (f t) where
+  actsOn = As'
+
 -- | An internal type used by the 'metamorph' in 'mapForall'.
 newtype MapForall c f (r :: Row k) = MapForall { unMapForall :: Dict (Forall (Map f r) (IsA c f)) }
+
+-- | An internal type used by the 'metamorph' in 'apSingleForall'.
+newtype ApSingleForall c a (fs :: Row (k -> k')) = ApSingleForall
+  { unApSingleForall :: Dict (Forall (ApSingle fs a) (ActsOn c a)) }
 
 -- | This allows us to derive a `Forall (Map f r) ..` from a `Forall r ..`.
 mapForall :: forall f c ρ. Forall ρ c :- Forall (Map f ρ) (IsA c f)
@@ -73,6 +89,19 @@ mapForall = Sub $ unMapForall $ metamorph @_ @ρ @c @FlipConst @Proxy @(MapForal
           FrontExtendsDict Dict -> MapForall Dict
             \\ mapExtendSwap @ℓ @τ @ρ @f
             \\ uniqueMap @(Extend ℓ τ ρ) @f
+
+-- | This allows us to derive a `Forall (ApSingle f r) ..` from a `Forall f ..`.
+apSingleForall :: forall a c fs. Forall fs c :- Forall (ApSingle fs a) (ActsOn c a)
+apSingleForall = Sub $ unApSingleForall $ metamorph @_ @fs @c @FlipConst @Proxy @(ApSingleForall c a) @Proxy Proxy empty uncons cons $ Proxy
+  where empty _ = ApSingleForall Dict
+        uncons _ _ = FlipConst Proxy
+        cons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FrontExtends ℓ τ ρ, AllUniqueLabels (Extend ℓ τ ρ))
+             => Label ℓ -> FlipConst (Proxy τ) (ApSingleForall c a ρ)
+             -> ApSingleForall c a (Extend ℓ τ ρ)
+        cons _ (FlipConst (ApSingleForall Dict)) = case frontExtendsDict @ℓ @τ @ρ of
+          FrontExtendsDict Dict -> ApSingleForall Dict
+            \\ apSingleExtendSwap @ℓ @a @ρ @τ
+            \\ uniqueApSingle @(Extend ℓ τ ρ) @a
 
 -- | Allow any 'Forall` over a row-type, be usable for 'Unconstrained1'.
 freeForall :: forall r c. Forall r c :- Forall r Unconstrained1
@@ -102,11 +131,11 @@ mapExtendSwap :: forall ℓ τ r f. Dict (Extend ℓ (f τ) (Map f r) ≈ Map f 
 mapExtendSwap = UNSAFE.unsafeCoerce $ Dict @Unconstrained
 
 -- | Proof that the 'Ap' type family preserves labels and their ordering.
-apExtendSwap :: forall ℓ (τ :: k) r (f :: k -> *) fs. Dict (Extend ℓ (f τ) (Ap fs r) ≈ Ap (Extend ℓ f fs) (Extend ℓ τ r))
+apExtendSwap :: forall ℓ τ r f fs. Dict (Extend ℓ (f τ) (Ap fs r) ≈ Ap (Extend ℓ f fs) (Extend ℓ τ r))
 apExtendSwap = UNSAFE.unsafeCoerce $ Dict @Unconstrained
 
 -- | Proof that the 'ApSingle' type family preserves labels and their ordering.
-apSingleExtendSwap :: forall k ℓ (τ :: k) r (f :: k -> *). Dict (Extend ℓ (f τ) (ApSingle r τ) ≈ ApSingle (Extend ℓ f r) τ)
+apSingleExtendSwap :: forall ℓ τ r f. Dict (Extend ℓ (f τ) (ApSingle r τ) ≈ ApSingle (Extend ℓ f r) τ)
 apSingleExtendSwap = UNSAFE.unsafeCoerce $ Dict @Unconstrained
 
 -- | Proof that the 'Ap' type family preserves labels and their ordering.

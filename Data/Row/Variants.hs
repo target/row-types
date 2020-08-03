@@ -52,7 +52,7 @@ module Data.Row.Variants
   -- ** Map
   , Map, map, map', transform, transform'
   -- ** Fold
-  , Forall, erase, eraseWithLabels, eraseZip
+  , Forall, erase, eraseWithLabels, eraseZipGeneral, eraseZip
   -- ** Sequence
   , sequence
   -- ** Compose
@@ -109,14 +109,9 @@ instance Forall r Eq => Eq (Var r) where
 
 instance (Forall r Eq, Forall r Ord) => Ord (Var r) where
   compare :: Var r -> Var r -> Ordering
-  compare x y = getConst $ metamorph @_ @r @Ord @Either @(Product Var Var) @(Const Ordering) @(Const Ordering) Proxy doNil doUncons doCons (Pair x y)
-    where doNil (Pair x _) = impossible x
-          doUncons l (Pair r1 r2) = case (trial r1 l, trial r2 l) of
-            (Left a,  Left b)  -> Left $ Const $ compare a b
-            (Left _,  Right _) -> Left $ Const LT
-            (Right _, Left _)  -> Left $ Const GT
-            (Right x, Right y) -> Right $ Pair x y
-          doCons _ = Const . either getConst getConst
+  compare = eraseZipGeneral @Ord @r @Ordering @Text $ \case
+    (Left (_, x, y))           -> compare x y
+    (Right ((s1, _), (s2, _))) -> compare s1 s2
 
 instance Forall r NFData => NFData (Var r) where
   rnf r = getConst $ metamorph @_ @r @NFData @Either @Var @(Const ()) @Identity Proxy empty doUncons doCons r
@@ -240,18 +235,48 @@ eraseWithLabels f = getConst . metamorph @_ @ρ @c @Either @Var @(Const (s,b)) @
         doCons l (Left (Identity x)) = Const (show' l, f x)
         doCons _ (Right (Const c)) = Const c
 
--- | A fold over two row type structures at once
+
+data ErasedVal c s = forall y. c y => ErasedVal (s, y)
+data ErasePair c s ρ = ErasePair (Either (ErasedVal c s) (Var ρ)) (Either (ErasedVal c s) (Var ρ))
+
+-- | A fold over two variants at once.  A call `eraseZipGeneral f x y` will return
+-- `f (Left (show l, a, b))` when `x` and `y` both have values at the same label `l`
+-- and will return `f (Right ((show l1, a), (show l2, b)))` when they have values
+-- at different labels `l1` and `l2` respectively.
+eraseZipGeneral
+  :: forall c ρ b s. (Forall ρ c, IsString s)
+  => (forall x y. (c x, c y) => Either (s, x, x) ((s, x), (s, y)) -> b)
+  -> Var ρ -> Var ρ -> b
+eraseZipGeneral f x y = getConst $ metamorph @_ @ρ @c @Either @(ErasePair c s) @(Const b) @(Const b) Proxy doNil doUncons doCons (ErasePair (Right x) (Right y))
+  where
+    doNil (ErasePair (Left (ErasedVal a)) (Left (ErasedVal b))) =
+      Const $ f $ Right (a, b)
+    doNil (ErasePair (Right x) _) = impossible x
+    doNil (ErasePair _ (Right y)) = impossible y
+    doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, HasType ℓ τ ρ)
+             => Label ℓ -> ErasePair c s ρ -> Either (Const b τ) (ErasePair c s (ρ .- ℓ))
+    doUncons _ (ErasePair (Left (ErasedVal a)) (Left (ErasedVal b))) =
+      Left $ Const $ f $ Right (a, b)
+    doUncons l (ErasePair (Right x) (Left eb)) = case (trial x l, eb) of
+      (Left a, ErasedVal b) -> Left $ Const $ f $ Right ((show' l, a), b)
+      (Right x', _)         -> Right $ ErasePair (Right x') (Left eb)
+    doUncons l (ErasePair (Left ea) (Right y)) = case (ea, trial y l) of
+      (ErasedVal a, Left b) -> Left $ Const $ f $ Right (a, (show' l, b))
+      (_, Right x')         -> Right $ ErasePair (Left ea) (Right x')
+    doUncons l (ErasePair (Right x) (Right y)) = case (trial x l, trial y l) of
+      (Left (a :: x), Left b) -> Left $ Const $ f @x @x $ Left (show' l, a, b)
+      (Left a,   Right y')    -> Right $ ErasePair (Left $ ErasedVal (show' l, a)) (Right y')
+      (Right x', Left b)      -> Right $ ErasePair (Right x') (Left $ ErasedVal (show' l, b))
+      (Right x', Right y')    -> Right $ ErasePair (Right x') (Right y')
+    doCons _ (Left  (Const b)) = Const b
+    doCons _ (Right (Const b)) = Const b
+
+
+-- | A simpler fold over two variants at once
 eraseZip :: forall c ρ b. Forall ρ c => (forall a. c a => a -> a -> b) -> Var ρ -> Var ρ -> Maybe b
-eraseZip f x y = getConst $ metamorph @_ @ρ @c @Either @(Product Var Var) @(Const (Maybe b)) @(Const (Maybe b)) Proxy doNil doUncons doCons (Pair x y)
-  where doNil _ = Const Nothing
-        doUncons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, HasType ℓ τ ρ)
-                 => Label ℓ -> Product Var Var ρ -> Either (Const (Maybe b) τ) (Product Var Var (ρ .- ℓ))
-        doUncons l (Pair r1 r2) = case (trial r1 l, trial r2 l) of
-          (Left a,  Left b)  -> Left $ Const $ Just $ f a b
-          (Right x, Right y) -> Right $ Pair x y
-          _ -> Left $ Const Nothing
-        doCons _ (Left  (Const c)) = Const c
-        doCons _ (Right (Const c)) = Const c
+eraseZip f = eraseZipGeneral @c @ρ @(Maybe b) @Text $ \case
+    Left (_,x,y) -> Just (f x y)
+    _            -> Nothing
 
 
 -- | VMap is used internally as a type level lambda for defining variant maps.
@@ -418,43 +443,24 @@ fromLabels mk = getCompose $ metamorph @_ @ρ @c @FlipConst @(Const ()) @(Compos
 newtype VApS x (fs :: Row (* -> *)) = VApS { unVApS :: Var (ApSingle fs x) }
 newtype FlipApp (x :: *) (f :: * -> *) = FlipApp (f x)
 
+-- | A version of 'erase' that works even when the row-type of the variant argument
+-- is of the form 'ApSingle fs x'.
 eraseSingle
   :: forall (c :: (* -> *) -> Constraint) (fs :: Row (* -> *)) (x :: *) (y :: *)
-   . (Forall fs c)
+   . Forall fs c
   => (forall f . (c f) => f x -> y)
   -> Var (ApSingle fs x)
   -> y
-eraseSingle f =
-  getConst
-    . metamorph @_ @fs @c @Either @(VApS x) @(Const y) @(FlipApp x)
-        Proxy
-        doNil
-        doUncons
-        doCons
-    . VApS
- where
-  doNil = impossible . unVApS
+eraseSingle f = erase @(ActsOn c x) @(ApSingle fs x) @y g
+  \\ apSingleForall @x @c @fs
+  where
+    g :: forall a. ActsOn c x a => a -> y
+    g a = case actsOn @c @x @a of As' -> f a
 
-  doUncons
-    :: forall l f fs
-      . ( c f
-        , fs .! l ≈ f
-        , KnownSymbol l
-        )
-    => Label l
-    -> VApS x fs
-    -> Either (FlipApp x f) (VApS x (fs .- l))
-  doUncons l = (FlipApp +++ VApS) . (flip trial l \\ apSingleHas @fs @l @f @x) . unVApS
-
-  doCons
-    :: forall l f fs
-     . (c f)
-    => Label l
-    -> Either (FlipApp x f) (Const y fs)
-    -> Const y (Extend l f fs)
-  doCons _ (Left (FlipApp v)) = Const (f v)
-  doCons _ (Right (Const  y)) = Const y
-
+-- | Performs a functorial-like map over an 'ApSingle' variant.
+-- In other words, it acts as a variant transformer to convert a variant of
+-- @f x@ values to a variant of @f y@ values.  If no constraint is needed,
+-- instantiate the first type argument with 'Unconstrained1'.
 mapSingle
   :: forall (c :: (* -> *) -> Constraint) (fs :: Row (* -> *)) (x :: *) (y :: *)
    . (Forall fs c)
@@ -473,15 +479,19 @@ mapSingle f = unVApS . metamorph @_ @fs @c @Either @(VApS x) @(VApS y) @(FlipApp
              . flip (trial \\ apSingleHas @fs @l @f @x) l
              . unVApS
 
-  doCons :: forall l f fs. (KnownSymbol l, c f)
+  doCons :: forall l f fs. (KnownSymbol l, c f, AllUniqueLabels (Extend l f fs))
          => Label l
          -> Either (FlipApp x f) (VApS y fs)
          -> VApS y (Extend l f fs)
-  doCons (toKey -> l) (Left (FlipApp x)) = VApS . OneOf l . HideType $ f x
-  doCons l (Right (VApS v)) = VApS $
-    extend @(f y) l v
-      \\ apSingleExtendSwap @_ @l @y @fs @f
+  doCons l (Left (FlipApp x)) = VApS $ IsJust l (f x)
+    \\ apSingleExtendSwap @l @y @fs @f
+    \\ extendHas @(ApSingle fs y) @l @(f y)
+    \\ uniqueApSingle @(Extend l f fs) @y
+  doCons l (Right (VApS v)) = VApS $ extend @(f y) l v
+    \\ apSingleExtendSwap @l @y @fs @f
 
+-- | A version of 'eraseZip' that works even when the row-types of the variant
+-- arguments are of the form 'ApSingle fs x'.
 eraseZipSingle :: forall c fs (x :: *) (y :: *) z
                 . (Forall fs c)
                => (forall f. c f => f x -> f y -> z)
