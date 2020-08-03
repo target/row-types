@@ -7,7 +7,7 @@ Maintainer:          dwincort@gmail.com
 homepage:            https://github.com/target/row-types
 Build-Type:          Simple
 Cabal-Version:       >=1.10
-Tested-With:         GHC == 8.4, GHC == 8.6, GHC == 8.8
+Tested-With:         GHC == 8.6.5, GHC == 8.8.3, GHC == 8.10.1
 Category:            Data, Data Structures
 Synopsis:	           Open Records and Variants
 Description:
@@ -29,7 +29,7 @@ extra-source-files:
 Library
   Build-Depends:
     base >= 2 && < 5,
-    constraints,
+    constraints >= 0.11,
     deepseq >= 1.4,
     hashable >= 1.2,
     unordered-containers >= 0.2,
