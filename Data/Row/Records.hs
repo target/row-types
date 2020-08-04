@@ -351,7 +351,7 @@ mapF f = unRFMap . biMetamorph @_ @_ @ϕ @ρ @c @(,) @RecAp @(RFMap g) @App Prox
            => Label ℓ -> (App f τ, RFMap g ϕ ρ) -> RFMap g (Extend ℓ f ϕ) (Extend ℓ τ ρ)
     doCons l (App v, RFMap r) = RFMap (extend l (f @f @τ v) r)
       \\ mapExtendSwap @ℓ @τ @ρ @g
-      \\ apExtendSwap @_ @ℓ @(g τ) @(Map g ρ) @f @ϕ
+      \\ apExtendSwap @ℓ @(g τ) @(Map g ρ) @f @ϕ
 
 -- | A function to map over a record given no constraint.
 map' :: forall f r. FreeForall r => (forall a. a -> f a) -> Rec r -> Rec (Map f r)
