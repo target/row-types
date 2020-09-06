@@ -309,16 +309,16 @@ What can you do with a variant?  The only way to really use one is to get the va
 out, and to do that, you must trial it:
 
 λ> trial v #x
-Left 1
+Right 1
 λ> trial v #y
-Right {x=1}
+Left {x=1}
 λ> trial v' #x
-Right {y="Foo"}
+Left {y="Foo"}
 λ> trial v' #y
-Left "Foo"
+Right "Foo"
 
-If trialing at a label l succeeds, then it provides a Left value of the value at l.
-If not, it provides a Right value of the variant with this label removed---since the
+If trialing at a label l succeeds, then it provides a Right value of the value at l.
+If not, it provides a Left value of the variant with this label removed---since the
 trial failed, we now can be sure that the value is not from l.
 
 --------------------------------------------------------------------------------
@@ -414,18 +414,18 @@ of the type you want or a Variant of the leftovers.  Consider the examples:
 λ> :t multiTrial @("x" .== Double .+ "y" .== String) v
 multiTrial @("x" .== Double .+ "y" .== String) v
   :: Either
-       (Var ('R '["x" ':-> Double, "y" ':-> String]))
        (Var ('R '["x" ':-> Integer]))
+       (Var ('R '["x" ':-> Double, "y" ':-> String]))
 λ> multiTrial @("x" .== Double .+ "y" .== String) v
-Right {x=1}
+Left {x=1}
 
 λ> :t multiTrial @("x" .== Double .+ "y" .== String) v'
 multiTrial @("x" .== Double .+ "y" .== String) v'
   :: Either
-       (Var ('R '["x" ':-> Double, "y" ':-> String]))
        (Var ('R '["x" ':-> Integer]))
+       (Var ('R '["x" ':-> Double, "y" ':-> String]))
 λ> multiTrial @("x" .== Double .+ "y" .== String) v'
-Left {y="Foo"}
+Right {y="Foo"}
 
 Thus, multiTrial can be used not only to arbitrarily split apart a variant, but
 also to change unused label associations (in this case, we changed the variant

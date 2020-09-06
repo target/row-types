@@ -35,10 +35,13 @@ module Data.Row.Dictionaries
   , apSingleForall
   -- * Re-exports
   , Dict(..), (:-)(..), HasDict(..), (\\), withDict
+  , Unconstrained, Unconstrained1, Unconstrained2
+
   )
 where
 
 import Data.Constraint
+import Data.Functor.Const
 import Data.Proxy
 import qualified Unsafe.Coerce as UNSAFE
 import GHC.TypeLits
@@ -79,26 +82,26 @@ newtype ApSingleForall c a (fs :: Row (k -> k')) = ApSingleForall
 
 -- | This allows us to derive a `Forall (Map f r) ..` from a `Forall r ..`.
 mapForall :: forall f c ρ. Forall ρ c :- Forall (Map f ρ) (IsA c f)
-mapForall = Sub $ unMapForall $ metamorph @_ @ρ @c @FlipConst @Proxy @(MapForall c f) @Proxy Proxy empty uncons cons $ Proxy
+mapForall = Sub $ unMapForall $ metamorph @_ @ρ @c @Const @Proxy @(MapForall c f) @Proxy Proxy empty uncons cons $ Proxy
   where empty _ = MapForall Dict
-        uncons _ _ = FlipConst Proxy
+        uncons _ _ = Const Proxy
         cons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FrontExtends ℓ τ ρ, AllUniqueLabels (Extend ℓ τ ρ))
-             => Label ℓ -> FlipConst (Proxy τ) (MapForall c f ρ)
+             => Label ℓ -> Const (MapForall c f ρ) (Proxy τ)
              -> MapForall c f (Extend ℓ τ ρ)
-        cons _ (FlipConst (MapForall Dict)) = case frontExtendsDict @ℓ @τ @ρ of
+        cons _ (Const (MapForall Dict)) = case frontExtendsDict @ℓ @τ @ρ of
           FrontExtendsDict Dict -> MapForall Dict
             \\ mapExtendSwap @ℓ @τ @ρ @f
             \\ uniqueMap @(Extend ℓ τ ρ) @f
 
 -- | This allows us to derive a `Forall (ApSingle f r) ..` from a `Forall f ..`.
 apSingleForall :: forall a c fs. Forall fs c :- Forall (ApSingle fs a) (ActsOn c a)
-apSingleForall = Sub $ unApSingleForall $ metamorph @_ @fs @c @FlipConst @Proxy @(ApSingleForall c a) @Proxy Proxy empty uncons cons $ Proxy
+apSingleForall = Sub $ unApSingleForall $ metamorph @_ @fs @c @Const @Proxy @(ApSingleForall c a) @Proxy Proxy empty uncons cons $ Proxy
   where empty _ = ApSingleForall Dict
-        uncons _ _ = FlipConst Proxy
+        uncons _ _ = Const Proxy
         cons :: forall ℓ τ ρ. (KnownSymbol ℓ, c τ, FrontExtends ℓ τ ρ, AllUniqueLabels (Extend ℓ τ ρ))
-             => Label ℓ -> FlipConst (Proxy τ) (ApSingleForall c a ρ)
+             => Label ℓ -> Const (ApSingleForall c a ρ) (Proxy τ)
              -> ApSingleForall c a (Extend ℓ τ ρ)
-        cons _ (FlipConst (ApSingleForall Dict)) = case frontExtendsDict @ℓ @τ @ρ of
+        cons _ (Const (ApSingleForall Dict)) = case frontExtendsDict @ℓ @τ @ρ of
           FrontExtendsDict Dict -> ApSingleForall Dict
             \\ apSingleExtendSwap @ℓ @a @ρ @τ
             \\ uniqueApSingle @(Extend ℓ τ ρ) @a
