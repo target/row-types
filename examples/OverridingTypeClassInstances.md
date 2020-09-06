@@ -69,7 +69,7 @@ data MyRec = MyRec
 
 The idea here is that the `MyRec` data type can have a `ToJSON` instance where
 all `String` fields are encoded using the `ToJSON` functionality of the `CharArray`
-type class and the `baz` field is encoded using the `Uptext` functionality.  The
+type class and the `baz` field is encoded using the `ToJSON` of `Uptext`.  The
 rest of Cary's post describes how he accomplishes this.
 
 With row-types, it's currently not possible to do a wholesale modification based
@@ -97,7 +97,7 @@ The `Override` type is actually very simple:
 newtype Override t (mods :: Row *) = Override { unOverride :: t }
 ```
 
-A value of type `Override a mods` is a value of type `t` that will have certain
+A value of type `Override t mods` is a value of type `t` that will have certain
 fields overridden according to `mods`.  The key is in how we define the `ToJSON`
 instance for `Override`:
 
@@ -137,7 +137,7 @@ becomes `("foo" .== Int .+ "bar" .== CharArray .+ "baz" .== Text)`.
 
 - `toJSON` is the `toJSON` function specialized to records with type `ρ'`, and
 it requires the constraint `Forall ρ' ToJSON`, indicating that every field in
-`ρ'` must have its own `ToJSON` library.
+`ρ'` must have its own `ToJSON` instance.
 
 Phew!  What does that all mean?  It means we can take a value of type `t`, convert
 it to a row-types record, coerce any internal types to newtypes with `ToJSON` instances
@@ -147,7 +147,7 @@ need to mess around with any `Generic` code.
 
 ## Exploring Overrides
 
-Cary defines an `override` shorthand, which we can too, and proceeds to demo
+Cary defines an `override` shorthand and then proceeds to demo
 some examples.  I'll do the same.
 
 ```haskell
@@ -196,9 +196,10 @@ a good error:
 
 ## Achievements and Limitations
 
-With a one-line `newtype` and an admittedly slightly complex `ToJSON` instance
-(still only a few lines), we've been able to recreate most of the expressiveness
-of Cary's generic-override.  Of course, generic-override has one feature that we
+With a simple `newtype` and a one-line `ToJSON` instance (the implementation of
+the instance is a simple one line, although I'll admit the context takes a few
+more), we've been able to recreate most of the expressiveness of
+`generic-override`.  Of course, `generic-override` has one feature that we
 don't: namely, being able to override all fields of a particular type in one go.
 I can definitely see the use for this feature—for instance, making sure _all_
 `Text` fields are encoded in a consistent, perhaps more concise, way—but I don't
