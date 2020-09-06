@@ -56,6 +56,8 @@ module Data.Row.Records
   , type (.+), (.+), Disjoint, pattern (:+)
   -- ** Overwrite
   , type (.//), (.//)
+  -- ** Optional
+  , upcastOptional
   -- * Native Conversion
   -- $native
   , fromNative, toNative, toNativeGeneral
@@ -247,6 +249,14 @@ OR l .+ OR r = OR $ M.unionWithKey choose l r
 -- This can be thought of as @r@ "overwriting" @r'@.
 (.//) :: Rec r -> Rec r' -> Rec (r .// r')
 OR l .// OR r = OR $ M.union l r
+
+-- | Turn an optional constraint on a record into a record with a 'Maybe' value
+-- at the optional label.
+upcastOptional :: forall l a r. (Optional l a r, KnownSymbol l) => Rec r -> Rec ((l .== Maybe a) .// r)
+upcastOptional r = case optional @_ @l @a @r of
+  Nothing -> (l .== Nothing @a) .// r
+  Just Dict -> (l .== Just (r .! l)) .// r
+  where l = Label @l
 
 -- | A pattern version of record union, for use in pattern matching.
 {-# COMPLETE (:+) #-}
