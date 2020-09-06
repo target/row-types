@@ -1,3 +1,19 @@
+## 1.0.0.0 [2020-09-06]
+This release has many breaking changes, specifically to `metamorph` and some functions related to `Variant`, hence the major version bump to `1.0`.  However, users that only use basic features of records may not notice a difference.
+
+- Removed `metamorph'` and `biMetamorph'` in favor of generalizing `metamorph` over choice of bifunctor.
+- Removed "unsafe" functions (`unsafeRemove` and `unsafeInjectFront` from `Records` and `unsafeMarkVar` and `unsafeInjectFront` from `Variants`).
+- Removed `Switch` class, reimplementing the `switch` function using `BiForall`.
+- Swap the order of the result of calling `trial`, `multiTrial`, and `split`.
+- Added new functions to `Records`: `lazyRemove`, `curryRec`, `(.$)`, `zipTransform`, `zipTransform'`, `traverse`, `traverseMap`, `distribute`, and `coerceRec`.
+- Added new functions to `Variants`: `fromLabelsMapA`, `traverse`, `traverseMap`, and `coerceVar`.
+- Added `Dictionaries` module, full of axioms that are helpful for using `metamorph`.  Moved axioms from `Internal` to `Dictionaries` (in some cases, the type variable order has changed).
+- Added `ApSingle` type family as well as `eraseSingle`, `mapSingle`, and `eraseZipSingle` (thanks Jordan Woehr!).
+- Improved error messages.
+
+Note: GHC 8.4 and earlier are no longer officially supported in row-types 1.0.0.0.
+
+
 ## 0.4.0.0 [2020-05-20]
 - Renamed `toNative` to `toNativeGeneral` and `toNativeExact` to `toNative` for records and likewise for `fromNative` for variants.
 - Added a type family `NativeRow` which, when given any generic type that can go through `fromNative`, is equal to the row-type of the resulting record/variant.  Note that `NativeRow` is defined separately (and differently!) for records vs variants, so it is exported at the `Data.Row.Records`/`Variants` level but not at `Data.Row`.
@@ -5,7 +21,7 @@
 - Exposed `BiForall` in `Data.Row`, `Data.Row.Records`, and `Data.Row.Variants`
 - (Internal) Rewrote internal `Generic` code to use an associated type family instead of a standalone one.
 
-Note: GHC 8.2 and earlier are no longer supported in row-types 0.4.0.0.
+Note: GHC 8.2 and earlier are no longer officially supported in row-types 0.4.0.0.
 
 ## 0.3.1.0 [2020-01-29]
 - Added "native" classes as exports for `Records` and `Variants` (e.g., `ToNative`, `FromNative`)

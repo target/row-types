@@ -19,7 +19,7 @@
 -----------------------------------------------------------------------------
 
 
-module Data.Row.Barbie () where
+module Data.Row.Barbies () where
 
 import           Data.Functor.Compose
 import           Data.Functor.Identity
@@ -48,7 +48,7 @@ instance FreeForall r => TraversableB (BarbieRec r) where
 instance FreeForall r => DistributiveB (BarbieRec r) where
   bdistribute :: forall f g. Functor f => f (BarbieRec r g) -> BarbieRec r (Compose f g)
   bdistribute = BarbieRec . Rec.compose @f @g @r . Rec.distribute @f @(Rec.Map g r) . fmap unBarbieRec
-    \\ freeForall @(Rec.Map g r) @(IsA Unconstrained1 g) \\ mapForall @g @Unconstrained1 @r
+    \\ freeForall @(Rec.Map g r) @(IsA Unconstrained1 g) \\ mapForall @g @r @Unconstrained1
 
 instance (AllUniqueLabels r, FreeForall r) => ApplicativeB (BarbieRec r) where
   bpure :: forall f. (forall a. f a) -> BarbieRec r f

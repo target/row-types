@@ -2,11 +2,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Data.Row.Aeson
 --
--- This module adds Aeson instances for 'Rec' and 'Var'.
+-- This module adds orphan Aeson instances for 'Rec' and 'Var'.
 --
 -----------------------------------------------------------------------------
 

@@ -76,9 +76,13 @@ class IsA c f a where
 instance c a => IsA c f (f a) where
   as = As
 
+-- | Like `As`, but here we know the underlying value is some `f` applied to the
+-- given type `a`.
 data As' c t a where
   As' :: forall c f a t. (a ~ f t, c f) => As' c t a
 
+-- | A class to capture the idea of 'As'' so that it can be partially applied in
+-- a context.
 class ActsOn c t a where
   actsOn :: As' c t a
 
@@ -122,10 +126,16 @@ apSingleForall = Sub $ unApSingleForall $ metamorph @_ @fs @c @Const @Proxy @(Ap
 freeForall :: forall r c. Forall r c :- Forall r Unconstrained1
 freeForall = Sub $ UNSAFE.unsafeCoerce @(Dict (Forall r c)) Dict
 
+-- | `FreeForall` can be used when a `Forall` constraint is necessary but there
+-- is no particular constraint we care about.
 type FreeForall r = Forall r Unconstrained1
 
+-- | `FreeForall` can be used when a `BiForall` constraint is necessary but
+-- there is no particular constraint we care about.
 type FreeBiForall r1 r2 = BiForall r1 r2 Unconstrained2
 
+-- | If we know that `r` has been extended with `l .== t`, then we know that this
+-- extension at the label `l` must be `t`.
 extendHas :: forall l t r. Dict (Extend l t r .! l ≈ t)
 extendHas = UNSAFE.unsafeCoerce $ Dict @Unconstrained
 
