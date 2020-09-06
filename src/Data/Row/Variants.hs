@@ -33,7 +33,7 @@ module Data.Row.Variants
   , Var, Row, Empty, type (≈)
   -- * Construction
   , HasType, pattern IsJust, singleton, unSingleton
-  , fromLabels
+  , fromLabels, fromLabelsMap
   -- ** Extension
   , type (.\), Lacks, type (.\/), diversify, extend, type (.+)
   -- ** Modification
@@ -456,6 +456,15 @@ fromLabels mk = getCompose $ metamorph @_ @ρ @c @Const @(Const ()) @(Compose f 
                => Label ℓ -> Const (Compose f Var ρ) (Proxy τ) -> Compose f Var (Extend ℓ τ ρ)
         doCons l (Const (Compose v)) = Compose $ IsJust l <$> mk l <|> extend @τ l <$> v
           \\ extendHas @ρ @ℓ @τ
+
+-- | Initialize a variant over a `Map`.
+fromLabelsMap :: forall c f g ρ. (Alternative f, Forall ρ c, AllUniqueLabels ρ)
+              => (forall l a. (KnownSymbol l, c a) => Label l -> f (g a)) -> f (Var (Map g ρ))
+fromLabelsMap f = fromLabels @(IsA c g) @(Map g ρ) @f inner
+               \\ mapForall @g @c @ρ
+               \\ uniqueMap @ρ @g
+   where inner :: forall l a. (KnownSymbol l, IsA c g a) => Label l -> f a
+         inner l = case as @c @g @a of As -> f l
 
 {--------------------------------------------------------------------
   Functions for variants of ApSingle

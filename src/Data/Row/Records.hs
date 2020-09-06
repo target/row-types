@@ -613,7 +613,7 @@ fromLabelsA mk = getCompose $ metamorph @_ @ρ @c @Const @(Const ()) @(Compose f
                => Label ℓ -> Const (Compose f Rec ρ) (Proxy τ) -> Compose f Rec (Extend ℓ τ ρ)
         doCons l (Const (Compose r)) = Compose $ extend l <$> mk @ℓ @τ l <*> r
 
--- -- | Initialize a record that is produced by a `Map`.
+-- | Initialize a record over a `Map`.
 fromLabelsMapA :: forall c f g ρ. (Applicative f, Forall ρ c, AllUniqueLabels ρ)
                => (forall l a. (KnownSymbol l, c a) => Label l -> f (g a)) -> f (Rec (Map g ρ))
 fromLabelsMapA f = fromLabelsA @(IsA c g) @f @(Map g ρ) inner
