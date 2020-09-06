@@ -14,6 +14,7 @@ Also, check out these posts about cool things you can do with row-types:
 - [Row types for CSV library](examples/RowCSV.html)
 - [Type Surgery](examples/TypeSurgery.html)
 - [Typed Errors Done Better](examples/TypedErrors.html)
+- [Overriding Type Class Instances](examples/OverridingTypeClassInstances.html)
 
 
 Available on [Hackage](https://hackage.haskell.org/package/row-types).\
