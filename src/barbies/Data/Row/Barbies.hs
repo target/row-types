@@ -33,8 +33,8 @@ import           Data.Functor.Barbie (FunctorB(..), TraversableB(..), Distributi
 import qualified Barbies.Constraints as B
 
 -- | Barbies requires that the functor be the final argument of the type.  So,
--- even though the real type is `Rec (Map f ρ)`, we must wrap it in a newtype
--- wrapper so that `f` is at the end.
+-- even though the real type is @Rec (Map f ρ)@, we must wrap it in a newtype
+-- wrapper so that 'f' is at the end.
 newtype BarbieRec (ρ :: Row *) (f :: * -> *) = BarbieRec { unBarbieRec :: Rec (Rec.Map f ρ) }
 newtype BarbieVar (ρ :: Row *) (f :: * -> *) = BarbieVar { unBarbieVar :: Var (Var.Map f ρ) }
 
