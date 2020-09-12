@@ -1,4 +1,4 @@
-## 1.0.0.0 [2020-09-06]
+## 1.0.0.0 [2020-09-12]
 This release has many breaking changes, specifically to `metamorph` and some functions related to `Variant`, hence the major version bump to `1.0`.  However, users that only use basic features of records may not notice a difference.
 
 - Removed `metamorph'` and `biMetamorph'` in favor of generalizing `metamorph` over choice of bifunctor.
@@ -6,7 +6,7 @@ This release has many breaking changes, specifically to `metamorph` and some fun
 - Removed `Switch` class, reimplementing the `switch` function using `BiForall`.
 - Swap the order of the result of calling `trial`, `multiTrial`, and `split`.
 - Added new functions to `Records`: `lazyRemove`, `curryRec`, `(.$)`, `zipTransform`, `zipTransform'`, `traverse`, `traverseMap`, `distribute`, and `coerceRec`.
-- Added new functions to `Variants`: `fromLabelsMapA`, `traverse`, `traverseMap`, and `coerceVar`.
+- Added new functions to `Variants`: `fromLabelsMap`, `traverse`, `traverseMap`, and `coerceVar`.
 - Added `Dictionaries` module, full of axioms that are helpful for using `metamorph`.  Moved axioms from `Internal` to `Dictionaries` (in some cases, the type variable order has changed).
 - Added `ApSingle` type family as well as `eraseSingle`, `mapSingle`, and `eraseZipSingle` (thanks Jordan Woehr!).
 - Improved error messages.
