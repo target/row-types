@@ -33,18 +33,20 @@
 
 
 module Data.Row.Dictionaries
-  ( uniqueMap, uniqueAp, uniqueApSingle, uniqueZip
+  ( -- * Axioms
+    uniqueMap, uniqueAp, uniqueApSingle, uniqueZip
   , extendHas, mapHas, apHas, apSingleHas
   , mapExtendSwap, apExtendSwap, apSingleExtendSwap, zipExtendSwap
   , FreeForall
   , FreeBiForall
   , freeForall
   , mapForall
+  , apSingleForall
+  -- ** Helper Types
   , IsA(..)
   , As(..)
   , ActsOn(..)
   , As'(..)
-  , apSingleForall
   -- * Re-exports
   , Dict(..), (:-)(..), HasDict(..), (\\), withDict
   , Unconstrained, Unconstrained1, Unconstrained2
@@ -64,7 +66,7 @@ import Data.Row.Internal
 
 -- | This data type is used to for its ability to existentially bind a type
 -- variable.  Particularly, it says that for the type 'a', there exists a 't'
--- such that 'a ~ f t' and 'c t' holds.
+-- such that @a ~ f t@ and @c t@ holds.
 data As c f a where
   As :: forall c f a t. (a ~ f t, c t) => As c f a
 
@@ -76,9 +78,13 @@ class IsA c f a where
 instance c a => IsA c f (f a) where
   as = As
 
+-- | Like 'As', but here we know the underlying value is some 'f' applied to the
+-- given type 'a'.
 data As' c t a where
   As' :: forall c f a t. (a ~ f t, c f) => As' c t a
 
+-- | A class to capture the idea of 'As'' so that it can be partially applied in
+-- a context.
 class ActsOn c t a where
   actsOn :: As' c t a
 
@@ -92,7 +98,7 @@ newtype MapForall c f (r :: Row k) = MapForall { unMapForall :: Dict (Forall (Ma
 newtype ApSingleForall c a (fs :: Row (k -> k')) = ApSingleForall
   { unApSingleForall :: Dict (Forall (ApSingle fs a) (ActsOn c a)) }
 
--- | This allows us to derive a `Forall (Map f r) ..` from a `Forall r ..`.
+-- | This allows us to derive a @Forall (Map f r) ..@ from a @Forall r ..@.
 mapForall :: forall f ρ c. Forall ρ c :- Forall (Map f ρ) (IsA c f)
 mapForall = Sub $ unMapForall $ metamorph @_ @ρ @c @Const @Proxy @(MapForall c f) @Proxy Proxy empty uncons cons $ Proxy
   where empty _ = MapForall Dict
@@ -105,7 +111,7 @@ mapForall = Sub $ unMapForall $ metamorph @_ @ρ @c @Const @Proxy @(MapForall c 
             \\ mapExtendSwap @f @ℓ @τ @ρ
             \\ uniqueMap @f @(Extend ℓ τ ρ)
 
--- | This allows us to derive a `Forall (ApSingle f r) ..` from a `Forall f ..`.
+-- | This allows us to derive a @Forall (ApSingle f r) ..@ from a @Forall f ..@.
 apSingleForall :: forall a fs c. Forall fs c :- Forall (ApSingle fs a) (ActsOn c a)
 apSingleForall = Sub $ unApSingleForall $ metamorph @_ @fs @c @Const @Proxy @(ApSingleForall c a) @Proxy Proxy empty uncons cons $ Proxy
   where empty _ = ApSingleForall Dict
@@ -118,26 +124,32 @@ apSingleForall = Sub $ unApSingleForall $ metamorph @_ @fs @c @Const @Proxy @(Ap
             \\ apSingleExtendSwap @a @ℓ @τ @ρ
             \\ uniqueApSingle @a @(Extend ℓ τ ρ)
 
--- | Allow any 'Forall` over a row-type, be usable for 'Unconstrained1'.
+-- | Allow any 'Forall' over a row-type, be usable for 'Unconstrained1'.
 freeForall :: forall r c. Forall r c :- Forall r Unconstrained1
 freeForall = Sub $ UNSAFE.unsafeCoerce @(Dict (Forall r c)) Dict
 
+-- | `FreeForall` can be used when a `Forall` constraint is necessary but there
+-- is no particular constraint we care about.
 type FreeForall r = Forall r Unconstrained1
 
+-- | `FreeForall` can be used when a `BiForall` constraint is necessary but
+-- there is no particular constraint we care about.
 type FreeBiForall r1 r2 = BiForall r1 r2 Unconstrained2
 
+-- | If we know that 'r' has been extended with @l .== t@, then we know that this
+-- extension at the label 'l' must be 't'.
 extendHas :: forall l t r. Dict (Extend l t r .! l ≈ t)
 extendHas = UNSAFE.unsafeCoerce $ Dict @Unconstrained
 
--- | This allows us to derive `Map f r .! l ≈ f t` from `r .! l ≈ t`
+-- | This allows us to derive @Map f r .! l ≈ f t@ from @r .! l ≈ t@
 mapHas :: forall f l t r. (r .! l ≈ t) :- (Map f r .! l ≈ f t, Map f r .- l ≈ Map f (r .- l))
 mapHas = Sub $ UNSAFE.unsafeCoerce $ Dict @(r .! l ≈ t)
 
--- | This allows us to derive `Ap ϕ ρ .! l ≈ f t` from `ϕ .! l ≈ f` and `ρ .! l ≈ t`
+-- | This allows us to derive @Ap ϕ ρ .! l ≈ f t@ from @ϕ .! l ≈ f@ and @ρ .! l ≈ t@
 apHas :: forall l f ϕ t ρ. (ϕ .! l ≈ f, ρ .! l ≈ t) :- (Ap ϕ ρ .! l ≈ f t, Ap ϕ ρ .- l ≈ Ap (ϕ .- l) (ρ .- l))
 apHas = Sub $ UNSAFE.unsafeCoerce $ Dict @(ϕ .! l ≈ f, ρ .! l ≈ t)
 
--- | This allows us to derive `ApSingle r x .! l ≈ f x` from `r .! l ≈ f`
+-- | This allows us to derive @ApSingle r x .! l ≈ f x@ from @r .! l ≈ f@
 apSingleHas :: forall x l f r. (r .! l ≈ f) :- (ApSingle r x .! l ≈ f x, ApSingle r x .- l ≈ ApSingle (r .- l) x)
 apSingleHas = Sub $ UNSAFE.unsafeCoerce $ Dict @(r .! l ≈ f)
 

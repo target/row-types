@@ -9,9 +9,10 @@
 {-# LANGUAGE UndecidableInstances #-}
 module OverridingTypeClassInstances where
 
--- Note that `Data.Row.Aeson` currently lives in the orphans directory.  You must
--- put it in an appropriate place and make sure to have `aeson` in your environment
--- in order to use this module.
+-- Note that `Data.Row.Aeson` is not exported my the row-types library and
+-- currently lives in the src\aeson directory.  You must put it in an
+-- appropriate place and make sure to have `aeson` in your environment in order
+-- to use this module.
 
 import           Data.Aeson       (ToJSON(..), encode)
 import           Data.Coerce

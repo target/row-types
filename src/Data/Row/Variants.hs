@@ -240,10 +240,10 @@ eraseWithLabels f = getConst . metamorph @_ @ρ @c @Either @Var @(Const (s,b)) @
 data ErasedVal c s = forall y. c y => ErasedVal (s, y)
 data ErasePair c s ρ = ErasePair (Either (ErasedVal c s) (Var ρ)) (Either (ErasedVal c s) (Var ρ))
 
--- | A fold over two variants at once.  A call `eraseZipGeneral f x y` will return
--- `f (Left (show l, a, b))` when `x` and `y` both have values at the same label `l`
--- and will return `f (Right ((show l1, a), (show l2, b)))` when they have values
--- at different labels `l1` and `l2` respectively.
+-- | A fold over two variants at once.  A call @eraseZipGeneral f x y@ will return
+-- @f (Left (show l, a, b))@ when 'x' and 'y' both have values at the same label 'l'
+-- and will return @f (Right ((show l1, a), (show l2, b)))@ when they have values
+-- at different labels 'l1' and 'l2' respectively.
 eraseZipGeneral
   :: forall c ρ b s. (Forall ρ c, IsString s)
   => (forall x y. (c x, c y) => Either (s, x, x) ((s, x), (s, y)) -> b)
@@ -474,7 +474,7 @@ newtype VApS x (fs :: Row (* -> *)) = VApS { unVApS :: Var (ApSingle fs x) }
 newtype FlipApp (x :: *) (f :: * -> *) = FlipApp (f x)
 
 -- | A version of 'erase' that works even when the row-type of the variant argument
--- is of the form 'ApSingle fs x'.
+-- is of the form @ApSingle fs x@.
 eraseSingle
   :: forall (c :: (* -> *) -> Constraint) (fs :: Row (* -> *)) (x :: *) (y :: *)
    . Forall fs c
@@ -521,7 +521,7 @@ mapSingle f = unVApS . metamorph @_ @fs @c @Either @(VApS x) @(VApS y) @(FlipApp
     \\ apSingleExtendSwap @y @l @f @fs
 
 -- | A version of 'eraseZip' that works even when the row-types of the variant
--- arguments are of the form 'ApSingle fs x'.
+-- arguments are of the form @ApSingle fs x@.
 eraseZipSingle :: forall c fs (x :: *) (y :: *) z
                 . (Forall fs c)
                => (forall f. c f => f x -> f y -> z)
