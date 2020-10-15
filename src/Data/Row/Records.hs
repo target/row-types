@@ -46,6 +46,7 @@ module Data.Row.Records
   -- ** Restriction
   , type (.-), (.-)
   , lazyRemove
+  , Subset
   , restrict, split
   -- ** Modification
   , update, focus, multifocus, Modify, rename, Rename

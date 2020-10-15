@@ -37,6 +37,7 @@ module Data.Row.Dictionaries
     uniqueMap, uniqueAp, uniqueApSingle, uniqueZip
   , extendHas, mapHas, apHas, apSingleHas
   , mapExtendSwap, apExtendSwap, apSingleExtendSwap, zipExtendSwap
+  , mapMinJoin, apSingleMinJoin
   , FreeForall
   , FreeBiForall
   , freeForall
@@ -143,15 +144,15 @@ extendHas = UNSAFE.unsafeCoerce $ Dict @Unconstrained
 
 -- | This allows us to derive @Map f r .! l ≈ f t@ from @r .! l ≈ t@
 mapHas :: forall f l t r. (r .! l ≈ t) :- (Map f r .! l ≈ f t, Map f r .- l ≈ Map f (r .- l))
-mapHas = Sub $ UNSAFE.unsafeCoerce $ Dict @(r .! l ≈ t)
+mapHas = Sub $ UNSAFE.unsafeCoerce $ Dict @(Unconstrained, Unconstrained)
 
 -- | This allows us to derive @Ap ϕ ρ .! l ≈ f t@ from @ϕ .! l ≈ f@ and @ρ .! l ≈ t@
 apHas :: forall l f ϕ t ρ. (ϕ .! l ≈ f, ρ .! l ≈ t) :- (Ap ϕ ρ .! l ≈ f t, Ap ϕ ρ .- l ≈ Ap (ϕ .- l) (ρ .- l))
-apHas = Sub $ UNSAFE.unsafeCoerce $ Dict @(ϕ .! l ≈ f, ρ .! l ≈ t)
+apHas = Sub $ UNSAFE.unsafeCoerce $ Dict @(Unconstrained, Unconstrained)
 
 -- | This allows us to derive @ApSingle r x .! l ≈ f x@ from @r .! l ≈ f@
 apSingleHas :: forall x l f r. (r .! l ≈ f) :- (ApSingle r x .! l ≈ f x, ApSingle r x .- l ≈ ApSingle (r .- l) x)
-apSingleHas = Sub $ UNSAFE.unsafeCoerce $ Dict @(r .! l ≈ f)
+apSingleHas = Sub $ UNSAFE.unsafeCoerce $ Dict @(Unconstrained, Unconstrained)
 
 -- | Proof that the 'Map' type family preserves labels and their ordering.
 mapExtendSwap :: forall f ℓ τ r. Dict (Extend ℓ (f τ) (Map f r) ≈ Map f (Extend ℓ τ r))
@@ -183,4 +184,12 @@ uniqueApSingle = UNSAFE.unsafeCoerce $ Dict @Unconstrained
 
 -- | Zip preserves uniqueness of labels.
 uniqueZip :: forall r1 r2. Dict (AllUniqueLabels (Zip r1 r2) ≈ (AllUniqueLabels r1, AllUniqueLabels r2))
-uniqueZip = UNSAFE.unsafeCoerce $ Dict @Unconstrained
+uniqueZip = UNSAFE.unsafeCoerce $ Dict @(Unconstrained, Unconstrained)
+
+-- | Map distributes over MinJoin
+mapMinJoin :: forall f r r'. Dict (Map f r .\/ Map f r' ≈ Map f (r .\/ r'))
+mapMinJoin = UNSAFE.unsafeCoerce $ Dict @Unconstrained
+
+-- | ApSingle distributes over MinJoin
+apSingleMinJoin :: forall r r' x. Dict (ApSingle r x .\/ ApSingle r' x ≈ ApSingle (r .\/ r') x)
+apSingleMinJoin = UNSAFE.unsafeCoerce $ Dict @Unconstrained
