@@ -471,14 +471,14 @@ fromLabelsMap f = fromLabels @(IsA c g) @(Map g ρ) @f inner
   Functions for variants of ApSingle
 --------------------------------------------------------------------}
 
-newtype VApS  x   (fs :: Row (* -> *)) = VApS  { unVApS  ::    Var (ApSingle fs x) }
-newtype VApSF x g (fs :: Row (* -> *)) = VApSF { unVApSF :: g (Var (ApSingle fs x)) }
-newtype FlipApp (x :: *) (f :: * -> *) = FlipApp (f x)
+newtype VApS  x   (fs :: Row (k -> *)) = VApS  { unVApS  ::    Var (ApSingle fs x) }
+newtype VApSF x g (fs :: Row (k -> *)) = VApSF { unVApSF :: g (Var (ApSingle fs x)) }
+newtype FlipApp (x :: k) (f :: k -> *) = FlipApp (f x)
 
 -- | A version of 'erase' that works even when the row-type of the variant argument
 -- is of the form @ApSingle fs x@.
 eraseSingle
-  :: forall (c :: (* -> *) -> Constraint) (fs :: Row (* -> *)) (x :: *) (y :: *)
+  :: forall c fs x y
    . Forall fs c
   => (forall f . (c f) => f x -> y)
   -> Var (ApSingle fs x)
@@ -494,7 +494,7 @@ eraseSingle f = erase @(ActsOn c x) @(ApSingle fs x) @y g
 -- @f x@ values to a variant of @f y@ values.  If no constraint is needed,
 -- instantiate the first type argument with 'Unconstrained1'.
 mapSingle
-  :: forall (c :: (* -> *) -> Constraint) (fs :: Row (* -> *)) (x :: *) (y :: *)
+  :: forall c fs x y
    . (Forall fs c)
   => (forall f . (c f) => f x -> f y)
   -> Var (ApSingle fs x)
@@ -503,7 +503,7 @@ mapSingle f = runIdentity . mapSingleA @c @fs @Identity @x @y (pure . f)
 
 
 -- | Like `mapSingle`, but works over a functor.
-mapSingleA :: forall (c :: (* -> *) -> Constraint) (fs :: Row (* -> *)) (g :: * -> *) (x :: *) (y :: *).
+mapSingleA :: forall c fs g x y.
   (Forall fs c, Functor g) => (forall f. c f => f x -> g (f y)) -> Var (ApSingle fs x) -> g (Var (ApSingle fs y))
 mapSingleA f = unVApSF . metamorph @_ @fs @c @Either @(VApS x) @(VApSF y g) @(FlipApp x)
              Proxy doNil doUncons doCons . VApS
@@ -531,7 +531,7 @@ mapSingleA f = unVApSF . metamorph @_ @fs @c @Either @(VApS x) @(VApSF y g) @(Fl
 
 -- | A version of 'eraseZip' that works even when the row-types of the variant
 -- arguments are of the form @ApSingle fs x@.
-eraseZipSingle :: forall c fs (x :: *) (y :: *) z
+eraseZipSingle :: forall c fs x y z
                 . (Forall fs c)
                => (forall f. c f => f x -> f y -> z)
                -> Var (ApSingle fs x) -> Var (ApSingle fs y) -> Maybe z
