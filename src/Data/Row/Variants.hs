@@ -74,9 +74,8 @@ import Prelude hiding (map, sequence, traverse, zip)
 import Control.Applicative
 import Control.DeepSeq     (NFData(..), deepseq)
 
-import Data.Bifunctor (Bifunctor(..))
+import Data.Bifunctor                 (Bifunctor(..))
 import Data.Coerce
-import Data.Constraint                (Constraint)
 import Data.Functor.Compose
 import Data.Functor.Identity
 import Data.Functor.Product
@@ -540,7 +539,7 @@ eraseZipSingle f x y = getConst $ metamorph @_ @fs @c @Either
     Proxy doNil doUncons doCons (Pair (VApS x) (VApS y))
 
   where doNil :: Product (VApS x) (VApS y) Empty
-              -> Const (Maybe z) (Empty :: Row (* -> *))
+              -> Const (Maybe z) Empty
         doNil (Pair (VApS z) _) = Const (impossible z)
 
         doUncons :: forall l f ρ
@@ -558,8 +557,9 @@ eraseZipSingle f x y = getConst $ metamorph @_ @fs @c @Either
             (Left us, Left vs) -> Left (Pair (VApS us) (VApS vs))
             _                  -> Right $ Const Nothing
 
-        doCons :: forall l (τ :: * -> *) ρ
-                . Label l
+        -- Some recent versions of GHC complain if this kind signature isn't here.
+        doCons :: forall k l (τ :: k -> *) ρ.
+                  Label l
                -> Either (Const (Maybe z) ρ) (Const (Maybe z) τ)
                -> Const (Maybe z) (Extend l τ ρ)
         doCons _ (Left (Const w))  = Const w
