@@ -79,8 +79,9 @@ test-suite test
   type: exitcode-stdio-1.0
   main-is: Main.hs
   hs-source-dirs: tests, examples
-  ghc-options: -W
-  other-modules: Examples
+  ghc-options: -W +RTS -M1G -RTS
+  other-modules: Examples,
+                 UnionPerformance
   build-depends: base >= 2 && < 6
                , generic-lens >= 1.1.0.0
                , row-types
