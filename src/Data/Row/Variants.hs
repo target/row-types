@@ -549,7 +549,7 @@ eraseZipSingle f x y = getConst $ metamorph @_ @fs @c @Either
             (Left us, Left vs) -> Left (Pair (VApS us) (VApS vs))
             _                  -> Right $ Const Nothing
 
-        doCons :: forall l τ ρ
+        doCons :: forall k l τ (ρ :: Row k)
                 . Label l
                -> Either (Const (Maybe z) ρ) (Const (Maybe z) τ)
                -> Const (Maybe z) (Extend l τ ρ)
