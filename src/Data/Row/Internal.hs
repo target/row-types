@@ -479,9 +479,13 @@ type family MinJoinR (l :: [LT k]) (r :: [LT k]) where
     TypeError (TL.Text "The label " :<>: ShowType h :<>: TL.Text " has conflicting assignments."
           :$$: TL.Text "Its type is both " :<>: ShowType a :<>: TL.Text " and " :<>: ShowType b :<>: TL.Text ".")
   MinJoinR (hl :-> al ': tl) (hr :-> ar ': tr) =
-      Ifte (CmpSymbol hl hr == 'LT)
-      (hl :-> al ': MinJoinR tl (hr :-> ar ': tr))
-      (hr :-> ar ': MinJoinR (hl :-> al ': tl) tr)
+      -- Using Ifte here makes GHC blow up on nested unions with many overlapping keys.
+      MinJoinRCase (CmpSymbol hl hr) hl al tl hr ar tr
+
+type family MinJoinRCase (cmp :: Ordering) (hl :: Symbol) (al :: k) (tl :: [LT k])
+                                           (hr :: Symbol) (ar :: k) (tr :: [LT k]) where
+  MinJoinRCase 'LT hl al tl hr ar tr = hl :-> al ': MinJoinR tl (hr :-> ar ': tr)
+  MinJoinRCase _   hl al tl hr ar tr = hr :-> ar ': MinJoinR (hl :-> al ': tl) tr
 
 type family ConstUnionR (l :: [LT k]) (r :: [LT k]) where
   ConstUnionR '[] r = r
@@ -489,9 +493,13 @@ type family ConstUnionR (l :: [LT k]) (r :: [LT k]) where
   ConstUnionR (h :-> a ': tl)   (h :-> b ': tr) =
       (h :-> a ': ConstUnionR tl tr)
   ConstUnionR (hl :-> al ': tl) (hr :-> ar ': tr) =
-      Ifte (CmpSymbol hl hr == 'LT)
-      (hl :-> al ': ConstUnionR tl (hr :-> ar ': tr))
-      (hr :-> ar ': ConstUnionR (hl :-> al ': tl) tr)
+      -- Using Ifte here makes GHC blow up on nested unions with many overlapping keys.
+      ConstUnionRCase (CmpSymbol hl hr) hl al tl hr ar tr
+
+type family ConstUnionRCase (cmp :: Ordering) (hl :: Symbol) (al :: k) (tl :: [LT k])
+                                           (hr :: Symbol) (ar :: k) (tr :: [LT k]) where
+  ConstUnionRCase 'LT hl al tl hr ar tr = hl :-> al ': ConstUnionR tl (hr :-> ar ': tr)
+  ConstUnionRCase _   hl al tl hr ar tr = hr :-> ar ': ConstUnionR (hl :-> al ': tl) tr
 
 
 -- | Returns the left list with all of the elements from the right list removed.
