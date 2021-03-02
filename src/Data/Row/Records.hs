@@ -359,8 +359,8 @@ eraseToHashMap :: forall c r s b. (IsString s, Eq s, Hashable s, Forall r c) =>
 eraseToHashMap f r = M.fromList $ eraseWithLabels @c f r
 
 -- | RMap is used internally as a type level lambda for defining record maps.
-newtype RMap (f :: * -> *) (ρ :: Row *) = RMap { unRMap :: Rec (Map f ρ) }
-newtype RMap2 (f :: * -> *) (g :: * -> *) (ρ :: Row *) = RMap2 { unRMap2 :: Rec (Map f (Map g ρ)) }
+newtype RMap f ρ = RMap { unRMap :: Rec (Map f ρ) }
+newtype RMap2 f g ρ = RMap2 { unRMap2 :: Rec (Map f (Map g ρ)) }
 
 -- | A function to map over a record given a constraint.
 map :: forall c f r. Forall r c => (forall a. c a => a -> f a) -> Rec r -> Rec (Map f r)
@@ -405,7 +405,7 @@ map' = map @Unconstrained1
 -- record transformer to convert a record of @f a@ values to a record of @g a@
 -- values.  If no constraint is needed, instantiate the first type argument with
 -- 'Unconstrained1' or use 'transform''.
-transform :: forall c r (f :: * -> *) (g :: * -> *). Forall r c => (forall a. c a => f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
+transform :: forall c r f g. Forall r c => (forall a. c a => f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
 transform f = unRMap . metamorph @_ @r @c @(,) @(RMap f) @(RMap g) @f Proxy doNil doUncons doCons . RMap
   where
     doNil _ = RMap empty
@@ -419,15 +419,15 @@ transform f = unRMap . metamorph @_ @r @c @(,) @(RMap f) @(RMap g) @f Proxy doNi
       \\ mapExtendSwap @g @ℓ @τ @ρ
 
 -- | A version of 'transform' for when there is no constraint.
-transform' :: forall r (f :: * -> *) (g :: * -> *). FreeForall r => (forall a. f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
+transform' :: forall r f g. FreeForall r => (forall a. f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
 transform' = transform @Unconstrained1 @r
 
 
-data RecMapPair (f :: * -> *) (g :: * -> *) (ρ :: Row *) = RecMapPair (Rec (Map f ρ)) (Rec (Map g ρ))
+data RecMapPair f g ρ = RecMapPair (Rec (Map f ρ)) (Rec (Map g ρ))
 
 -- | Zip together two records that are the same up to the type being mapped over them,
 -- combining their constituent fields with the given function.
-zipTransform :: forall c r (f :: * -> *) (g :: * -> *) (h :: * -> *) .
+zipTransform :: forall c r f g h .
   Forall r c => (forall a. c a => f a -> g a -> h a) -> Rec (Map f r) -> Rec (Map g r) -> Rec (Map h r)
 zipTransform f x y = unRMap $ metamorph @_ @r @c @(,) @(RecMapPair f g) @(RMap h) @h Proxy doNil doUncons doCons $ RecMapPair x y
   where
@@ -443,7 +443,7 @@ zipTransform f x y = unRMap $ metamorph @_ @r @c @(,) @(RecMapPair f g) @(RMap h
       \\ mapExtendSwap @h @ℓ @τ @ρ
 
 -- | A version of 'zipTransform' for when there is no constraint.
-zipTransform' :: forall r (f :: * -> *) (g :: * -> *) (h :: * -> *) .
+zipTransform' :: forall r f g h .
   FreeForall r => (forall a. f a -> g a -> h a) -> Rec (Map f r) -> Rec (Map g r) -> Rec (Map h r)
 zipTransform' = zipTransform @Unconstrained1 @r
 
@@ -454,7 +454,7 @@ traverse f = sequence' @f @r @c . map @c @f @r f
 
 -- | Traverse a function over a Mapped record.  Note that the fields of the record will
 -- be accessed in lexicographic order by the labels.
-traverseMap :: forall c (f :: * -> *) (g :: * -> *) (h :: * -> *) r.
+traverseMap :: forall c f g h r.
   (Forall r c, Applicative f) => (forall a. c a => g a -> f (h a)) -> Rec (Map g r) -> f (Rec (Map h r))
 traverseMap f =
   sequence' @f @(Map h r) @(IsA c h) .
@@ -504,7 +504,7 @@ distribute  = unRMap . metamorph @_ @r @Unconstrained1 @(,) @(Compose f Rec) @(R
 -- >>> uncompose . compose = id
 
 -- | A version of 'compose' in which the constraint for 'Forall' can be chosen.
-compose' :: forall c (f :: * -> *) (g :: * -> *) (r :: Row *) . Forall r c
+compose' :: forall c f g r . Forall r c
         => Rec (Map f (Map g r)) -> Rec (Map (Compose f g) r)
 compose' = unRMap . metamorph @_ @r @c @(,) @(RMap2 f g) @(RMap (Compose f g)) @(Compose f g) Proxy doNil doUncons doCons . RMap2
   where
@@ -521,12 +521,12 @@ compose' = unRMap . metamorph @_ @r @c @(,) @(RMap2 f g) @(RMap (Compose f g)) @
 
 -- | Convert from a record where two functors have been mapped over the types to
 -- one where the composition of the two functors is mapped over the types.
-compose :: forall (f :: * -> *) (g :: * -> *) r . FreeForall r
+compose :: forall f g r . FreeForall r
         => Rec (Map f (Map g r)) -> Rec (Map (Compose f g) r)
 compose = compose' @Unconstrained1 @f @g @r
 
 -- | A version of 'uncompose' in which the constraint for 'Forall' can be chosen.
-uncompose' :: forall c (f :: * -> *) (g :: * -> *) r . Forall r c
+uncompose' :: forall c f g r . Forall r c
            => Rec (Map (Compose f g) r) -> Rec (Map f (Map g r))
 uncompose' = unRMap2 . metamorph @_ @r @c @(,) @(RMap (Compose f g)) @(RMap2 f g) @(Compose f g) Proxy doNil doUncons doCons . RMap
   where
@@ -544,7 +544,7 @@ uncompose' = unRMap2 . metamorph @_ @r @c @(,) @(RMap (Compose f g)) @(RMap2 f g
 -- | Convert from a record where the composition of two functors have been mapped
 -- over the types to one where the two functors are mapped individually one at a
 -- time over the types.
-uncompose :: forall (f :: * -> *) (g :: * -> *) r . FreeForall r
+uncompose :: forall f g r . FreeForall r
           => Rec (Map (Compose f g) r) -> Rec (Map f (Map g r))
 uncompose = uncompose' @Unconstrained1 @f @g @r
 
