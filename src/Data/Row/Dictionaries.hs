@@ -43,6 +43,7 @@ module Data.Row.Dictionaries
   , freeForall
   , mapForall
   , apSingleForall
+  , subsetJoin, subsetJoin', subsetRestrict, subsetTrans
   -- ** Helper Types
   , IsA(..)
   , As(..)
@@ -193,3 +194,20 @@ mapMinJoin = UNSAFE.unsafeCoerce $ Dict @Unconstrained
 -- | ApSingle distributes over MinJoin
 apSingleMinJoin :: forall r r' x. Dict (ApSingle r x .\/ ApSingle r' x ≈ ApSingle (r .\/ r') x)
 apSingleMinJoin = UNSAFE.unsafeCoerce $ Dict @Unconstrained
+
+-- | Two rows are subsets of a third if and only if their disjoint union is a
+-- subset of that third.
+subsetJoin :: forall r1 r2 s. Dict ((Subset r1 s, Subset r2 s) ≈ (Subset (r1 .+ r2) s))
+subsetJoin = UNSAFE.unsafeCoerce $ Dict @Unconstrained
+
+-- | If two rows are each subsets of a third, their join is a subset of the third
+subsetJoin' :: forall r1 r2 s. Dict ((Subset r1 s, Subset r2 s) ≈ (Subset (r1 .// r2) s))
+subsetJoin' = UNSAFE.unsafeCoerce $ Dict @Unconstrained
+
+-- | If a row is a subset of another, then its restriction is also a subset of the other
+subsetRestrict :: forall r s l. (Subset r s) :- (Subset (r .- l) s)
+subsetRestrict = Sub $ UNSAFE.unsafeCoerce $ Dict @Unconstrained
+
+-- | Subset is transitive
+subsetTrans :: forall r1 r2 r3. (Subset r1 r2, Subset r2 r3) :- (Subset r1 r3)
+subsetTrans = Sub $ UNSAFE.unsafeCoerce $ Dict @Unconstrained

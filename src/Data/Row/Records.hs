@@ -252,6 +252,7 @@ OR l .+ OR r = OR $ M.unionWithKey choose l r
 -- - Any label that is only found in @r'@ is in the resulting record.
 --
 -- This can be thought of as @r@ "overwriting" @r'@.
+infixl 6 .//
 (.//) :: Rec r -> Rec r' -> Rec (r .// r')
 OR l .// OR r = OR $ M.union l r
 
