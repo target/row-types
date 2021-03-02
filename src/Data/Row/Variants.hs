@@ -40,6 +40,7 @@ module Data.Row.Variants
   , update, focus, Modify, rename, Rename
   -- * Destruction
   , impossible, trial, trial', multiTrial, view
+  , Subset
   , restrict, split
   -- ** Types for destruction
   , type (.!), type (.-), type (.\\), type (.==)
@@ -62,7 +63,7 @@ module Data.Row.Variants
   -- ** labels
   , labels
   -- ** ApSingle functions
-  , eraseSingle, mapSingle, eraseZipSingle
+  , eraseSingle, mapSingle, mapSingleA, eraseZipSingle
   -- ** Coerce
   , coerceVar
   )
@@ -73,9 +74,8 @@ import Prelude hiding (map, sequence, traverse, zip)
 import Control.Applicative
 import Control.DeepSeq     (NFData(..), deepseq)
 
-import Data.Bifunctor (Bifunctor(..))
+import Data.Bifunctor                 (Bifunctor(..))
 import Data.Coerce
-import Data.Constraint                (Constraint)
 import Data.Functor.Compose
 import Data.Functor.Identity
 import Data.Functor.Product
@@ -196,8 +196,8 @@ trial' :: KnownSymbol l => Var r -> Label l -> Maybe (r .! l)
 trial' = (either (const Nothing) Just .) . trial
 
 -- | A trial over multiple types
-multiTrial :: forall x y. (AllUniqueLabels x, Forall (y .\\ x) Unconstrained1) => Var y -> Either (Var (y .\\ x)) (Var x)
-multiTrial (OneOf l x) = if l `elem` labels @(y .\\ x) @Unconstrained1 then Left (OneOf l x) else Right (OneOf l x)
+multiTrial :: forall x y. (AllUniqueLabels x, FreeForall x) => Var y -> Either (Var (y .\\ x)) (Var x)
+multiTrial (OneOf l x) = if l `elem` labels @x @Unconstrained1 then Right (OneOf l x) else Left (OneOf l x)
 
 -- | A convenient function for using view patterns when dispatching variants.
 --   For example:
@@ -471,6 +471,7 @@ fromLabelsMap f = fromLabels @(IsA c g) @(Map g ρ) @f inner
 --------------------------------------------------------------------}
 
 newtype VApS x fs = VApS { unVApS :: Var (ApSingle fs x) }
+newtype VApSF x g fs = VApSF { unVApSF :: g (Var (ApSingle fs x)) }
 newtype FlipApp (x :: k) (f :: k -> *) = FlipApp (f x)
 
 -- | A version of 'erase' that works even when the row-type of the variant argument
@@ -497,7 +498,13 @@ mapSingle
   => (forall f . (c f) => f x -> f y)
   -> Var (ApSingle fs x)
   -> Var (ApSingle fs y)
-mapSingle f = unVApS . metamorph @_ @fs @c @Either @(VApS x) @(VApS y) @(FlipApp x)
+mapSingle f = runIdentity . mapSingleA @c @fs @Identity @x @y (pure . f)
+
+
+-- | Like `mapSingle`, but works over a functor.
+mapSingleA :: forall c fs g x y.
+  (Forall fs c, Functor g) => (forall f. c f => f x -> g (f y)) -> Var (ApSingle fs x) -> g (Var (ApSingle fs y))
+mapSingleA f = unVApSF . metamorph @_ @fs @c @Either @(VApS x) @(VApSF y g) @(FlipApp x)
              Proxy doNil doUncons doCons . VApS
  where
   doNil = impossible . unVApS
@@ -511,14 +518,15 @@ mapSingle f = unVApS . metamorph @_ @fs @c @Either @(VApS x) @(VApS y) @(FlipApp
 
   doCons :: forall l f fs. (KnownSymbol l, c f, AllUniqueLabels (Extend l f fs))
          => Label l
-         -> Either (VApS y fs) (FlipApp x f)
-         -> VApS y (Extend l f fs)
-  doCons l (Right (FlipApp x)) = VApS $ IsJust l (f x)
+         -> Either (VApSF y g fs) (FlipApp x f)
+         -> VApSF y g (Extend l f fs)
+  doCons l (Right (FlipApp x)) = VApSF $ IsJust l <$> (f x)
     \\ apSingleExtendSwap @y @l @f @fs
     \\ extendHas @l @(f y) @(ApSingle fs y)
     \\ uniqueApSingle @y @(Extend l f fs)
-  doCons l (Left (VApS v)) = VApS $ extend @(f y) l v
+  doCons l (Left (VApSF v)) = VApSF $ extend @(f y) l <$> v
     \\ apSingleExtendSwap @y @l @f @fs
+
 
 -- | A version of 'eraseZip' that works even when the row-types of the variant
 -- arguments are of the form @ApSingle fs x@.
@@ -663,7 +671,7 @@ instance (KnownSymbol name)
   toNative' = G.M1 . G.M1 . G.K1 . snd . unSingleton
 
 instance ( ToNativeG l, ToNativeG r, (NativeRowG l .+ NativeRowG r) .\\ NativeRowG r ≈ NativeRowG l
-         , AllUniqueLabels (NativeRowG r), Forall (NativeRowG l) Unconstrained1)
+         , AllUniqueLabels (NativeRowG r), FreeForall (NativeRowG r))
     => ToNativeG (l G.:+: r) where
   toNative' v = case multiTrial @(NativeRowG r) @(NativeRowG (l G.:+: r)) v of
     Left  v' -> G.L1 $ toNative' v'

@@ -37,11 +37,13 @@ module Data.Row.Dictionaries
     uniqueMap, uniqueAp, uniqueApSingle, uniqueZip
   , extendHas, mapHas, apHas, apSingleHas
   , mapExtendSwap, apExtendSwap, apSingleExtendSwap, zipExtendSwap
+  , mapMinJoin, apSingleMinJoin
   , FreeForall
   , FreeBiForall
   , freeForall
   , mapForall
   , apSingleForall
+  , subsetJoin, subsetJoin', subsetRestrict, subsetTrans
   -- ** Helper Types
   , IsA(..)
   , As(..)
@@ -143,15 +145,15 @@ extendHas = UNSAFE.unsafeCoerce $ Dict @Unconstrained
 
 -- | This allows us to derive @Map f r .! l ≈ f t@ from @r .! l ≈ t@
 mapHas :: forall f l t r. (r .! l ≈ t) :- (Map f r .! l ≈ f t, Map f r .- l ≈ Map f (r .- l))
-mapHas = Sub $ UNSAFE.unsafeCoerce $ Dict @(r .! l ≈ t)
+mapHas = Sub $ UNSAFE.unsafeCoerce $ Dict @(Unconstrained, Unconstrained)
 
 -- | This allows us to derive @Ap ϕ ρ .! l ≈ f t@ from @ϕ .! l ≈ f@ and @ρ .! l ≈ t@
 apHas :: forall l f ϕ t ρ. (ϕ .! l ≈ f, ρ .! l ≈ t) :- (Ap ϕ ρ .! l ≈ f t, Ap ϕ ρ .- l ≈ Ap (ϕ .- l) (ρ .- l))
-apHas = Sub $ UNSAFE.unsafeCoerce $ Dict @(ϕ .! l ≈ f, ρ .! l ≈ t)
+apHas = Sub $ UNSAFE.unsafeCoerce $ Dict @(Unconstrained, Unconstrained)
 
 -- | This allows us to derive @ApSingle r x .! l ≈ f x@ from @r .! l ≈ f@
 apSingleHas :: forall x l f r. (r .! l ≈ f) :- (ApSingle r x .! l ≈ f x, ApSingle r x .- l ≈ ApSingle (r .- l) x)
-apSingleHas = Sub $ UNSAFE.unsafeCoerce $ Dict @(r .! l ≈ f)
+apSingleHas = Sub $ UNSAFE.unsafeCoerce $ Dict @(Unconstrained, Unconstrained)
 
 -- | Proof that the 'Map' type family preserves labels and their ordering.
 mapExtendSwap :: forall f ℓ τ r. Dict (Extend ℓ (f τ) (Map f r) ≈ Map f (Extend ℓ τ r))
@@ -183,4 +185,29 @@ uniqueApSingle = UNSAFE.unsafeCoerce $ Dict @Unconstrained
 
 -- | Zip preserves uniqueness of labels.
 uniqueZip :: forall r1 r2. Dict (AllUniqueLabels (Zip r1 r2) ≈ (AllUniqueLabels r1, AllUniqueLabels r2))
-uniqueZip = UNSAFE.unsafeCoerce $ Dict @Unconstrained
+uniqueZip = UNSAFE.unsafeCoerce $ Dict @(Unconstrained, Unconstrained)
+
+-- | Map distributes over MinJoin
+mapMinJoin :: forall f r r'. Dict (Map f r .\/ Map f r' ≈ Map f (r .\/ r'))
+mapMinJoin = UNSAFE.unsafeCoerce $ Dict @Unconstrained
+
+-- | ApSingle distributes over MinJoin
+apSingleMinJoin :: forall r r' x. Dict (ApSingle r x .\/ ApSingle r' x ≈ ApSingle (r .\/ r') x)
+apSingleMinJoin = UNSAFE.unsafeCoerce $ Dict @Unconstrained
+
+-- | Two rows are subsets of a third if and only if their disjoint union is a
+-- subset of that third.
+subsetJoin :: forall r1 r2 s. Dict ((Subset r1 s, Subset r2 s) ≈ (Subset (r1 .+ r2) s))
+subsetJoin = UNSAFE.unsafeCoerce $ Dict @Unconstrained
+
+-- | If two rows are each subsets of a third, their join is a subset of the third
+subsetJoin' :: forall r1 r2 s. Dict ((Subset r1 s, Subset r2 s) ≈ (Subset (r1 .// r2) s))
+subsetJoin' = UNSAFE.unsafeCoerce $ Dict @Unconstrained
+
+-- | If a row is a subset of another, then its restriction is also a subset of the other
+subsetRestrict :: forall r s l. (Subset r s) :- (Subset (r .- l) s)
+subsetRestrict = Sub $ UNSAFE.unsafeCoerce $ Dict @Unconstrained
+
+-- | Subset is transitive
+subsetTrans :: forall r1 r2 r3. (Subset r1 r2, Subset r2 r3) :- (Subset r1 r3)
+subsetTrans = Sub $ UNSAFE.unsafeCoerce $ Dict @Unconstrained

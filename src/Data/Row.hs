@@ -29,7 +29,7 @@ module Data.Row
     Label(..)
   , KnownSymbol, AllUniqueLabels, WellBehaved
   , Var, Rec, Row, Empty, type (≈)
-  , HasType, Lacks, type (.\), type (.+)
+  , HasType, Subset, Lacks, type (.\), type (.+)
   , type (.\/), type (.\\), type (.//)
   , BiForall, Forall, FreeForall, FreeBiForall
   , switch, caseon
