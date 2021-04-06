@@ -1,3 +1,12 @@
+## 1.0.1.0 [2021-05-06]
+- Fixed a critical bug in certain values in `Dictionaries` that could cause segfaults.
+- Reimplemented and simplified `Subset`.
+- Adjusted basic type families to better handle simple cases (affected families are `.\`, `Extend`, `.+`, `.\/`, `.//`).
+- Export `mapSingleA` in `Data.Row.Variants`.
+- Improved kind polymorphism and simplify a few constraints ([Thanks Strake!](https://github.com/target/row-types/pull/73)).
+- Improved type checking performance ([Thanks UlfNorell!](https://github.com/target/row-types/pull/71))
+
+
 ## 1.0.0.0 [2020-09-12]
 This release has many breaking changes, specifically to `metamorph` and some functions related to `Variant`, hence the major version bump to `1.0`.  However, users that only use basic features of records may not notice a difference.
 
