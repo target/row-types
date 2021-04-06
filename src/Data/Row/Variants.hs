@@ -40,6 +40,7 @@ module Data.Row.Variants
   , update, focus, Modify, rename, Rename
   -- * Destruction
   , impossible, trial, trial', multiTrial, view
+  , Subset
   , restrict, split
   -- ** Types for destruction
   , type (.!), type (.-), type (.\\), type (.==)
@@ -62,7 +63,7 @@ module Data.Row.Variants
   -- ** labels
   , labels
   -- ** ApSingle functions
-  , eraseSingle, mapSingle, eraseZipSingle
+  , eraseSingle, mapSingle, mapSingleA, eraseZipSingle
   -- ** Coerce
   , coerceVar
   )
@@ -73,9 +74,8 @@ import Prelude hiding (map, sequence, traverse, zip)
 import Control.Applicative
 import Control.DeepSeq     (NFData(..), deepseq)
 
-import Data.Bifunctor (Bifunctor(..))
+import Data.Bifunctor                 (Bifunctor(..))
 import Data.Coerce
-import Data.Constraint                (Constraint)
 import Data.Functor.Compose
 import Data.Functor.Identity
 import Data.Functor.Product
@@ -196,8 +196,8 @@ trial' :: KnownSymbol l => Var r -> Label l -> Maybe (r .! l)
 trial' = (either (const Nothing) Just .) . trial
 
 -- | A trial over multiple types
-multiTrial :: forall x y. (AllUniqueLabels x, Forall (y .\\ x) Unconstrained1) => Var y -> Either (Var (y .\\ x)) (Var x)
-multiTrial (OneOf l x) = if l `elem` labels @(y .\\ x) @Unconstrained1 then Left (OneOf l x) else Right (OneOf l x)
+multiTrial :: forall x y. (AllUniqueLabels x, FreeForall x) => Var y -> Either (Var (y .\\ x)) (Var x)
+multiTrial (OneOf l x) = if l `elem` labels @x @Unconstrained1 then Right (OneOf l x) else Left (OneOf l x)
 
 -- | A convenient function for using view patterns when dispatching variants.
 --   For example:
@@ -281,8 +281,8 @@ eraseZip f = eraseZipGeneral @c @ρ @(Maybe b) @Text $ \case
 
 
 -- | VMap is used internally as a type level lambda for defining variant maps.
-newtype VMap (f :: * -> *) (ρ :: Row *) = VMap { unVMap :: Var (Map f ρ) }
-newtype VMap2 (f :: * -> *) (g :: * -> *) (ρ :: Row *) = VMap2 { unVMap2 :: Var (Map f (Map g ρ)) }
+newtype VMap f ρ = VMap { unVMap :: Var (Map f ρ) }
+newtype VMap2 f g ρ = VMap2 { unVMap2 :: Var (Map f (Map g ρ)) }
 
 -- | A function to map over a variant given a constraint.
 map :: forall c f r. Forall r c => (forall a. c a => a -> f a) -> Var r -> Var (Map f r)
@@ -306,7 +306,7 @@ map' = map @Unconstrained1
 -- variant transformer to convert a variant of @f a@ values to a variant of @g a@
 -- values.  If no constraint is needed, instantiate the first type argument with
 -- 'Unconstrained1'.
-transform :: forall c r (f :: * -> *) (g :: * -> *). Forall r c => (forall a. c a => f a -> g a) -> Var (Map f r) -> Var (Map g r)
+transform :: forall c r f g. Forall r c => (forall a. c a => f a -> g a) -> Var (Map f r) -> Var (Map g r)
 transform f = unVMap . metamorph @_ @r @c @Either @(VMap f) @(VMap g) @f Proxy doNil doUncons doCons . VMap
   where
     doNil = impossible . unVMap
@@ -324,16 +324,16 @@ transform f = unVMap . metamorph @_ @r @c @Either @(VMap f) @(VMap g) @f Proxy d
       \\ uniqueMap @g @(Extend ℓ τ ρ)
 
 -- | A form of @transformC@ that doesn't have a constraint on @a@
-transform' :: forall r (f :: * -> *) (g :: * -> *) . FreeForall r => (forall a. f a -> g a) -> Var (Map f r) -> Var (Map g r)
+transform' :: forall r f g . FreeForall r => (forall a. f a -> g a) -> Var (Map f r) -> Var (Map g r)
 transform' = transform @Unconstrained1 @r
 
 -- | Traverse a function over a variant.
-traverse :: forall c f r. (Forall r c, Applicative f) => (forall a. c a => a -> f a) -> Var r -> f (Var r)
+traverse :: forall c f r. (Forall r c, Functor f) => (forall a. c a => a -> f a) -> Var r -> f (Var r)
 traverse f = sequence' @f @r @c . map @c @f @r f
 
 -- | Traverse a function over a Mapped variant.
-traverseMap :: forall c (f :: * -> *) (g :: * -> *) (h :: * -> *) r.
-  (Forall r c, Applicative f) => (forall a. c a => g a -> f (h a)) -> Var (Map g r) -> f (Var (Map h r))
+traverseMap :: forall c f g h r.
+  (Forall r c, Functor f) => (forall a. c a => g a -> f (h a)) -> Var (Map g r) -> f (Var (Map h r))
 traverseMap f =
   sequence' @f @(Map h r) @(IsA c h) .
   uncompose' @c @f @h @r .
@@ -341,7 +341,7 @@ traverseMap f =
   \\ mapForall @h @r @c
 
 -- | Applicative sequencing over a variant with arbitrary constraint.
-sequence' :: forall f r c. (Forall r c, Applicative f) => Var (Map f r) -> f (Var r)
+sequence' :: forall f r c. (Forall r c, Functor f) => Var (Map f r) -> f (Var r)
 sequence' = getCompose . metamorph @_ @r @c @Either @(VMap f) @(Compose f Var) @f Proxy doNil doUncons doCons . VMap
   where
     doNil = impossible . unVMap
@@ -357,7 +357,7 @@ sequence' = getCompose . metamorph @_ @r @c @Either @(VMap f) @(Compose f Var) @
 
 
 -- | Applicative sequencing over a variant
-sequence :: forall f r. (FreeForall r, Applicative f) => Var (Map f r) -> f (Var r)
+sequence :: forall f r. (FreeForall r, Functor f) => Var (Map f r) -> f (Var r)
 sequence = sequence' @f @r @Unconstrained1
 
 -- $compose
@@ -371,7 +371,7 @@ sequence = sequence' @f @r @Unconstrained1
 
 -- | Convert from a variant where two functors have been mapped over the types to
 -- one where the composition of the two functors is mapped over the types.
-compose :: forall (f :: * -> *) (g :: * -> *) r . FreeForall r => Var (Map f (Map g r)) -> Var (Map (Compose f g) r)
+compose :: forall f g r . FreeForall r => Var (Map f (Map g r)) -> Var (Map (Compose f g) r)
 compose = unVMap . metamorph @_ @r @Unconstrained1 @Either @(VMap2 f g) @(VMap (Compose f g)) @(Compose f g) Proxy doNil doUncons doCons . VMap2
   where
     doNil = impossible . unVMap2
@@ -390,7 +390,7 @@ compose = unVMap . metamorph @_ @r @Unconstrained1 @Either @(VMap2 f g) @(VMap (
       \\ uniqueMap @(Compose f g) @(Extend ℓ τ ρ)
 
 -- | A version of 'uncompose' that allows an arbitrary constraint.
-uncompose' :: forall c (f :: * -> *) (g :: * -> *) r . Forall r c => Var (Map (Compose f g) r) -> Var (Map f (Map g r))
+uncompose' :: forall c f g r . Forall r c => Var (Map (Compose f g) r) -> Var (Map f (Map g r))
 uncompose' = unVMap2 . metamorph @_ @r @c @Either @(VMap (Compose f g)) @(VMap2 f g) @(Compose f g) Proxy doNil doUncons doCons . VMap
   where
     doNil = impossible . unVMap
@@ -413,7 +413,7 @@ uncompose' = unVMap2 . metamorph @_ @r @c @Either @(VMap (Compose f g)) @(VMap2 
 -- | Convert from a variant where the composition of two functors have been mapped
 -- over the types to one where the two functors are mapped individually one at a
 -- time over the types.
-uncompose :: forall (f :: * -> *) (g :: * -> *) r . FreeForall r => Var (Map (Compose f g) r) -> Var (Map f (Map g r))
+uncompose :: forall f g r . FreeForall r => Var (Map (Compose f g) r) -> Var (Map f (Map g r))
 uncompose = uncompose' @Unconstrained1 @f @g @r
 
 -- | Coerce a variant to a coercible representation.  The 'BiForall' in the context
@@ -470,13 +470,14 @@ fromLabelsMap f = fromLabels @(IsA c g) @(Map g ρ) @f inner
   Functions for variants of ApSingle
 --------------------------------------------------------------------}
 
-newtype VApS x (fs :: Row (* -> *)) = VApS { unVApS :: Var (ApSingle fs x) }
-newtype FlipApp (x :: *) (f :: * -> *) = FlipApp (f x)
+newtype VApS x fs = VApS { unVApS :: Var (ApSingle fs x) }
+newtype VApSF x g fs = VApSF { unVApSF :: g (Var (ApSingle fs x)) }
+newtype FlipApp (x :: k) (f :: k -> *) = FlipApp (f x)
 
 -- | A version of 'erase' that works even when the row-type of the variant argument
 -- is of the form @ApSingle fs x@.
 eraseSingle
-  :: forall (c :: (* -> *) -> Constraint) (fs :: Row (* -> *)) (x :: *) (y :: *)
+  :: forall c fs x y
    . Forall fs c
   => (forall f . (c f) => f x -> y)
   -> Var (ApSingle fs x)
@@ -492,12 +493,18 @@ eraseSingle f = erase @(ActsOn c x) @(ApSingle fs x) @y g
 -- @f x@ values to a variant of @f y@ values.  If no constraint is needed,
 -- instantiate the first type argument with 'Unconstrained1'.
 mapSingle
-  :: forall (c :: (* -> *) -> Constraint) (fs :: Row (* -> *)) (x :: *) (y :: *)
+  :: forall c fs x y
    . (Forall fs c)
   => (forall f . (c f) => f x -> f y)
   -> Var (ApSingle fs x)
   -> Var (ApSingle fs y)
-mapSingle f = unVApS . metamorph @_ @fs @c @Either @(VApS x) @(VApS y) @(FlipApp x)
+mapSingle f = runIdentity . mapSingleA @c @fs @Identity @x @y (pure . f)
+
+
+-- | Like `mapSingle`, but works over a functor.
+mapSingleA :: forall c fs g x y.
+  (Forall fs c, Functor g) => (forall f. c f => f x -> g (f y)) -> Var (ApSingle fs x) -> g (Var (ApSingle fs y))
+mapSingleA f = unVApSF . metamorph @_ @fs @c @Either @(VApS x) @(VApSF y g) @(FlipApp x)
              Proxy doNil doUncons doCons . VApS
  where
   doNil = impossible . unVApS
@@ -511,18 +518,19 @@ mapSingle f = unVApS . metamorph @_ @fs @c @Either @(VApS x) @(VApS y) @(FlipApp
 
   doCons :: forall l f fs. (KnownSymbol l, c f, AllUniqueLabels (Extend l f fs))
          => Label l
-         -> Either (VApS y fs) (FlipApp x f)
-         -> VApS y (Extend l f fs)
-  doCons l (Right (FlipApp x)) = VApS $ IsJust l (f x)
+         -> Either (VApSF y g fs) (FlipApp x f)
+         -> VApSF y g (Extend l f fs)
+  doCons l (Right (FlipApp x)) = VApSF $ IsJust l <$> (f x)
     \\ apSingleExtendSwap @y @l @f @fs
     \\ extendHas @l @(f y) @(ApSingle fs y)
     \\ uniqueApSingle @y @(Extend l f fs)
-  doCons l (Left (VApS v)) = VApS $ extend @(f y) l v
+  doCons l (Left (VApSF v)) = VApSF $ extend @(f y) l <$> v
     \\ apSingleExtendSwap @y @l @f @fs
+
 
 -- | A version of 'eraseZip' that works even when the row-types of the variant
 -- arguments are of the form @ApSingle fs x@.
-eraseZipSingle :: forall c fs (x :: *) (y :: *) z
+eraseZipSingle :: forall c fs x y z
                 . (Forall fs c)
                => (forall f. c f => f x -> f y -> z)
                -> Var (ApSingle fs x) -> Var (ApSingle fs y) -> Maybe z
@@ -531,7 +539,7 @@ eraseZipSingle f x y = getConst $ metamorph @_ @fs @c @Either
     Proxy doNil doUncons doCons (Pair (VApS x) (VApS y))
 
   where doNil :: Product (VApS x) (VApS y) Empty
-              -> Const (Maybe z) (Empty :: Row (* -> *))
+              -> Const (Maybe z) Empty
         doNil (Pair (VApS z) _) = Const (impossible z)
 
         doUncons :: forall l f ρ
@@ -549,7 +557,7 @@ eraseZipSingle f x y = getConst $ metamorph @_ @fs @c @Either
             (Left us, Left vs) -> Left (Pair (VApS us) (VApS vs))
             _                  -> Right $ Const Nothing
 
-        doCons :: forall l (τ :: * -> *) ρ
+        doCons :: forall k l τ (ρ :: Row k)
                 . Label l
                -> Either (Const (Maybe z) ρ) (Const (Maybe z) τ)
                -> Const (Maybe z) (Extend l τ ρ)
@@ -663,7 +671,7 @@ instance (KnownSymbol name)
   toNative' = G.M1 . G.M1 . G.K1 . snd . unSingleton
 
 instance ( ToNativeG l, ToNativeG r, (NativeRowG l .+ NativeRowG r) .\\ NativeRowG r ≈ NativeRowG l
-         , AllUniqueLabels (NativeRowG r), Forall (NativeRowG l) Unconstrained1)
+         , AllUniqueLabels (NativeRowG r), FreeForall (NativeRowG r))
     => ToNativeG (l G.:+: r) where
   toNative' v = case multiTrial @(NativeRowG r) @(NativeRowG (l G.:+: r)) v of
     Left  v' -> G.L1 $ toNative' v'

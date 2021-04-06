@@ -126,11 +126,13 @@ data HideType where
 infixl 4 .\ {- This comment needed to appease CPP -}
 -- | Does the row lack (i.e. it does not have) the specified label?
 type family (r :: Row k) .\ (l :: Symbol) :: Constraint where
-  R r .\ l = LacksR l r r
+  R '[] .\ l = Unconstrained
+  R r   .\ l = LacksR l r r
 
 -- | Type level Row extension
 type family Extend (l :: Symbol) (a :: k) (r :: Row k) :: Row k where
-  Extend l a (R x) = R (Inject (l :-> a) x)
+  Extend l a (R '[]) = R (l :-> a ': '[])
+  Extend l a (R x)   = R (Inject (l :-> a) x)
 
 -- | Type level Row modification
 type family Modify (l :: Symbol) (a :: k) (r :: Row k) :: Row k where
@@ -180,17 +182,25 @@ type family (l :: Row k) .\\ (r :: Row k) :: Row k where
 infixl 6 .+
 -- | Type level Row append
 type family (l :: Row k) .+ (r :: Row k) :: Row k where
+  x .+ R '[] = x
+  R '[] .+ y = y
+  x .+ R '[l :-> a] = Extend l a x
+  R '[l :-> a] .+ y = Extend l a y
   R l .+ R r = R (Merge l r)
 
 infixl 6 .\/
 -- | The minimum join of the two rows.
 type family (l :: Row k) .\/ (r :: Row k) where
+  x .\/ R '[] = x
+  R '[] .\/ y = y
   R l .\/ R r = R (MinJoinR l r)
 
 infixl 6 .//
 -- | The overwriting union, where the left row overwrites the types of the right
 -- row where the labels overlap.
 type family (l :: Row k) .// (r :: Row k) where
+  x .// R '[] = x
+  R '[] .// y = y
   R l .// R r = R (ConstUnionR l r)
 
 
@@ -344,25 +354,10 @@ type family AllUniqueLabelsR (r :: [LT k]) :: Constraint where
   AllUniqueLabelsR (l :-> a ': l' :-> b ': r) = AllUniqueLabelsR (l' :-> b ': r)
 
 -- | Is the first row a subset of the second?
+-- Or, does the second row contain every binding that the first one does?
 type family Subset (r1 :: Row k) (r2 :: Row k) :: Constraint where
-  Subset (R r1) (R r2) = SubsetR r1 r2
-
-type family SubsetR (r1 :: [LT k]) (r2 :: [LT k]) :: Constraint where
-  SubsetR '[] _ = Unconstrained
-  SubsetR x '[] = TypeError (TL.Text "One row-type is not a subset of the other."
-        :$$: TL.Text "The first contains the bindings " :<>: ShowRowType x
-        :<>: TL.Text " while the second does not.")
-  SubsetR (l :-> a ': x) (l :-> a ': y) = SubsetR x y
-  SubsetR (l :-> a ': x) (l :-> b ': y) =
-    TypeError (TL.Text "One row-type is not a subset of the other."
-          :$$: TL.Text "The first assigns the label " :<>: ShowType l :<>: TL.Text " to "
-          :<>: ShowType a :<>: TL.Text " while the second assigns it to " :<>: ShowType b)
-  SubsetR (hl :-> al ': tl) (hr :-> ar ': tr) =
-      Ifte (hl <=.? hr)
-      (TypeError (TL.Text "One row-type is not a subset of the other."
-             :$$: TL.Text "The first assigns the label " :<>: ShowType hl :<>: TL.Text " to "
-             :<>: ShowType al :<>: TL.Text " while the second has no assignment for it."))
-      (SubsetR (hl :-> al ': tl) tr)
+  Subset ('R '[]) r = Unconstrained
+  Subset ('R (l ':-> a ': x)) r = (r .! l ≈ a, Subset ('R x) r)
 
 -- | A type synonym for disjointness.
 type Disjoint l r = ( WellBehaved l
@@ -479,9 +474,13 @@ type family MinJoinR (l :: [LT k]) (r :: [LT k]) where
     TypeError (TL.Text "The label " :<>: ShowType h :<>: TL.Text " has conflicting assignments."
           :$$: TL.Text "Its type is both " :<>: ShowType a :<>: TL.Text " and " :<>: ShowType b :<>: TL.Text ".")
   MinJoinR (hl :-> al ': tl) (hr :-> ar ': tr) =
-      Ifte (CmpSymbol hl hr == 'LT)
-      (hl :-> al ': MinJoinR tl (hr :-> ar ': tr))
-      (hr :-> ar ': MinJoinR (hl :-> al ': tl) tr)
+      -- Using Ifte here makes GHC blow up on nested unions with many overlapping keys.
+      MinJoinRCase (CmpSymbol hl hr) hl al tl hr ar tr
+
+type family MinJoinRCase (cmp :: Ordering) (hl :: Symbol) (al :: k) (tl :: [LT k])
+                                           (hr :: Symbol) (ar :: k) (tr :: [LT k]) where
+  MinJoinRCase 'LT hl al tl hr ar tr = hl :-> al ': MinJoinR tl (hr :-> ar ': tr)
+  MinJoinRCase _   hl al tl hr ar tr = hr :-> ar ': MinJoinR (hl :-> al ': tl) tr
 
 type family ConstUnionR (l :: [LT k]) (r :: [LT k]) where
   ConstUnionR '[] r = r
@@ -489,9 +488,13 @@ type family ConstUnionR (l :: [LT k]) (r :: [LT k]) where
   ConstUnionR (h :-> a ': tl)   (h :-> b ': tr) =
       (h :-> a ': ConstUnionR tl tr)
   ConstUnionR (hl :-> al ': tl) (hr :-> ar ': tr) =
-      Ifte (CmpSymbol hl hr == 'LT)
-      (hl :-> al ': ConstUnionR tl (hr :-> ar ': tr))
-      (hr :-> ar ': ConstUnionR (hl :-> al ': tl) tr)
+      -- Using Ifte here makes GHC blow up on nested unions with many overlapping keys.
+      ConstUnionRCase (CmpSymbol hl hr) hl al tl hr ar tr
+
+type family ConstUnionRCase (cmp :: Ordering) (hl :: Symbol) (al :: k) (tl :: [LT k])
+                                           (hr :: Symbol) (ar :: k) (tr :: [LT k]) where
+  ConstUnionRCase 'LT hl al tl hr ar tr = hl :-> al ': ConstUnionR tl (hr :-> ar ': tr)
+  ConstUnionRCase _   hl al tl hr ar tr = hr :-> ar ': ConstUnionR (hl :-> al ': tl) tr
 
 
 -- | Returns the left list with all of the elements from the right list removed.
