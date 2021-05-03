@@ -461,9 +461,13 @@ type family Merge (l :: [LT k]) (r :: [LT k]) where
     TypeError (TL.Text "The label " :<>: ShowType h :<>: TL.Text " has conflicting assignments."
           :$$: TL.Text "Its type is both " :<>: ShowType a :<>: TL.Text " and " :<>: ShowType b :<>: TL.Text ".")
   Merge (hl :-> al ': tl) (hr :-> ar ': tr) =
-      Ifte (hl <=.? hr)
-      (hl :-> al ': Merge tl (hr :-> ar ': tr))
-      (hr :-> ar ': Merge (hl :-> al ': tl) tr)
+      -- Using Ifte here makes GHC blow up on nested unions with many overlapping keys.
+      MergeCont (CmpSymbol hl hr) hl al tl hr ar tr
+
+type family MergeCont (cmp :: Ordering) (hl :: Symbol) (al :: k) (tl :: [LT k])
+                                        (hr :: Symbol) (ar :: k) (tr :: [LT k]) where
+    MergeCont 'LT hl al tl hr ar tr = (hl :-> al ': Merge tl (hr :-> ar ': tr))
+    MergeCont _ hl al tl hr ar tr = (hr :-> ar ': Merge (hl :-> al ': tl) tr)
 
 type family MinJoinR (l :: [LT k]) (r :: [LT k]) where
   MinJoinR '[] r = r
@@ -501,11 +505,15 @@ type family ConstUnionRCase (cmp :: Ordering) (hl :: Symbol) (al :: k) (tl :: [L
 type family Diff (l :: [LT k]) (r :: [LT k]) where
   Diff '[] r = '[]
   Diff l '[] = l
-  Diff (l :-> al ': tl) (l :-> al ': tr) = Diff tl tr
-  Diff (hl :-> al ': tl) (hr :-> ar ': tr) =
-    Ifte (hl <=.? hr)
-    (hl :-> al ': Diff tl (hr :-> ar ': tr))
-    (Diff (hl :-> al ': tl) tr)
+  Diff (l ':-> al ': tl) (l ':-> al ': tr) = Diff tl tr
+  Diff (hl ':-> al ': tl) (hr ':-> ar ': tr) =
+    -- Using Ifte here makes GHC blow up on nested unions with many overlapping keys.
+    DiffCont (CmpSymbol hl hr) hl al tl hr ar tr
+
+type family DiffCont (cmp :: Ordering) (hl :: Symbol) (al :: k) (tl :: [LT k])
+                                       (hr :: Symbol) (ar :: k) (tr :: [LT k]) where
+    DiffCont 'LT hl al tl hr ar tr = (hl ':-> al ': Diff tl (hr ':-> ar ': tr))
+    DiffCont _ hl al tl hr ar tr = (Diff (hl ':-> al ': tl) tr)
 
 type family ShowRowType (r :: [LT k]) :: ErrorMessage where
   ShowRowType '[] = TL.Text "Empty"

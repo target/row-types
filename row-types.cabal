@@ -81,6 +81,8 @@ test-suite test
   hs-source-dirs: tests, examples
   ghc-options: -W +RTS -M1G -RTS
   other-modules: Examples,
+                 DiffPerformance,
+                 MergePerformance,
                  UnionPerformance
   build-depends: base >= 2 && < 6
                , generic-lens >= 1.1.0.0
