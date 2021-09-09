@@ -211,3 +211,13 @@ subsetRestrict = Sub $ UNSAFE.unsafeCoerce $ Dict @Unconstrained
 -- | Subset is transitive
 subsetTrans :: forall r1 r2 r3. (Subset r1 r2, Subset r2 r3) :- (Subset r1 r3)
 subsetTrans = Sub $ UNSAFE.unsafeCoerce $ Dict @Unconstrained
+
+-- | Map distributes over Difference
+mapDifference :: forall f r r'. Dict (Map f r .\\ Map f r' ≈ Map f (r .\\ r'))
+mapDifference = UNSAFE.unsafeCoerce $ Dict @Unconstrained
+
+-- | ApSingle distributes over Difference
+apSingleDifference :: forall r r' x. Dict (ApSingle r x .\\ ApSingle r' x ≈ ApSingle (r .\\ r') x)
+apSingleDifference = UNSAFE.unsafeCoerce $ Dict @Unconstrained
+
+-- differenceForall :: forall r r' c. Forall r c :- Forall (r .\\ r') c

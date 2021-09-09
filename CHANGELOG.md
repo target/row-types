@@ -1,3 +1,7 @@
+## 1.0.1.1 [2021-09-09]
+- Improved type checking performance on Diff and Merge ([Thanks ak3n!](https://github.com/target/row-types/pull/77))
+
+
 ## 1.0.1.0 [2021-05-06]
 - Fixed a critical bug in certain values in `Dictionaries` that could cause segfaults.
 - Reimplemented and simplified `Subset`.
@@ -58,7 +62,7 @@ Note: GHC 8.2 and earlier are no longer officially supported in row-types 0.4.0.
 ## 0.2.3.0 [2018-07-02]
 - Update the `Show` instance for `Rec` to render valid code.
 - Add `toNative` and `fromNative` functions for records to easily convert between Haskell records and row-types records.
-- Make type families in `Data.Row.Internal` polykinded (thanks James Yu!)
+- Make type families in `Data.Row.Internal` polykinded ([Thanks James Yu!](https://github.com/target/row-types/pull/20))
 
 ## 0.2.1.0 [2018-03-20]
 - Bug Fix: The type of `update` for both `Rec` and `Var` now enforce the newly inserted type is correct.
