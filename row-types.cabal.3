@@ -1,14 +1,14 @@
 cabal-version:       3.0
 
 Name:                row-types
-Version:             1.0.1.1
+Version:             1.0.1.2
 License:             MIT
 License-file:        LICENSE
 Author:              Daniel Winograd-Cort, Matthew Farkas-Dyck
 Maintainer:          dwincort@gmail.com
 homepage:            https://github.com/target/row-types
 Build-Type:          Simple
-Tested-With:         GHC == 8.6.5, GHC == 8.8.3, GHC == 8.10.3
+Tested-With:         GHC == 8.6.5, GHC == 8.8.3, GHC == 8.10.7, GHC == 9.0.1
 Category:            Data, Data Structures
 Synopsis:	           Open Records and Variants
 Description:
@@ -60,7 +60,7 @@ common common-settings
 library
   import: common-settings
   Build-Depends:
-    base >= 2 && < 5,
+    base >= 2 && < 6,
     constraints,
     deepseq >= 1.4,
     generic-lens >= 1.0.0.0,
@@ -84,7 +84,7 @@ library row-types-aeson
   visibility: public
   Build-Depends:
     aeson,
-    base >= 2 && < 5,
+    base >= 2 && < 6,
     row-types,
     text
   Exposed-modules:
@@ -98,7 +98,7 @@ library row-types-barbies
   visibility: public
   Build-Depends:
     barbies,
-    base >= 2 && < 5,
+    base >= 2 && < 6,
     row-types,
     text
   Exposed-modules:

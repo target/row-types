@@ -1,5 +1,5 @@
 Name:                row-types
-Version:             1.0.1.1
+Version:             1.0.1.2
 License:             MIT
 License-file:        LICENSE
 Author:              Daniel Winograd-Cort, Matthew Farkas-Dyck
@@ -7,7 +7,7 @@ Maintainer:          dwincort@gmail.com
 homepage:            https://github.com/target/row-types
 Build-Type:          Simple
 Cabal-Version:       >=1.10
-Tested-With:         GHC == 8.6.5, GHC == 8.8.3, GHC == 8.10.3
+Tested-With:         GHC == 8.6.5, GHC == 8.8.3, GHC == 8.10.7, GHC == 9.0.1
 Category:            Data, Data Structures
 Synopsis:	           Open Records and Variants
 Description:
