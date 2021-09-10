@@ -300,7 +300,7 @@ map f = unVMap . metamorph @_ @r @c @Either @Var @(VMap f) @Identity Proxy impos
 
 -- | A function to map over a variant given no constraint.
 map' :: forall f r. FreeForall r => (forall a. a -> f a) -> Var r -> Var (Map f r)
-map' = map @Unconstrained1
+map' f = map @Unconstrained1 f
 
 -- | Lifts a natrual transformation over a variant.  In other words, it acts as a
 -- variant transformer to convert a variant of @f a@ values to a variant of @g a@
@@ -325,7 +325,7 @@ transform f = unVMap . metamorph @_ @r @c @Either @(VMap f) @(VMap g) @f Proxy d
 
 -- | A form of @transformC@ that doesn't have a constraint on @a@
 transform' :: forall r f g . FreeForall r => (forall a. f a -> g a) -> Var (Map f r) -> Var (Map g r)
-transform' = transform @Unconstrained1 @r
+transform' f = transform @Unconstrained1 @r f
 
 -- | Traverse a function over a variant.
 traverse :: forall c f r. (Forall r c, Functor f) => (forall a. c a => a -> f a) -> Var r -> f (Var r)

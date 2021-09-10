@@ -11,27 +11,26 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        ghc: ['8.6.5', '8.8.3', 'latest']
+        ghc: ['8.6', '8.8', '8.10', 'latest']
         # cabal: ['latest']
         os: [ubuntu-latest, macOS-latest, windows-latest]
         exclude:
           - os: macOS-latest
-            ghc: 8.8.3
+            ghc: 8.8
           - os: macOS-latest
-            ghc: 8.6.5
+            ghc: 8.6
           - os: windows-latest
-            ghc: 8.8.3
+            ghc: 8.8
           - os: windows-latest
-            ghc: 8.6.5
-    name: Haskell GHC ${{ matrix.ghc }} sample
+            ghc: 8.6
+    name: ${{ matrix.os }} / ghc ${{ matrix.ghc }}
     steps:
       - uses: actions/checkout@v2
       - name: Setup Haskell
         uses: haskell/actions/setup@v1
         with:
           ghc-version: ${{ matrix.ghc }}
-          # cabal-version: 'latest'. Omitted, but defaults to 'latest'
-          # cabal-version: ${{ matrix.cabal }}
+          # cabal-version: ${{ matrix.cabal }} -- Omitted, but defaults to 'latest'
       - name: Build
         run: |
           cabal configure --enable-tests --enable-benchmarks --test-show-details=direct
@@ -41,24 +40,16 @@ jobs:
           cabal test all
 
   stack:
-    name: stack / ghc ${{ matrix.ghc }}
+    name: stack
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        stack: ["latest"]
-        ghc:
-          - "8.8.3"
-          - "latest"
-
     steps:
       - uses: actions/checkout@v2
       - uses: haskell/actions/setup@v1
         with:
-          ghc-version: ${{ matrix.ghc }}
+          # ghc-version: 'latest'. Omitted, but defaults to 'latest'
           # cabal-version: 'latest'. Omitted, but defaults to 'latest'
           enable-stack: true
-          # stack-version: ${{ matrix.stack }}
-          stack-version: 'latest'
+          # stack-version: 'latest'. Omitted, but defaults to 'latest'
       - name: Build
         run: |
           stack build --system-ghc --test --bench --fast --no-run-tests --no-run-benchmarks

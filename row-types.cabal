@@ -28,7 +28,7 @@ extra-source-files:
 
 Library
   Build-Depends:
-    base >= 2 && < 5,
+    base >= 2 && < 6,
     constraints >= 0.11,
     deepseq >= 1.4,
     hashable >= 1.2,
