@@ -44,6 +44,7 @@ module Data.Row.Dictionaries
   , mapForall
   , apSingleForall
   , subsetJoin, subsetJoin', subsetRestrict, subsetTrans
+  , mapDifference, apSingleDifference
   -- ** Helper Types
   , IsA(..)
   , As(..)

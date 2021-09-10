@@ -1,3 +1,9 @@
+## 1.0.1.2 [2021-09-10]
+- Update Stack to use GHC 8.10.7
+- Fix a few warnings
+- Minor updates to support GHC 9.0.1
+
+
 ## 1.0.1.1 [2021-09-09]
 - Improved type checking performance on Diff and Merge ([Thanks ak3n!](https://github.com/target/row-types/pull/77))
 

@@ -399,7 +399,7 @@ mapF f = unRFMap . biMetamorph @_ @_ @ϕ @ρ @c @(,) @RecAp @(RFMap g) @App Prox
 
 -- | A function to map over a record given no constraint.
 map' :: forall f r. FreeForall r => (forall a. a -> f a) -> Rec r -> Rec (Map f r)
-map' = map @Unconstrained1
+map' f = map @Unconstrained1 f
 
 -- | Lifts a natural transformation over a record.  In other words, it acts as a
 -- record transformer to convert a record of @f a@ values to a record of @g a@
@@ -420,7 +420,7 @@ transform f = unRMap . metamorph @_ @r @c @(,) @(RMap f) @(RMap g) @f Proxy doNi
 
 -- | A version of 'transform' for when there is no constraint.
 transform' :: forall r f g. FreeForall r => (forall a. f a -> g a) -> Rec (Map f r) -> Rec (Map g r)
-transform' = transform @Unconstrained1 @r
+transform' f = transform @Unconstrained1 @r f
 
 
 data RecMapPair f g ρ = RecMapPair (Rec (Map f ρ)) (Rec (Map g ρ))
@@ -445,7 +445,7 @@ zipTransform f x y = unRMap $ metamorph @_ @r @c @(,) @(RecMapPair f g) @(RMap h
 -- | A version of 'zipTransform' for when there is no constraint.
 zipTransform' :: forall r f g h .
   FreeForall r => (forall a. f a -> g a -> h a) -> Rec (Map f r) -> Rec (Map g r) -> Rec (Map h r)
-zipTransform' = zipTransform @Unconstrained1 @r
+zipTransform' f = zipTransform @Unconstrained1 @r f
 
 -- | Traverse a function over a record.  Note that the fields of the record will
 -- be accessed in lexicographic order by the labels.
