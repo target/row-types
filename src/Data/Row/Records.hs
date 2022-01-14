@@ -88,6 +88,9 @@ module Data.Row.Records
   , labels, labels'
   -- ** Coerce
   , coerceRec
+  -- ** Universal Instantiation 
+  , Known(..)
+  , forall
   )
 where
 
@@ -118,6 +121,8 @@ import Unsafe.Coerce
 
 import Data.Row.Dictionaries
 import Data.Row.Internal
+import Data.Kind (Constraint)
+import Data.Constraint (unmapDict)
 
 
 {--------------------------------------------------------------------
@@ -837,3 +842,52 @@ instance {-# OVERLAPPING #-}
   => HasField' name (Rec r) a where
   field' = focus (Label @name)
   {-# INLINE field' #-}
+
+{--------------------------------------------------------------------
+  Universal Instantiation for Constrained Rows
+--------------------------------------------------------------------}
+
+-- | A class to capture the idea of "things we can conjure into existence"  (Like @KnownSymbol@/@KnownNat@ but for anything)
+class Known (a :: *) where 
+  known :: a 
+  
+instance Known (Proxy (a :: k)) where 
+  known = Proxy 
+  {-# INLINE known #-}
+
+instance Known (Proxy (a :: *)) where 
+  known = Proxy 
+  {-# INLINE known #-}
+
+-- This is a GADT which holds a dictionary. Here, it is used to implement `forall`, 
+data Constrained (c :: k -> Constraint) :: k -> * where
+  Constrained :: forall k (c :: k -> Constraint) (a :: k)
+               . Dict (c a) -> Constrained c a
+
+-- | If some row with unique labels satisfies `Forall r c` then, 
+-- if we know that `t` is an element of that row at label `l`, 
+-- we also know that `t` satisfies `c`. 
+-- 
+-- This requires type applications, e.g. @forall \@MyRow \@MyConstraint \@"myLabel" \@myType@
+forall :: forall r c l t
+        . (WellBehaved r
+        ,  WellBehaved (Map Proxy r)
+        ,  Forall (Map Proxy r) Known
+        ,  Forall r c
+        ,  KnownSymbol l
+        ) => HasType l t r :- c t -- This is the newtype for constraint entailment from Data.Constraint 
+forall = unmapDict go             -- If you have a dict: myDict = Dict @(HasType l t r), you can 
+  where                           -- use `mapDict (forall @r @c @l @t) myDict` to get a `Dict @(c t)`
+                                  -- (This lets us do things that wouldn't otherwise typecheck due to escaped skolems)
+    go :: Dict (HasType l t r) -> Dict (c t)
+    go Dict = case key .! (Label @l) \\ mapHas @(Constrained c) @l @t @r of 
+      Constrained d -> d 
+    
+    key :: Rec (Map (Constrained c) r)
+    key = transform @c @r @Proxy @(Constrained c) mkKey (mkProxyRow (Proxy @r))
+      where 
+        mkProxyRow :: forall k (r' :: Row k). (WellBehaved (Map Proxy r'), Forall (Map Proxy r') Known) => Proxy r' -> Rec (Map Proxy r')  
+        mkProxyRow _ = default' @Known @(Map Proxy r') known 
+
+        mkKey:: forall a. c a => Proxy a -> Constrained c a
+        mkKey _ = Constrained Dict 
