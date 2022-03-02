@@ -7,14 +7,16 @@
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 -----------------------------------------------------------------------------
 -- |
--- Module      :  Data.Row.Barbie
+-- Module      :  Data.Row.Barbies
 --
--- This module adds Barbie instances for 'Rec' and 'Var'.
+-- This module adds Barbies instances for 'Rec' and 'Var'.
 --
 -----------------------------------------------------------------------------
 
