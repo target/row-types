@@ -1,6 +1,6 @@
 module Main (main) where
 
-import Gauge.Main
+import Criterion.Main
 
 import Data.String
 
